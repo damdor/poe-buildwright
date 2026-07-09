@@ -1,0 +1,39 @@
+# Cloudflare Pages headers — caching + baseline security hardening.
+# NOTE: this project runs on *.pages.dev (no zone), so zone products
+# (WAF rulesets, Bot Fight Mode, rate-limiting rules, Cache Rules)
+# don't apply; edge caching + these headers are the available levers.
+
+# Sprites: heavy, many, and only change on a game patch. A week in the
+# browser + stale-while-revalidate keeps patch-day refreshes honest
+# (deliberately NOT immutable: filenames are stable across patches,
+# so a 1-year immutable would pin pre-patch art for returning users).
+/assets/sprites/*
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+
+# Catalogues + agent grounding data: refresh within minutes of a
+# deploy while still absorbing bursts at the edge.
+/assets/*.json
+  Cache-Control: public, max-age=300, stale-while-revalidate=3600
+/assets/agent/*
+  Cache-Control: public, max-age=300, stale-while-revalidate=3600
+
+# JS/CSS bundles: hour-level cache; deploys are frequent.
+/assets/*.js
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+/assets/*.css
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+# Baseline security headers, site-wide.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Cross-Origin-Opener-Policy: same-origin
+
+# Function endpoints must never be cached (rev-ETag live channel does
+# its own conditional logic; validate is per-plan).
+/agent/validate
+  Cache-Control: no-store
+/live/*
+  Cache-Control: no-store
