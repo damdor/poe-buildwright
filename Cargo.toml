@@ -1,0 +1,26 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/tree_render",
+    "crates/serve",
+    "crates/data_miner",
+    "crates/ooz_sys",
+    "crates/buildwright",
+    "crates/json",
+    "crates/hash",
+]
+
+# Shared metadata picked up by member crates via `*.workspace = true`.
+[workspace.package]
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

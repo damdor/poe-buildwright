@@ -1,0 +1,2266 @@
+/* Warm-charcoal chrome palette. The CANVAS zone stays GGG's cool
+   near-black (--canvas-bg matches gl.clearColor in 04a_webgl_setup);
+   panels/menus shift from GitHub blue-grey to warm charcoal that sits
+   naturally next to the game art and matches the tooltip's existing
+   #2b2515-family borders. --muted is AA-checked (≥4.5:1 on --panel).
+   Mirror any change into: wizard_chrome.css (--wc-*), index.html and
+   share.html inline :root blocks. */
+:root {
+  --bg: #12100d;
+  --canvas-bg: #0b0d12;
+  --panel: #181511;
+  --border: #2b2418;
+  --fg: #d8d2c5;
+  --muted: #9a917e;
+  --accent: #f0c75c;
+  --link: #58a6ff;
+  --edge: #5a4d36;
+  --edge-sel: #f0c75c;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 ui-monospace, monospace; height: 100%; overflow: hidden; }
+/* Shared wizard chrome sits at the top; the planner's original
+   aside+main flex row is wrapped in .planner-row so it fills the
+   remaining vertical space. */
+body { display: flex; flex-direction: column; }
+.planner-row { display: flex; flex: 1; min-height: 0; position: relative; }
+/* OVERLAY SIDEBAR: position: absolute lifts the panel out of the
+   flex row so the canvas always fills the full width. The slide
+   animation uses transform instead of width — transform is
+   GPU-composited (no per-frame layout/paint storm), so the slide
+   stays at 60fps regardless of canvas content. Previously animating
+   `width` forced full layout every frame, causing the lag the user
+   reported. */
+aside#panel {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 340px;
+  background: var(--panel);
+  box-shadow: inset -1px 0 0 var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden;
+  contain: layout style;
+  z-index: 10;
+  transform: translateX(0);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 120, 130, 0.35) transparent;
+}
+/* Styled webkit scrollbar — slim grey thumb, transparent track, so it
+   blends with the dark sidebar instead of the loud default browser
+   chrome. Slightly brighter on hover for grabbability. */
+aside#panel::-webkit-scrollbar { width: 8px; }
+aside#panel::-webkit-scrollbar-track { background: transparent; }
+aside#panel::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 130, 0.35);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+aside#panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(160, 160, 170, 0.55);
+  background-clip: padding-box;
+}
+/* Collapsed: slide the whole panel off-screen to the left. The
+   toggle tab (sibling outside the panel) stays put — see
+   .panel-toggle below for how its position tracks the sidebar. */
+aside#panel.collapsed {
+  transform: translateX(-340px);
+}
+aside#panel.collapsed.hover-peek {
+  transform: translateX(0);
+}
+/* Hide off-screen children from the tab order. The visibility flip
+   is delayed to the END of the slide so the user doesn't lose focus
+   on a child element mid-animation. */
+aside#panel.collapsed:not(.hover-peek) {
+  visibility: hidden;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 0s linear 0.22s;
+}
+/* Toggle "tab" — half-circle pull-tab. Sits OUTSIDE the panel so it
+   stays clickable when the panel is translated off-screen. Its X
+   position follows the sidebar via transform translateX so it
+   visually rides the panel's right edge (GPU-composited, smooth). */
+.panel-toggle {
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translate(340px, -50%);  /* default: at open sidebar's right edge */
+  z-index: 20;
+  width: 20px; height: 56px;
+  border-radius: 0 10px 10px 0;
+  border: 1px solid rgba(240, 199, 92, 0.55);
+  border-left: none;
+  background: rgba(15, 17, 22, 0.95);
+  color: var(--accent);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-family: ui-monospace, monospace; font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.5);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 0.12s, color 0.12s, border-color 0.12s;
+}
+.planner-row.panel-collapsed .panel-toggle {
+  transform: translate(0, -50%);  /* sidebar's right edge now sits at x=0 */
+}
+.planner-row.panel-collapsed.panel-peek .panel-toggle {
+  transform: translate(340px, -50%);  /* peeked back to open position */
+}
+.panel-toggle:hover {
+  background: rgba(28, 24, 14, 0.97);
+  color: #ffd86b;
+  border-color: rgba(240, 199, 92, 0.9);
+}
+.panel-toggle .panel-toggle-icon {
+  display: inline-block;
+  transition: transform 0.18s ease;
+}
+.planner-row.panel-collapsed .panel-toggle .panel-toggle-icon {
+  transform: rotate(180deg);
+}
+#panel header { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+#panel h1 { font-size: 14px; margin: 0; color: var(--accent); }
+#panel .counter { color: var(--muted); margin-top: 4px; font-size: 11px; line-height: 1.7; }
+#panel .counter b { color: var(--fg); }
+#panel .counter .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+#panel .counter .dot-main { background: #f0c75c; }
+#panel .counter .dot-set1 { background: #ff66c4; }
+#panel .counter .dot-set2 { background: #5cf26f; }
+#panel .counter .dot-asc  { background: #ffa53d; }
+#panel .counter .muted { color: var(--muted); }
+#panel section { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+#panel .row { display: flex; flex-direction: column; gap: 8px; }
+#panel label { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+#panel select { background: #0d1117; color: var(--fg); border: 1px solid var(--border); padding: 6px 8px; border-radius: 4px; font: inherit; }
+#panel select:focus { outline: 1px solid var(--accent); }
+#panel input[type=text], #panel textarea {
+  background: #0d1117; color: var(--fg); border: 1px solid var(--border);
+  padding: 6px 8px; border-radius: 4px; font: inherit; resize: vertical;
+}
+#panel input[type=text]:focus, #panel textarea:focus { outline: 1px solid var(--accent); }
+#panel section h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin: 0 0 8px 0; font-weight: 600;
+}
+/* Identity section — class + asc as a side-by-side pair so they
+   share a row and keep the section compact. */
+#panel .sec-identity { padding: 10px 14px 12px; }
+#panel .sec-identity .row-pair {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  margin-top: 8px;
+}
+#panel .sec-identity > label + label { margin-top: 8px; }
+
+#info { flex: 0 0 auto; min-height: 80px; font-size: 12px; color: var(--muted); overflow-y: auto; }
+#info .info-empty { font-style: italic; }
+#info .info-name { color: var(--accent); font-size: 14px; margin-bottom: 4px; }
+#info .info-tag { display: inline-block; background: rgba(240,199,92,0.12); border: 1px solid rgba(240,199,92,0.35); color: var(--accent); padding: 1px 6px; border-radius: 8px; font-size: 10px; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+#info .info-stats { margin-top: 6px; color: var(--fg); white-space: pre-line; font-size: 12px; }
+
+#selected { flex: 1; overflow-y: auto; min-height: 100px; }
+#selected h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); margin: 0 0 6px 0;
+}
+#sel-list { list-style: none; padding: 0; margin: 0; font-size: 12px; }
+#sel-list li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  cursor: grab;
+}
+#sel-list li.dragging { opacity: 0.5; cursor: grabbing; }
+#sel-list li.drop-target-above { box-shadow: 0 -2px 0 var(--accent); }
+#sel-list li.drop-target-below { box-shadow: 0  2px 0 var(--accent); }
+#sel-list li:hover { background: rgba(255,255,255,0.02); }
+/* Small badge prefixed on asc allocations in the sidebar list — they
+   spend from a separate 8-point pool, so it's worth distinguishing.
+   Inline with the node name, not its own column (the per-row Lv N
+   tag was removed since within-capture respec can reorder allocations
+   in ways that make any positional level label unreliable). */
+#sel-list .alloc-asc-badge {
+  display: inline-block;
+  background: rgba(255, 165, 60, 0.15);
+  color: #ffa53d;
+  border: 1px solid rgba(255, 165, 60, 0.4);
+  border-radius: 3px;
+  padding: 0 5px;
+  font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Attribute summary row — collapses every "+5 to any Attribute" node
+   into one aggregate row showing the total per picked variant. There
+   can be 15+ of these in a typical build and listing each is noise.
+   Pills are color-coded the same way PoB shows attribute pools:
+     Str = red, Dex = green, Int = blue. */
+#sel-list li.alloc-attr-sum {
+  cursor: default;
+  background: rgba(255, 255, 255, 0.015);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+#sel-list li.alloc-attr-sum:hover { background: rgba(255, 255, 255, 0.025); }
+#sel-list .alloc-attr-label {
+  color: var(--muted); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500;
+}
+#sel-list .alloc-attr-pills {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  margin-top: 4px;
+}
+#sel-list .attr-pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font: 700 11px ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid;
+}
+#sel-list .attr-pill.str { color: #ff6b6b; background: rgba(255,107,107,0.10); border-color: rgba(255,107,107,0.4); }
+#sel-list .attr-pill.dex { color: #5cf26f; background: rgba( 92,242,111,0.10); border-color: rgba( 92,242,111,0.4); }
+#sel-list .attr-pill.int { color: #58a6ff; background: rgba( 88,166,255,0.10); border-color: rgba( 88,166,255,0.4); }
+#sel-list .attr-pill.any { color: var(--muted); background: rgba(255,255,255,0.04); border-color: var(--border); font-style: italic; }
+
+/* Level slider — no container chrome. Each part (track, thumb, note
+   pills, snapshot tick lines) floats directly on the canvas like the
+   HUD pills below, so the slider reads as a set of standalone
+   components rather than a "bar." Just a positioning context for the
+   children, centered at the top with equal side margins so the
+   sidebar overlay can fold out without covering it. Width clamps:
+   min 600px so note ticks stay readable; max 1100px so it doesn't
+   sprawl on ultrawide displays. Hidden until the build has at least
+   one snap. */
+.level-slider {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 708px);
+  min-width: 600px;
+  max-width: 1100px;
+  background: transparent;
+  border: none;
+  padding: 30px 18px 18px;   /* top: room for note pills above the track. bottom: cap-dot row. */
+  font: 12px ui-monospace, monospace;
+  color: var(--fg);
+  z-index: 8;
+  pointer-events: none;        /* gaps don't intercept; children opt in */
+}
+.level-slider > * { pointer-events: auto; }
+.level-slider.hidden { display: none; }
+.ls-track-wrap {
+  position: relative;
+  height: 22px;
+}
+/* Dark pill behind the slider track — gives the floating slider
+   enough visual contrast against varied canvas content to stay
+   readable. Sits behind the track gradient (z-index: 0) so the
+   filled-portion gradient overlays it; thumb (z-index: 2) sits on
+   top of both. */
+/* Pill backdrop. The "unfilled" portion mirrors the passive tree's
+   unselected-edge tint (faint warm gold-gray, see EDGE_TINT in
+   04d_static_geom.js: rgb(94,88,70) * 0.55) so the slider reads as
+   a "potential path" the same way an un-allocated tree edge does. */
+.ls-track-wrap::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 0; right: 0;
+  height: 10px;
+  margin-top: -5px;
+  background: rgba(11, 13, 18, 0.88);
+  border: 1px solid rgba(94, 88, 70, 0.55);   /* matches tree EDGE_TINT */
+  border-radius: 5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  z-index: 0;
+  pointer-events: none;
+}
+/* Capture-span shading — alternate faint gold zones inside the track
+   pill, one per snapshot, so the build's chapter structure reads at a
+   glance without adding chrome. Clipped to the pill's radius. */
+.ls-segments {
+  position: absolute;
+  top: 50%; left: 0; right: 0;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 5px;
+  overflow: hidden;
+  z-index: 1;
+  pointer-events: none;
+}
+.ls-segments .ls-seg { position: absolute; top: 0; bottom: 0; }
+.ls-segments .ls-seg.odd { background: rgba(240, 224, 160, 0.07); }
+#ls-input {
+  appearance: none; -webkit-appearance: none;
+  width: 100%; height: 22px;
+  background: transparent;
+  outline: none; margin: 0; padding: 0;
+  position: relative; z-index: 2;
+  cursor: pointer;
+}
+/* Active-path gold treatment.
+   The tree renders allocated edges with TINT_MAIN = #f0e0a0 (a warm
+   pale gold sampled directly from GGG's BGTreeActive sprite — see
+   04e_overlay.js). We use that exact color here so the slider's
+   filled portion matches the actual allocated-edge color in the
+   canvas, not the UI accent (#f0c75c, which the note pills + thumb
+   still use). 3-stop vertical gradient adds depth; box-shadow halo
+   approximates the WebGL additive bloom. */
+#ls-input::-webkit-slider-runnable-track {
+  height: 8px;
+  background:
+    linear-gradient(180deg, #fff2c8 0%, #f0e0a0 55%, #c8b878 100%) left center / var(--ls-fill, 0%) 100% no-repeat,
+    transparent;
+  border-radius: 4px;
+  box-shadow: 0 0 6px rgba(240, 224, 160, 0.45);
+}
+#ls-input::-moz-range-track {
+  height: 8px;
+  background:
+    linear-gradient(180deg, #fff2c8 0%, #f0e0a0 55%, #c8b878 100%) left center / var(--ls-fill, 0%) 100% no-repeat,
+    transparent;
+  border-radius: 4px;
+  box-shadow: 0 0 6px rgba(240, 224, 160, 0.45);
+}
+/* Thumb echoes the allocated-node frame: gold core with a dark ring
+   and the same gold glow halo (see GOLD_HALO in 04f_render.js). */
+#ls-input::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 20px; height: 20px;
+  /* Allocated-node anatomy: dark core inside a gold rim (the same
+     frame language as a taken passive), with the render halo. */
+  background:
+    radial-gradient(circle, #16120c 0 36%, transparent 37%),
+    radial-gradient(circle at 35% 30%, #ffe8a0 0%, #f0c75c 45%, #c89c34 100%);
+  border: 2px solid #0b0d12;
+  border-radius: 50%;
+  margin-top: -6px;
+  cursor: grab;
+  box-shadow: 0 0 0 1px rgba(240, 199, 92, 0.55), 0 0 12px rgba(240, 199, 92, 0.6);
+}
+#ls-input::-moz-range-thumb {
+  width: 20px; height: 20px;
+  background:
+    radial-gradient(circle, #16120c 0 36%, transparent 37%),
+    radial-gradient(circle at 35% 30%, #ffe8a0 0%, #f0c75c 45%, #c89c34 100%);
+  border: 2px solid #0b0d12;
+  border-radius: 50%;
+  cursor: grab;
+  box-shadow: 0 0 0 1px rgba(240, 199, 92, 0.55), 0 0 12px rgba(240, 199, 92, 0.6);
+}
+/* Level readout riding the thumb while scrubbing — a small gold
+   bubble so the current level is readable at the point of control,
+   not just in the HUD. Hidden outside replay. */
+.ls-thumb-label {
+  position: absolute;
+  top: -26px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(20,17,12,0.97), rgba(8,6,3,0.97));
+  border: 1px solid #4a3a1f;
+  border-radius: 4px;
+  padding: 1px 7px;
+  color: var(--accent);
+  font: 700 11px ui-monospace, monospace;
+  box-shadow: 0 0 0 1px rgba(218,165,32,0.15), 0 2px 8px rgba(0,0,0,0.6);
+  pointer-events: none;
+  z-index: 4;
+}
+.ls-thumb-label.hidden { display: none; }
+.ls-ticks {
+  position: absolute;
+  left: 0; right: 0;
+  /* Spans from ~20 px ABOVE the 22 px track-wrap (note row) to 14 px
+     BELOW (cap-dot row). The track in the middle stays unobstructed so
+     the slider thumb is always grabbable — earlier the note pills sat
+     ON the thumb and made dragging fiddly. */
+  top: -22px; height: 58px;
+  pointer-events: none;
+}
+.ls-tick {
+  position: absolute;
+  --stack-y: 0px;
+  transform: translate(-50%, var(--stack-y));
+  pointer-events: auto;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+/* Snapshot transition: a thin vertical guide line, behind the slider
+   track so it never grabs pointer events away from the thumb (no z-
+   index clash with the slider's drag handle). Replaces the earlier
+   circular dot — a 2 px line reads as "this is the exact level" at
+   metric-chart precision, whereas a dot's centre vs the thumb's
+   inset-corrected position made them look offset. */
+.ls-tick.cap {
+  top: 48px;        /* in ls-ticks coords (-22 base) → just below the 22 px track-wrap */
+  width: 7px; height: 7px;      /* small diamond notch — same blue, jewel-cut */
+  transform: translate(-50%, 0) rotate(45deg);
+  background: linear-gradient(135deg, #8cc8ff 0%, #4a86c8 100%);
+  border: 1px solid rgba(11, 13, 18, 0.85);
+  box-shadow: 0 0 5px rgba(88, 166, 255, 0.5);
+  border-radius: 1px;
+  z-index: 1;       /* behind the slider input (z-index 2) so it can't grab pointer events */
+}
+.ls-tick.cap:hover {
+  transform: translate(-50%, 0) rotate(45deg) scale(1.35);
+  box-shadow: 0 0 9px rgba(140, 200, 255, 0.8);
+}
+/* Annotated allocation: a numbered gold circle that overlays the track.
+   The number is the note's sequence order across the build so the
+   author can refer to "note 3" externally without ambiguity. Note
+   row sits ABOVE the slider track (top: 0 inside a .ls-ticks shifted
+   up 10 px). */
+.ls-tick.note {
+  top: 4px;         /* in ls-ticks coords (-22 base) → fully above the 22 px track-wrap */
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffe8a0 0%, #f0c75c 55%, #d4a944 100%);
+  color: #0b0d12;
+  display: flex; align-items: center; justify-content: center;
+  font: 700 10px ui-monospace, monospace;
+  box-shadow: 0 0 0 2px rgba(11,13,18,0.85), 0 2px 6px rgba(240,199,92,0.45);
+  z-index: 3;
+}
+.ls-tick.note:hover {
+  transform: translate(-50%, var(--stack-y)) scale(1.18);
+  box-shadow: 0 0 0 2px rgba(11,13,18,0.85), 0 0 12px rgba(240,199,92,0.9);
+}
+/* Skill notes get a purple tint so users can distinguish "this is a
+   passive instruction" (gold) from "this is a gem instruction" (purple)
+   at a glance — see also the type taxonomy in the design discussion. */
+.ls-tick.note[data-note-type="skill"] {
+  background: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(11,13,18,0.85), 0 2px 6px rgba(167,139,250,0.55);
+}
+.ls-tick.note[data-note-type="skill"]:hover {
+  box-shadow: 0 0 0 2px rgba(11,13,18,0.85), 0 0 12px rgba(167,139,250,0.9);
+}
+/* Cluster pill: several notes collapsed into one counted marker —
+   slightly larger, white count, thin ring. Mixed clusters split
+   gold/purple so both note kinds stay legible. */
+.ls-tick.note.cluster {
+  width: 20px; height: 20px;
+  font-size: 11px;
+  color: #0b0d12;
+  box-shadow: 0 0 0 2px rgba(11,13,18,0.85), 0 0 0 3px rgba(240,199,92,0.35), 0 2px 6px rgba(0,0,0,0.5);
+}
+.ls-tick.note[data-note-type="mixed"] {
+  background: linear-gradient(135deg, var(--accent) 0 50%, #a78bfa 50% 100%);
+}
+.ls-tick.note[data-note-type="mixed"]:hover {
+  box-shadow: 0 0 0 2px rgba(11,13,18,0.85), 0 0 12px rgba(240,199,92,0.7);
+}
+.ls-tooltip {
+  position: absolute;
+  z-index: 100;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 8px 11px;
+  font-size: 12px;
+  max-width: 280px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.ls-tooltip.hidden { display: none; }
+.ls-tooltip .ls-tt-head {
+  color: var(--accent); font-weight: 600;
+  margin-bottom: 4px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.ls-tooltip .ls-tt-name { color: var(--fg); font-weight: 600; }
+.ls-tooltip .ls-tt-note { color: var(--fg); margin-top: 3px; font-style: italic; }
+/* Cluster tooltip: a compact notes index. Wider than the solo tooltip
+   (multiple rows of text), scrolls past ~8 notes. */
+.ls-tooltip:has(.ls-tt-row) { max-width: 380px; max-height: 320px; overflow-y: auto; }
+.ls-tooltip .ls-tt-row {
+  padding: 5px 0 4px;
+  border-top: 1px solid var(--border);
+}
+.ls-tooltip .ls-tt-row:first-of-type { border-top: none; }
+.ls-tooltip .ls-tt-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--accent); color: #0b0d12;
+  font: 700 9px ui-monospace, monospace;
+  margin-right: 6px; vertical-align: middle;
+}
+.ls-tooltip .ls-tt-num.skill { background: #a78bfa; }
+.ls-tooltip .ls-tt-lvl {
+  color: var(--muted); font-size: 10px; margin-right: 6px;
+}
+
+/* When the slider is open, push the canvas down so the slider doesn't
+   overlap the tree's top edge. */
+.level-slider:not(.hidden) ~ canvas#tree { /* canvas is full-size; renderer handles */ }
+/* Accumulated stat summary — replaces the old per-node row list. Each
+   row is a single accumulated stat line; a small ×N tag on the right
+   shows how many allocated nodes contributed when the same stat
+   template stacked. Unique lines render bare. */
+#sel-list .stat-row {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 11.5px;
+  line-height: 1.4;
+  cursor: default;                /* override the legacy li cursor: grab */
+}
+#sel-list .stat-row:hover { background: transparent; }
+#sel-list .stat-row:last-child { border-bottom: none; }
+#sel-list .stat-row .stat-text {
+  flex: 1; min-width: 0;
+  color: var(--fg);
+  word-wrap: break-word;
+}
+#sel-list .stat-row .stat-count {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font: 600 10px ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  background: rgba(240, 199, 92, 0.10);
+  border: 1px solid rgba(240, 199, 92, 0.30);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+#sel-list .stat-empty {
+  padding: 8px 4px;
+  color: var(--muted); font-style: italic; font-size: 11px;
+  list-style: none;
+}
+
+/* Sidebar Passives section — header inlines a slim mode picker so
+   "what mode will my next click commit to?" is one glance away from
+   the stat summary the user spends most time reading. Replaces the
+   old standalone Allocation Mode select that lived in the dropped
+   Start section. */
+#panel #selected .sel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 6px;
+}
+#panel #selected .sel-header h2 {
+  margin: 0;
+  font: 600 12px ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--accent);
+}
+#panel #selected .sel-header .sel-count-wrap {
+  color: var(--muted); font-weight: 400; margin-left: 2px;
+}
+#panel #selected .alloc-mode-mini {
+  background: rgba(8,10,15,0.85);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* Footer — two rows. Top is the primary action (Export), full width,
+   gold-tinted; bottom row is the three secondary actions (Clear /
+   Share / Fit), equal width. The old single-row layout cramped four
+   buttons + wrapped "Export .build" onto two lines. */
+#panel footer {
+  padding: 10px 14px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px;
+}
+#panel footer .footer-row { display: flex; gap: 6px; }
+#panel footer button {
+  flex: 1; background: #0d1117; color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 6px 0; border-radius: 4px;
+  cursor: pointer; font: inherit;
+  white-space: nowrap;
+}
+#panel footer button:hover { border-color: var(--accent); color: var(--accent); }
+#panel footer .btn-primary {
+  background: rgba(240, 199, 92, 0.12);
+  color: var(--accent);
+  border-color: rgba(240, 199, 92, 0.55);
+  font-weight: 700;
+}
+#panel footer .btn-primary:hover {
+  background: rgba(240, 199, 92, 0.22);
+  border-color: rgba(240, 199, 92, 0.85);
+}
+
+main#viewport {
+  flex: 1; position: relative; overflow: hidden;
+  /* The game-art zone keeps GGG's cool near-black — must match the
+     WebGL clearColor (04a_webgl_setup) or resizes flash a seam. */
+  background: var(--canvas-bg);
+  cursor: grab;
+  contain: strict;
+}
+main#viewport.panning { cursor: grabbing; }
+main#viewport canvas { display: block; width: 100%; height: 100%; }
+
+#tooltip,
+#gem-tooltip,
+#item-tooltip {
+  position: fixed; pointer-events: none; z-index: 100;
+  background: linear-gradient(180deg, rgba(20,17,12,0.97), rgba(8,6,3,0.97));
+  border: 1px solid #4a3a1f;
+  box-shadow: 0 0 0 1px rgba(218,165,32,0.15), 0 4px 16px rgba(0,0,0,0.7);
+  padding: 0;
+  min-width: 240px; max-width: 380px;
+  display: none;
+  font-size: 12px;
+  color: #cfc5a0;
+}
+#tooltip.show,
+#gem-tooltip.show { display: block; }
+#item-tooltip.show { display: block; }
+#tooltip .tt-head,
+#gem-tooltip .tt-head { padding: 8px 12px; border-bottom: 1px solid #2b2515; }
+#item-tooltip .tt-head { padding: 8px 12px; border-bottom: 1px solid #2b2515; }
+#tooltip .tt-name,
+#gem-tooltip .tt-name { font-size: 14px; color: var(--accent); margin: 0; font-weight: bold; }
+#item-tooltip .tt-name { font-size: 14px; color: var(--accent); margin: 0; font-weight: bold; }
+#tooltip .tt-tags,
+#gem-tooltip .tt-tags { margin-top: 4px; }
+#item-tooltip .tt-tags { margin-top: 4px; }
+#tooltip .tt-tag,
+#gem-tooltip .tt-tag { display: inline-block; background: rgba(240,199,92,0.12); border: 1px solid rgba(240,199,92,0.35); color: var(--accent); padding: 1px 6px; border-radius: 8px; font-size: 10px; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+#item-tooltip .tt-tag { display: inline-block; background: rgba(240,199,92,0.12); border: 1px solid rgba(240,199,92,0.35); color: var(--accent); padding: 1px 6px; border-radius: 8px; font-size: 10px; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+#tooltip .tt-stats,
+#gem-tooltip .tt-stats { padding: 8px 12px; white-space: pre-line; color: #cfc5a0; }
+#item-tooltip .tt-stats { padding: 8px 12px; white-space: pre-line; color: #cfc5a0; }
+#tooltip .tt-stat,
+#gem-tooltip .tt-stat { line-height: 1.5; }
+#item-tooltip .tt-stat { line-height: 1.5; }
+/* Granted-skill card — an ascendancy node's "Grants Skill: X" resolved
+   to the skill's own name + description. Cool-blue accent band sets it
+   apart from intrinsic stats (plain) and author notes (gold/italic):
+   this is first-party game text describing the granted skill. */
+#tooltip .tt-skill-section,
+#gem-tooltip .tt-skill-section,
+#item-tooltip .tt-skill-section {
+  padding: 6px 12px 8px;
+  margin-top: 2px;
+  border-top: 1px solid rgba(120, 180, 230, 0.28);
+  background: rgba(90, 150, 210, 0.08);
+}
+#tooltip .tt-skill-head,
+#gem-tooltip .tt-skill-head,
+#item-tooltip .tt-skill-head {
+  color: #9cc6f0;
+  font: 600 10px ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: 3px;
+}
+#tooltip .tt-skill-desc,
+#gem-tooltip .tt-skill-desc,
+#item-tooltip .tt-skill-desc {
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+#tooltip .tt-accum-head,
+#gem-tooltip .tt-accum-head,
+#item-tooltip .tt-accum-head {
+  margin-top: 2px; padding: 6px 12px 2px;
+  border-top: 1px solid #2b2515;
+  font-size: 10px; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+#tooltip .tt-accum,
+#gem-tooltip .tt-accum { color: #9fd8a8; }
+#item-tooltip .tt-accum { color: #9fd8a8; }
+#tooltip .tt-stats + .tt-accum-head,
+#gem-tooltip .tt-stats + .tt-accum-head { margin-top: 4px; }
+#item-tooltip .tt-stats + .tt-accum-head { margin-top: 4px; }
+#tooltip .tt-warn,
+#gem-tooltip .tt-warn,
+#item-tooltip .tt-warn {
+  margin: 2px 0 0; padding: 6px 12px;
+  border-top: 1px solid #4a1d1d;
+  background: rgba(255, 80, 80, 0.07);
+  color: #ff8a7a; font-size: 11px; line-height: 1.4;
+}
+#tooltip .tt-hint,
+#gem-tooltip .tt-hint,
+#item-tooltip .tt-hint {
+  padding: 4px 12px 6px;
+  background: rgba(255, 80, 80, 0.07);
+  color: var(--fg); font-size: 11px; line-height: 1.4;
+}
+#tooltip .tt-hint strong,
+#gem-tooltip .tt-hint strong { color: var(--accent); font-weight: 700; }
+#item-tooltip .tt-hint strong { color: var(--accent); font-weight: 700; }
+/* Author note section — visually distinct from stats (italic body, gold
+   header band) so the user reads it as commentary, not data. Inserted
+   between intrinsic stats and the path-total summary so the reading
+   order is: what does it do → what does the author say → how to take it. */
+#tooltip .tt-note-section,
+#gem-tooltip .tt-note-section,
+#item-tooltip .tt-note-section {
+  padding: 6px 12px 8px;
+  margin-top: 2px;
+  border-top: 1px solid rgba(240, 199, 92, 0.25);
+  background: rgba(240, 199, 92, 0.06);
+}
+#tooltip .tt-note-head,
+#gem-tooltip .tt-note-head,
+#item-tooltip .tt-note-head {
+  color: var(--accent);
+  font: 600 10px ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: 3px;
+}
+#tooltip .tt-note-text,
+#gem-tooltip .tt-note-text,
+#item-tooltip .tt-note-text {
+  color: var(--fg);
+  font-style: italic;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+#tooltip .tt-lvl,
+#gem-tooltip .tt-lvl { color: var(--fg); font-variant-numeric: tabular-nums; }
+#item-tooltip .tt-lvl { color: var(--fg); font-variant-numeric: tabular-nums; }
+#tooltip .tt-lvl strong,
+#gem-tooltip .tt-lvl strong { color: var(--accent); font-weight: 700; }
+#item-tooltip .tt-lvl strong { color: var(--accent); font-weight: 700; }
+
+/* Always-on HUD at bottom-left over the canvas, just inside the sidebar
+   edge. Shows the live character level (left half) and the current
+   weapon-set mode (right half). Color-coded for the active mode so a
+   glance tells you which subgraph a click will land in (mirrors the
+   dashed-preview tint). */
+/* Bottom HUD row — holds the mode/level badge, the snapshot button,
+   and the capture chip list as flex siblings. Centered horizontally
+   so the sidebar overlay doesn't cover any of it when expanded.
+   When the sidebar IS open, padding-left:340px shifts the center
+   into the visible-canvas portion (i.e., the right of the sidebar)
+   so the HUD stays optically centered to what the user can see. */
+.hud-row {
+  position: absolute; bottom: 14px; left: 0; right: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  pointer-events: none;        /* gaps don't intercept; children opt in */
+  padding: 0 14px;
+  transition: padding-left 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.planner-row:not(.panel-collapsed) .hud-row { padding-left: 354px; }
+.hud-row > * { pointer-events: auto; }
+
+.mode-badge {
+  display: inline-flex; align-items: center; gap: 12px;
+  padding: 9px 16px;
+  background: rgba(8,10,15,0.90);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 13px; color: var(--fg);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  user-select: none;
+  backdrop-filter: blur(4px);
+}
+
+/* First-run guidance chip — floats top-center over the canvas while the
+   build has zero allocations. Same pill recipe as .mode-badge with a
+   gold-tinted border so it reads as guidance, not chrome. */
+.firstrun-hint {
+  position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+  z-index: 30;
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 9px 12px 9px 16px;
+  background: rgba(8,10,15,0.92);
+  border: 1px solid rgba(240, 199, 92, 0.45);
+  border-radius: 20px;
+  font-size: 12.5px; color: var(--fg);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 18px rgba(240,199,92,0.07);
+  user-select: none;
+  backdrop-filter: blur(4px);
+  max-width: min(560px, calc(100% - 32px));
+}
+.firstrun-hint.hidden { display: none; }
+.firstrun-hint b { color: var(--accent); font-weight: 600; }
+.firstrun-hint button {
+  flex: none;
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: 12px; line-height: 1;
+  padding: 4px 6px; border-radius: 8px;
+}
+.firstrun-hint button:hover { color: var(--fg); background: rgba(201,209,217,0.08); }
+
+/* Live-channel badge — pinned top-center while following a ?live=
+   token (18_live_channel). Red pulse dot = "receiving". */
+.live-badge {
+  position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+  z-index: 31;
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 8px 12px;
+  background: rgba(8,10,15,0.92);
+  border: 1px solid rgba(255, 107, 107, 0.5);
+  border-radius: 20px;
+  font-size: 12px; color: var(--fg);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  user-select: none;
+  backdrop-filter: blur(4px);
+}
+.live-badge .live-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #ff6b6b;
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(255,107,107,0.8); }
+  50%      { opacity: 0.45; box-shadow: 0 0 1px rgba(255,107,107,0.3); }
+}
+.live-badge button {
+  background: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 10px;
+  color: var(--muted); font: 10.5px ui-monospace, monospace;
+  padding: 2px 8px;
+}
+.live-badge button:hover { color: var(--accent); border-color: rgba(240,199,92,0.55); }
+/* HUD pool segments — Lv / Main / Set / Asc. Each segment has a tiny
+   uppercase label, the live values (with a colored dot per pool), and
+   an optional "+N from asc" bonus annotation when an ascendancy grant
+   raises the cap. Pipes between segments come from .mode-sep. The
+   mode pill (Main / Set 1 / Set 2) is the rightmost segment. */
+.mode-badge .hud-pool {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  font: 600 13px ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+.mode-badge .hud-pool b {
+  font-weight: 700;
+  color: var(--fg);
+}
+.mode-badge .hud-pool .hud-pool-label {
+  font-size: 9px; opacity: 0.55;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  font-weight: 600;
+  margin-right: 1px;
+}
+.mode-badge .hud-pool .hud-pool-slash {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.mode-badge .hud-pool .dot {
+  display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%;
+  align-self: center;
+}
+.mode-badge .hud-pool .dot-main { background: #f0c75c; box-shadow: 0 0 4px rgba(240,199,92,0.6); }
+.mode-badge .hud-pool .dot-set1 { background: #ff66c4; box-shadow: 0 0 4px rgba(255,102,196,0.55); }
+.mode-badge .hud-pool .dot-set2 { background: #5cf26f; box-shadow: 0 0 4px rgba(92,242,111,0.55); }
+.mode-badge .hud-pool .dot-asc  { background: #58a6ff; box-shadow: 0 0 4px rgba(88,166,255,0.55); }
+.mode-badge .hud-bonus {
+  font-size: 9px; color: var(--muted);
+  font-weight: 400;
+  margin-left: 2px;
+}
+.mode-badge .hud-set-cap {
+  color: var(--muted);
+  font-weight: 500;
+}
+.mode-badge .hud-hidden { display: none; }
+/* Lv segment keeps an enlarged digit so the most-glanced number
+   (where am I?) stays prominent. */
+.mode-badge .hud-pool-lv b {
+  font-size: 20px;
+  color: var(--fg);
+  line-height: 1;
+}
+.mode-badge .mode-sep {
+  width: 1px; height: 16px;
+  background: var(--border);
+}
+.mode-badge .mode-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px currentColor;
+}
+.mode-badge .mode-label {
+  text-transform: uppercase; letter-spacing: 0.08em;
+  font-weight: 700; font-size: 12px;
+}
+.mode-badge .mode-hint {
+  color: var(--muted); font-size: 10px;
+  border-left: 1px solid var(--border); padding-left: 8px;
+}
+.mode-badge.mode-main  { border-color: rgba(240,199,92,0.45); }
+.mode-badge.mode-main  .mode-dot   { background: #f0c75c; color: #f0c75c; }
+.mode-badge.mode-main  .mode-label { color: #f0c75c; }
+.mode-badge.mode-set1  { border-color: rgba(255,102,196,0.55); }
+.mode-badge.mode-set1  .mode-dot   { background: #ff66c4; color: #ff66c4; }
+.mode-badge.mode-set1  .mode-label { color: #ff66c4; }
+.mode-badge.mode-set2  { border-color: rgba(92,242,111,0.55); }
+.mode-badge.mode-set2  .mode-dot   { background: #5cf26f; color: #5cf26f; }
+.mode-badge.mode-set2  .mode-label { color: #5cf26f; }
+
+/* Snapshot action button — its own pill on the bottom HUD row, sized
+   to match the HUD pill's prominence. Gold border + accent text +
+   "+" glyph reads as a primary CTA. Hotkey S is documented in the
+   cheat sheet; the button itself doesn't display the key chip
+   (cluttered when small). */
+.snapshot-action {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 18px;
+  background: rgba(15, 17, 22, 0.92);
+  border: 1px solid rgba(240, 199, 92, 0.55);
+  border-radius: 20px;
+  color: var(--accent);
+  font: 700 12px ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  transition: background-color 0.12s, border-color 0.12s, transform 0.12s;
+}
+.snapshot-action:hover:not(:disabled) {
+  background: rgba(28, 24, 14, 0.95);
+  border-color: rgba(240, 199, 92, 0.95);
+  color: #ffd86b;
+  transform: translateY(-1px);
+}
+.snapshot-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.snapshot-action .snapshot-action-plus {
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+  margin-right: -2px;
+}
+
+/* Capture chips — each snapshot renders as its OWN pill in the row.
+   Same dark/rounded vocabulary as the HUD; the active capture gets
+   the gold border accent so the user always knows where edits land.
+   The working/"current" capture isn't shown here — by definition
+   it's whatever you're editing right now and gets implicitly active
+   the moment you change anything. */
+.cap-chip-list {
+  display: inline-flex; align-items: center; gap: 8px;
+  list-style: none; margin: 0; padding: 0;
+}
+.cap-chip-list .cap-chip {
+  display: inline-flex; align-items: center;
+  padding: 8px 14px;
+  background: rgba(8,10,15,0.90);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--muted);
+  font: 600 12px ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  transition: color 0.12s, border-color 0.12s, background-color 0.12s;
+}
+.cap-chip-list .cap-chip:hover {
+  color: var(--fg);
+  border-color: rgba(88, 166, 255, 0.7);
+}
+.cap-chip-list .cap-chip.active {
+  color: var(--fg);
+  border-color: rgba(240, 199, 92, 0.85);
+  background: rgba(40, 35, 18, 0.92);
+}
+/* Delete button is hidden until the chip is hovered/focused so the
+   resting chip stays clean. On hover the × appears at the right
+   edge. Click on × is intercepted in JS before the chip's setActive
+   handler (stopPropagation). */
+.cap-chip-list .cap-chip .cap-chip-label { padding-right: 2px; }
+.cap-chip-list .cap-chip .cap-chip-del {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px;
+  margin-left: 8px;
+  padding: 0; border: none; background: transparent;
+  color: var(--muted);
+  font: 14px/1 ui-monospace, monospace;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background-color 0.12s, color 0.12s;
+}
+.cap-chip-list .cap-chip:hover .cap-chip-del,
+.cap-chip-list .cap-chip:focus-within .cap-chip-del { opacity: 0.7; }
+.cap-chip-list .cap-chip .cap-chip-del:hover {
+  opacity: 1; color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.18);
+}
+/* "Current" chip for the working capture (always rendered last in
+   the rail). Dashed border + italic label so it reads as the live
+   workspace rather than a frozen historical snapshot. No × button
+   (working cap is undeletable; the existing CSS hides .cap-chip-del
+   which the JS conveniently doesn't render for this chip either). */
+.cap-chip-list .cap-chip.cap-chip-current {
+  font-style: italic;
+  border-style: dashed;
+  color: rgba(201, 209, 217, 0.75);
+}
+.cap-chip-list .cap-chip.cap-chip-current:hover {
+  color: var(--fg);
+  border-color: rgba(240, 199, 92, 0.7);
+}
+.cap-chip-list .cap-chip.cap-chip-current.active {
+  font-style: normal;
+  border-style: solid;
+  color: var(--fg);
+}
+
+/* Help badge — mirror of the bottom-LEFT HUD on the opposite corner.
+   Round, neutral, low-visual-weight when idle; opens a small popover
+   with the keyboard cheat sheet on click. Deliberately not an
+   "always-on" panel — most users don't need it, but the discoverability
+   for new users is a single glance to the corner. */
+.help-badge {
+  position: absolute; bottom: 14px; right: 14px; z-index: 60;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(240, 199, 92, 0.55);
+  background: rgba(8,10,15,0.88);
+  color: var(--accent);
+  font: 700 17px ui-monospace, monospace;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow:
+    0 0 0 1px rgba(240,199,92,0.18),         /* outer golden glow ring */
+    0 2px 10px rgba(0,0,0,0.45),
+    inset 0 0 6px rgba(240,199,92,0.12);     /* subtle interior gold */
+  backdrop-filter: blur(4px);
+  transition: color 0.12s, border-color 0.12s, transform 0.12s, box-shadow 0.12s;
+}
+.help-badge:hover {
+  color: #ffd86b;
+  border-color: rgba(240,199,92,0.9);
+  transform: scale(1.06);
+  box-shadow:
+    0 0 0 1px rgba(240,199,92,0.4),
+    0 0 14px rgba(240,199,92,0.55),
+    inset 0 0 8px rgba(240,199,92,0.22);
+}
+
+.help-popover {
+  position: absolute; bottom: 56px; right: 14px; z-index: 70;
+  width: 360px;
+  background: linear-gradient(180deg, rgba(20,17,12,0.97), rgba(8,6,3,0.97));
+  border: 1px solid #4a3a1f;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(218,165,32,0.15), 0 8px 24px rgba(0,0,0,0.7);
+  color: #cfc5a0;
+  font-size: 12px;
+  pointer-events: auto;
+}
+.help-popover.hidden { display: none; }
+.help-popover-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #2b2515;
+}
+.help-popover-title {
+  font: 600 11px ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.help-popover-close {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--muted); font-size: 18px; line-height: 1;
+  padding: 0 4px;
+}
+.help-popover-close:hover { color: var(--fg); }
+/* Always-visible GGG disclaimer at the sidebar's foot — on the tree
+   page itself, without competing with the canvas HUD. */
+.planner-attribution {
+  margin: 5px 0 2px;
+  font: 9px ui-monospace, monospace;
+  line-height: 1.35;
+  color: rgba(154, 145, 126, 0.6);
+  text-align: center;
+}
+.help-attribution {
+  margin-top: 10px; padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--muted);
+  text-align: center;
+}
+.help-popover-body { padding: 8px 12px 12px; }
+.help-popover-body section + section { margin-top: 10px; }
+.help-popover-body h4 {
+  margin: 0 0 5px;
+  font: 600 10px ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.help-popover-body .help-row {
+  display: grid; grid-template-columns: 130px 1fr; gap: 10px;
+  align-items: center;
+  padding: 3px 0;
+  line-height: 1.35;
+  font-size: 11.5px;
+}
+.help-popover-body .help-row .help-keys {
+  display: inline-flex; align-items: center; gap: 2px;
+  white-space: nowrap;     /* keep Ctrl+Click together, no awkward wrap */
+  color: var(--muted);
+  font-size: 10.5px;
+}
+.help-popover-body .help-soon {
+  color: var(--muted); font-style: italic; font-size: 10px;
+  margin-left: 4px;
+}
+.help-popover-body .help-row kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  font: 600 10px ui-monospace, monospace;
+  color: var(--fg);
+  line-height: 1;
+}
+
+/* Note overlay — HTML layer above the WebGL canvas reserved for tree-
+   anchored UI: numbered note badges and the inline note popover. The
+   overlay itself never captures pointer events; the badges are purely
+   visual (also pointer-events: none) so the underlying tree node stays
+   fully interactive — clicks / right-clicks / hovers go through. */
+.note-overlay {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 40;
+}
+.note-badge {
+  position: absolute; left: 0; top: 0;
+  pointer-events: none;          /* click-through: don't shadow the node */
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #0b0d12;
+  font: 700 10px ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px rgba(11,13,18,0.85), 0 2px 4px rgba(0,0,0,0.6);
+  will-change: transform;
+}
+
+/* Inline note editor — anchored next to a tree node, autosaves per
+   keystroke. Trash icon clears the note; Esc / outside-click closes
+   without losing work. Position is set via translate3d each frame so
+   it follows pan/zoom of the underlying canvas. */
+.note-popover {
+  position: absolute; left: 0; top: 0; z-index: 80;
+  width: 320px;
+  background: linear-gradient(180deg, rgba(20,17,12,0.97), rgba(8,6,3,0.97));
+  border: 1px solid #4a3a1f;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(218,165,32,0.15), 0 8px 24px rgba(0,0,0,0.7);
+  color: #cfc5a0;
+  font-size: 12px;
+  pointer-events: auto;
+  will-change: transform;
+}
+.note-popover.hidden { display: none; }
+.note-popover-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid #2b2515;
+  gap: 8px;
+}
+.note-popover-name {
+  flex: 1;
+  color: var(--accent);
+  font: 600 12px ui-monospace, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.note-popover-trash {
+  background: transparent; border: none; cursor: pointer;
+  color: var(--muted); font-size: 14px; line-height: 1;
+  padding: 2px 6px; border-radius: 3px;
+}
+.note-popover-trash:hover { color: #ff6b6b; background: rgba(255,80,80,0.08); }
+.note-popover-text {
+  display: block; width: 100%;
+  min-height: 92px;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.25);
+  border: none; outline: none;
+  color: var(--fg);
+  font: 12px ui-monospace, monospace;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.note-popover-hint {
+  padding: 5px 10px;
+  border-top: 1px solid #2b2515;
+  font-size: 10px; color: var(--muted);
+  text-align: right;
+}
+.note-popover-hint kbd {
+  display: inline-block; padding: 0 4px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  font: 600 9px ui-monospace, monospace;
+  color: var(--fg);
+}
+
+
+.overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 13px;
+  background: rgba(11,13,18,0.85);
+  z-index: 50;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.overlay.hidden { opacity: 0; }
+
+/* ───── Command palette (Cmd+K / Ctrl+K) ───── */
+.cmdk-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 14vh;
+  background: rgba(8, 10, 14, 0.55);
+  backdrop-filter: blur(2px);
+}
+.cmdk-overlay.hidden { display: none; }
+.cmdk-modal {
+  width: min(640px, 92vw);
+  background: linear-gradient(180deg, #1a1f29, #131820);
+  border: 1px solid #3a3527;
+  border-radius: 10px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(218, 165, 32, 0.15);
+  color: var(--fg);
+  overflow: hidden;
+  font: 13px/1.4 ui-monospace, monospace;
+}
+.cmdk-input-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #2b2515;
+}
+.cmdk-prefix { color: var(--accent); font-weight: 600; font-size: 11px; letter-spacing: 0.05em; }
+#cmdk-input {
+  flex: 1; background: transparent; border: 0; outline: 0;
+  color: var(--fg); font: inherit; font-size: 15px;
+}
+#cmdk-input::placeholder { color: var(--muted); }
+.cmdk-esc {
+  font-family: ui-monospace, monospace; font-size: 10px;
+  background: #0d1117; border: 1px solid var(--border); color: var(--muted);
+  padding: 2px 6px; border-radius: 4px;
+}
+.cmdk-results {
+  max-height: 56vh; overflow-y: auto;
+}
+.cmdk-section-label {
+  padding: 8px 14px 4px; color: var(--muted); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.cmdk-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.cmdk-item:hover, .cmdk-item.active {
+  background: rgba(240, 199, 92, 0.06);
+  border-left-color: var(--accent);
+}
+.cmdk-item .cmdk-tag {
+  font-size: 10px; padding: 1px 6px; border-radius: 8px;
+  background: rgba(240, 199, 92, 0.12); color: var(--accent);
+  border: 1px solid rgba(240, 199, 92, 0.35);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.cmdk-item .cmdk-tag.t-set1 { background: rgba(255, 102, 196, 0.14); color: #ff8fd2; border-color: rgba(255, 102, 196, 0.4); }
+.cmdk-item .cmdk-tag.t-set2 { background: rgba(92, 240, 110, 0.12); color: #7eee8e; border-color: rgba(92, 240, 110, 0.4); }
+.cmdk-item .cmdk-tag.t-asc  { background: rgba(255, 165, 61, 0.12); color: #ffb663; border-color: rgba(255, 165, 61, 0.4); }
+.cmdk-item .cmdk-tag.t-export { background: rgba(88, 166, 255, 0.12); color: #6ab8ff; border-color: rgba(88, 166, 255, 0.4); }
+.cmdk-item .cmdk-tag.t-import { background: rgba(160, 130, 220, 0.14); color: #b39ddb; border-color: rgba(160, 130, 220, 0.4); }
+.cmdk-item .cmdk-tag.t-view   { background: rgba(140, 200, 220, 0.10); color: #9ec8d3; border-color: rgba(140, 200, 220, 0.4); }
+.cmdk-item .cmdk-tag.t-skills   { background: rgba(94, 210, 190, 0.10);  color: #7fd9c8; border-color: rgba(94, 210, 190, 0.4); }
+.cmdk-item .cmdk-tag.t-timeline { background: rgba(88, 166, 255, 0.10);  color: #8cb8e8; border-color: rgba(88, 166, 255, 0.32); }
+.cmdk-item .cmdk-tag.t-nav      { background: rgba(201, 209, 217, 0.08); color: #aab3bd; border-color: rgba(201, 209, 217, 0.28); }
+
+/* Footer hint bar — result count left, key legend right. Sits under the
+   scrolling results so the affordances never scroll away. */
+.cmdk-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 7px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px; color: var(--muted);
+  letter-spacing: 0.03em;
+}
+.cmdk-foot #cmdk-count { font-variant-numeric: tabular-nums; }
+.cmdk-foot .cmdk-keys { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cmdk-foot .cmdk-keys-sep { opacity: 0.5; }
+.cmdk-foot kbd {
+  font: inherit; font-size: 10px;
+  padding: 0 5px; border-radius: 4px;
+  border: 1px solid var(--border);
+  background: rgba(201, 209, 217, 0.06);
+  color: var(--fg);
+}
+.cmdk-item-main { flex: 1; min-width: 0; }
+.cmdk-item-title { color: var(--fg); }
+.cmdk-item-sub { color: var(--muted); font-size: 11px; margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmdk-empty { padding: 14px; color: var(--muted); font-style: italic; }
+.cmdk-hint {
+  display: flex; gap: 14px; padding: 8px 14px;
+  border-top: 1px solid #2b2515;
+  font-size: 10px; color: var(--muted);
+}
+.cmdk-hint kbd {
+  font-family: ui-monospace, monospace; font-size: 9px;
+  background: #0d1117; border: 1px solid var(--border);
+  padding: 1px 4px; border-radius: 3px; margin-right: 4px;
+}
+.cmdk-hint .cmdk-sep { color: var(--border); }
+
+/* Captures bar (top of the planner sidebar). Chips list each capture's
+   level range; click to switch active, ✕ to delete, "+ Snapshot here"
+   freezes the current tree as a new capture boundary. */
+#panel #captures-bar {
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.015);
+  border-bottom: 1px solid var(--border);
+}
+.captures-bar-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.captures-bar-summary {
+  display: flex; align-items: center; gap: 10px;
+}
+/* "Lv N" hint next to the main: X / Y counter — same accent colour as
+   the bottom-left HUD so the user can visually pair "points spent" with
+   "character level" without doing the +1 math. */
+.ctr-lvl-hint {
+  font-variant-numeric: tabular-nums;
+}
+.ctr-lvl-hint b { color: var(--accent); font-weight: 700; }
+.cap-level-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(240, 199, 92, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(240, 199, 92, 0.5);
+  border-radius: 4px;
+  padding: 3px 9px;
+  font: 600 12px ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.cap-level-label {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+#cap-level {
+  font-size: 13px; font-weight: 700;
+}
+.cap-snap-count {
+  font: 11px ui-monospace, monospace;
+  color: var(--muted);
+}
+#cap-count {
+  color: var(--fg); font-weight: 600;
+}
+#cap-snapshot:disabled {
+  opacity: 0.35; cursor: not-allowed;
+}
+#cap-snapshot:disabled:hover {
+  border-color: var(--border); color: var(--fg);
+}
+#cap-snapshot {
+  background: #0d1117; color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: 4px;
+  font: 11px ui-monospace, monospace;
+  cursor: pointer; transition: border-color 0.12s, color 0.12s;
+}
+#cap-snapshot:hover {
+  border-color: var(--accent); color: var(--accent);
+}
+.cap-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-wrap: wrap; gap: 5px;
+}
+.cap-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #0d1117;
+  font: 11px ui-monospace, monospace;
+  color: var(--muted); cursor: pointer; user-select: none;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.cap-chip:hover {
+  border-color: rgba(240, 199, 92, 0.4);
+  color: var(--fg);
+}
+.cap-chip.active {
+  background: rgba(240, 199, 92, 0.10);
+  border-color: rgba(240, 199, 92, 0.55);
+  color: var(--accent);
+}
+.cap-chip-num {
+  font-weight: 700; opacity: 0.55;
+  padding-right: 4px; border-right: 1px solid var(--border);
+}
+.cap-chip.active .cap-chip-num { opacity: 1; border-right-color: rgba(240, 199, 92, 0.35); }
+.cap-chip-range { font-variant-numeric: tabular-nums; }
+.cap-chip-del {
+  background: none; border: none;
+  color: inherit; cursor: pointer;
+  padding: 0 0 0 4px; margin-left: 2px;
+  opacity: 0.45; font-size: 12px; line-height: 1;
+}
+.cap-chip-del:hover { opacity: 1; color: #ff6b6b; }
+
+/* "Current" chip — the draft the author is building right now. Visually
+   distinct from frozen snapshots (no level-range, italic label). */
+.cap-chip.current {
+  border-style: dashed; opacity: 0.85;
+}
+.cap-chip.current.active { opacity: 1; }
+.cap-chip-label {
+  font-style: italic; color: inherit; opacity: 0.85;
+}
+
+/* Empty-state hint when no snapshots exist yet. */
+.cap-empty {
+  list-style: none;
+  font: 11px ui-monospace, monospace;
+  color: var(--muted);
+  font-style: italic;
+  padding: 4px 0;
+  line-height: 1.5;
+}
+
+/* =====================================================================
+   Skills strip + edit-socket popover
+   ---------------------------------------------------------------------
+   Skills strip lives in the upper-right of the planner canvas (the
+   space that's normally empty negative space between the wizard chrome
+   and the help badge). Text-only v1 — no gem icons or art per the
+   explicit "selector and fields" scope.
+   ===================================================================== */
+/* Column that stacks the skills + gear strips top-right; the strips
+   themselves become static inside it so heights flow naturally. */
+.strips-col {
+  position: absolute;
+  top: 14px; right: 14px;
+  z-index: 9;
+  display: flex; flex-direction: column; gap: 10px;
+  width: 280px;
+}
+.strips-col .skills-strip { position: static; top: auto; right: auto; width: auto; }
+
+.skills-strip {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 280px;
+  z-index: 9;
+  background: rgba(16, 14, 11, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px 8px;
+  font: 12px ui-monospace, monospace;
+  color: var(--fg);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+.skills-strip[hidden] { display: none; }
+.skills-strip .ss-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.skills-strip .ss-title {
+  font: 600 10px ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.skills-strip .ss-cap-label {
+  font: 10px ui-monospace, monospace;
+  color: var(--muted);
+  font-style: italic;
+}
+.skills-strip .ss-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 60vh; overflow-y: auto;
+}
+.skills-strip .ss-row {
+  background: rgba(15, 17, 22, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+.skills-strip .ss-row:hover {
+  border-color: rgba(240, 199, 92, 0.55);
+  background: rgba(28, 24, 14, 0.90);
+}
+.skills-strip .ss-row.has-note {
+  border-left: 3px solid #a78bfa;       /* purple = skill note exists */
+}
+.skills-strip .ss-row-name {
+  font: 600 12px ui-monospace, monospace;
+  color: var(--fg);
+}
+.skills-strip .ss-row-meta {
+  font: 10px ui-monospace, monospace;
+  color: var(--muted);
+  margin-top: 2px;
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.skills-strip .ss-row-tag {
+  padding: 0 4px; border-radius: 2px;
+  background: rgba(120, 120, 130, 0.18);
+}
+.skills-strip .ss-row-tag.set1 { background: rgba(255, 102, 196, 0.18); color: #ff66c4; }
+.skills-strip .ss-row-tag.set2 { background: rgba( 92, 242, 111, 0.18); color: #5cf26f; }
+.skills-strip .ss-add {
+  width: 100%; margin-top: 8px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: var(--muted);
+  font: 11px ui-monospace, monospace;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.skills-strip .ss-add:hover {
+  border-color: rgba(240, 199, 92, 0.55);
+  color: var(--accent);
+}
+/* Gem art in the picker rows + the skills strip. The inventory-art
+   sprites are square-ish gem renders on transparency — small rounded
+   thumbnails read instantly. */
+.skill-popover .sp-gem-ic {
+  flex: none; width: 22px; height: 22px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+.skills-strip .ss-row-head { display: flex; align-items: center; gap: 7px; }
+.skills-strip .ss-gem-ic {
+  flex: none; width: 26px; height: 26px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+.skills-strip .ss-sup-row {
+  display: inline-flex; align-items: center; gap: 2px; margin-left: 4px;
+}
+.skills-strip .ss-sup-ic {
+  width: 15px; height: 15px; object-fit: contain; opacity: 0.9;
+}
+
+/* Item preview tooltip extras: rarity-colored name, base-stat rows
+   (label muted / value bright), and the mod list in magic-blue like
+   in-game item popups. */
+#item-tooltip .tt-name.r-unique { color: #af6025; }
+#item-tooltip .tt-name.r-rare   { color: #d9c850; }
+#item-tooltip .tt-name.r-magic  { color: #8888f0; }
+#item-tooltip .tt-name.r-normal { color: #c8c8c8; }
+#item-tooltip .tt-base {
+  padding: 7px 12px;
+  border-bottom: 1px solid #2b2515;
+}
+#item-tooltip .tt-baseline {
+  display: flex; justify-content: space-between;
+  font-size: 11px; line-height: 1.6;
+}
+#item-tooltip .tt-baseline .lbl { color: #8f8570; }
+#item-tooltip .tt-baseline .val { color: #cfc5a0; font-weight: 600; }
+#item-tooltip .tt-modlist { padding: 7px 12px; }
+#item-tooltip .tt-modline { color: #9a9adf; line-height: 1.55; font-size: 12px; }
+
+/* Gem preview tooltip — the same "brown popup" family as the tree
+   tooltip (#tooltip), structured for gems: art + name head, meta row,
+   tag pills, description, parts + supports sections. Sits above the
+   skill popover so picker rows can preview. */
+#gem-tooltip { z-index: 130; }
+#item-tooltip { z-index: 130; }
+#gem-tooltip .tt-headrow { display: flex; align-items: center; gap: 9px; }
+#item-tooltip .tt-headrow { display: flex; align-items: center; gap: 9px; }
+#gem-tooltip .tt-gem-ic,
+#item-tooltip .tt-gem-ic {
+  flex: none; width: 30px; height: 30px; object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+#gem-tooltip .tt-meta,
+#item-tooltip .tt-meta {
+  color: #8f8570; font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-top: 2px;
+}
+#gem-tooltip .tt-desc,
+#item-tooltip .tt-desc {
+  padding: 8px 12px;
+  color: #cfc5a0; line-height: 1.55;
+}
+#gem-tooltip .tt-part,
+#item-tooltip .tt-part {
+  display: inline-block;
+  background: rgba(120, 180, 230, 0.10);
+  border: 1px solid rgba(120, 180, 230, 0.35);
+  color: #9cc6f0;
+  padding: 1px 7px; border-radius: 8px;
+  font-size: 10px; margin: 0 4px 3px 0;
+}
+#gem-tooltip .tt-req,
+#item-tooltip .tt-req {
+  padding: 5px 12px 7px;
+  border-top: 1px solid #2b2515;
+  color: #8f8570; font-size: 11px;
+}
+#gem-tooltip .tt-req b { color: #cfc5a0; font-weight: 600; }
+#item-tooltip .tt-req b { color: #cfc5a0; font-weight: 600; }
+
+/* ==== Build guide (📖) — reading view ==================================
+   The plan typeset as a guide: serif body for long-form readability,
+   monospace kept for meta/labels so it still belongs to the planner.
+   Same dark palette; gold accent reserved for structure. */
+.gear-strip .gv-open {
+  display: block; width: 100%;
+  margin-top: 8px;
+  background: rgba(240, 199, 92, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 7px 10px;
+  color: var(--accent);
+  font: 12px ui-monospace, monospace;
+  cursor: pointer;
+}
+.gear-strip .gv-open:hover { border-color: var(--accent); background: rgba(240, 199, 92, 0.14); }
+/* FLOATING window: no backdrop — the live tree stays visible and
+   interactive around it, so node-chip hovers can pulse the real node
+   behind the guide. Drag by the title bar; resizable from the corner. */
+.guide-view {
+  position: fixed; inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+.guide-view.hidden { display: none; }
+.guide-view .gv-frame {
+  position: absolute;
+  top: 48px; left: 50%;
+  transform: translateX(-50%);
+  width: min(860px, 92vw);
+  height: calc(100vh - 96px);
+  min-width: 420px; min-height: 320px;
+  display: flex; flex-direction: column;
+  pointer-events: auto;
+  background: linear-gradient(180deg, #16130f 0%, #121009 100%);
+  border: 1px solid #4a3a1f;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(218,165,32,0.12), 0 16px 56px rgba(0, 0, 0, 0.75);
+  resize: both; overflow: hidden;
+  container-type: inline-size;
+}
+/* Resize handle: a real 22px hotspot (JS-driven) with gold step-lines,
+   far easier to grab than the native corner sliver. */
+.guide-view .gv-resize {
+  position: absolute;
+  right: 0; bottom: 0;
+  width: 22px; height: 22px;
+  cursor: nwse-resize;
+  z-index: 3;
+  background:
+    linear-gradient(135deg, transparent 0 45%, rgba(240,199,92,0.6) 45% 53%, transparent 53% 63%,
+                    rgba(240,199,92,0.6) 63% 71%, transparent 71% 81%, rgba(240,199,92,0.6) 81% 89%, transparent 89%);
+}
+.guide-view .gv-resize:hover {
+  background:
+    linear-gradient(135deg, transparent 0 45%, var(--accent) 45% 53%, transparent 53% 63%,
+                    var(--accent) 63% 71%, transparent 71% 81%, var(--accent) 81% 89%, transparent 89%);
+}
+/* Grip dots in the title bar — signals "this moves" at a glance. */
+.guide-view .gv-bar-grip {
+  color: rgba(240, 199, 92, 0.5);
+  font-size: 13px; letter-spacing: 1px;
+  cursor: grab;
+}
+.guide-view .gv-bar {
+  flex: none;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+  background: rgba(20, 17, 12, 0.6);
+}
+.guide-view .gv-bar:active { cursor: grabbing; }
+.guide-view .gv-bar-title {
+  font: 600 13px ui-monospace, monospace;
+  color: var(--accent);
+}
+.guide-view .gv-bar-spacer { flex: 1; }
+.guide-view .gv-btn {
+  background: rgba(240, 199, 92, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 11px;
+  color: var(--fg);
+  font: 11px ui-monospace, monospace;
+  cursor: pointer;
+}
+.guide-view .gv-btn:hover { border-color: var(--accent); color: var(--accent); }
+.guide-view .gv-btn.is-active { border-color: var(--accent); color: var(--accent); background: rgba(240,199,92,0.16); }
+.guide-view .gv-close {
+  background: transparent; border: none;
+  color: var(--muted); font-size: 20px; cursor: pointer;
+  padding: 0 4px;
+}
+.guide-view .gv-close:hover { color: var(--fg); }
+.guide-view .gv-foot {
+  flex: none;
+  padding: 7px 16px;
+  border-top: 1px solid var(--border);
+  font: 10px ui-monospace, monospace;
+  color: var(--muted);
+  text-align: center;
+}
+.gv-article {
+  flex: 1;
+  overflow-y: auto;
+  padding: 26px clamp(16px, 6cqw, 48px) 44px;
+  /* Regular reading typography — this is the written guide, not HUD
+     chrome: a clean sans body at a comfortable size and contrast;
+     serif stays on headings and notes for the voice. */
+  font: 15.5px/1.75 system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  color: #e8e2d4;
+  letter-spacing: 0.01em;
+  /* Matching scrollbar: thin, warm gold on the dark parchment. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(240, 199, 92, 0.35) rgba(11, 9, 6, 0.6);
+}
+.gv-article::-webkit-scrollbar { width: 9px; }
+.gv-article::-webkit-scrollbar-track { background: rgba(11, 9, 6, 0.6); }
+.gv-article::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(240,199,92,0.4), rgba(200,156,52,0.35));
+  border-radius: 5px;
+  border: 2px solid #121009;
+}
+.gv-article::-webkit-scrollbar-thumb:hover { background: rgba(240, 199, 92, 0.55); }
+/* Inline editing: the prose swaps to parchment textareas persisted
+   straight into the plan (build description + chapter descriptions). */
+.gv-article .gv-edit-ta {
+  display: block; width: 100%;
+  min-height: 64px; resize: vertical;
+  margin: 8px 0;
+  background: rgba(11, 9, 6, 0.6);
+  border: 1px dashed rgba(240, 199, 92, 0.35);
+  border-radius: 5px;
+  padding: 9px 12px;
+  color: #ddd7ca;
+  font: italic 15px/1.6 Georgia, serif;
+}
+.gv-article .gv-edit-ta:focus { outline: none; border-color: var(--accent); border-style: solid; }
+/* Narrow-docked reading: when the user resizes the guide into a side
+   column, tighten the type so it still reads like a page. */
+@container (max-width: 560px) {
+  .gv-article { font-size: 14px; }
+  .gv-article h1 { font-size: 23px; }
+  .gv-article h2 { font-size: 17px; }
+  .gv-article .gv-item-ic { width: 28px; height: 28px; }
+}
+.gv-article h1 {
+  font: 600 30px/1.2 Georgia, serif;
+  color: var(--accent);
+  margin: 0 0 4px;
+}
+.gv-article .gv-sub {
+  font: 12px ui-monospace, monospace;
+  color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 14px;
+}
+.gv-article .gv-desc {
+  color: #cfc8b8; font-style: italic; margin: 8px 0 0;
+  font-family: Georgia, serif; font-size: 15.5px; line-height: 1.7;
+}
+.gv-article .gv-head { border-bottom: 1px solid var(--border); padding-bottom: 18px; }
+.gv-article .gv-chapter { margin-top: 34px; }
+.gv-article h2 {
+  font: 600 20px/1.3 Georgia, serif;
+  color: #efe8d8;
+  margin: 0 0 6px;
+  display: flex; align-items: baseline; gap: 10px;
+}
+.gv-article .gv-chnum {
+  flex: none;
+  font: 700 12px ui-monospace, monospace;
+  color: #0b0d12; background: var(--accent);
+  width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  transform: translateY(-2px);
+}
+.gv-article h3 {
+  font: 11.5px ui-monospace, monospace;
+  color: #a89f8b;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  margin: 22px 0 10px;
+  border-bottom: 1px dashed var(--border);
+  padding-bottom: 5px;
+}
+.gv-article .gv-meta {
+  font: 12px ui-monospace, monospace;
+  color: #a89f8b;
+  margin-left: 8px;
+}
+/* Passive chips: icon + name, clickable → focuses the node on the tree. */
+.gv-article .gv-nodes { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.gv-article .gv-node {
+  display: inline-flex; align-items: center; gap: 7px;
+  cursor: pointer;
+  padding: 3px 10px 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(15, 17, 22, 0.6);
+}
+.gv-article .gv-node:hover { border-color: var(--accent); }
+.gv-article .gv-node.keystone .gv-node-name { color: var(--accent); }
+.gv-article .gv-node-name { font-size: 14.5px; }
+.gv-article .gv-ic {
+  width: 26px; height: 26px; object-fit: contain;
+  border-radius: 50%;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+.gv-article .gv-travel { margin-left: 0; }
+/* Skills: gem + level, supports indented as a linked row. */
+.gv-article .gv-skill { margin: 12px 0; }
+.gv-article .gv-gem {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin-right: 10px;
+  cursor: help;
+}
+.gv-article .gv-item[data-item-tip] { cursor: help; }
+.gv-article .gv-gem-name { font-size: 15px; color: #ece6d8; }
+.gv-article .gv-links {
+  display: inline-flex; flex-wrap: wrap; gap: 2px 10px;
+  margin-left: 8px; padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+.gv-article .gv-links .gv-gem-name { font-size: 13.5px; color: #c9c2b1; }
+.gv-article .gv-links .gv-ic { width: 18px; height: 18px; }
+.gv-article .gv-skill.is-new > .gv-gem:first-child .gv-gem-name { color: var(--accent); }
+/* Gear rows: art + rarity-colored name + mods. */
+.gv-article .gv-item { display: flex; gap: 12px; margin: 14px 0; align-items: flex-start; }
+.gv-article .gv-item-ic {
+  flex: none; width: 34px; height: 34px; object-fit: contain;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7));
+}
+.gv-article .gv-ic-blank { background: rgba(154,145,126,0.12); border-radius: 4px; }
+.gv-article .gv-item-name { font-size: 15px; font-weight: 600; }
+.gv-article .gv-mods { font-size: 13.5px; color: #c2bbab; line-height: 1.65; }
+.gv-article .gv-mods span { display: block; }
+.gv-article .gv-mods span::before { content: '• '; color: var(--muted); }
+/* Notes: the author/agent's voice — indented italic serif, gold edge. */
+.gv-article .gv-note {
+  margin: 7px 0 7px 2px;
+  padding: 3px 0 3px 12px;
+  border-left: 2px solid rgba(240, 199, 92, 0.5);
+  color: #d5ccb8;
+  font-style: italic;
+  font-family: Georgia, serif;
+  font-size: 14px;
+  line-height: 1.65;
+}
+/* Gear rows: [SLOT] Item name … ✎  — slot label muted-small, unique
+   names in accent gold like in-game. */
+.gear-strip .gs-row { display: flex; align-items: center; gap: 8px; }
+.gear-strip .gs-slot-label {
+  flex: none; min-width: 74px;
+  font-size: 10px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.gear-strip .gs-item-name {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gear-strip .gs-item-name.is-unique { color: var(--accent); }
+/* GGG rarity colors — names + blank-art chips take the item's rarity. */
+.r-unique { color: #af6025; }
+.r-rare   { color: #d9c850; }
+.r-magic  { color: #8888f0; }
+.r-normal { color: #c8c8c8; }
+/* Item art thumbnails: strip rows (22px) + picker rows (26px). Inventory
+   art is tall (1x3 weapons) — object-fit keeps the aspect inside the box. */
+.gear-strip .gs-item-ic {
+  flex: none; width: 22px; height: 22px; object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+.gs-ic-blank {
+  display: inline-block; border-radius: 3px;
+  background: currentcolor; opacity: 0.18;
+}
+.skill-popover .gp-item-ic {
+  flex: none; width: 26px; height: 26px; object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+.skill-popover .gp-item-ic.gs-ic-blank { width: 20px; height: 20px; }
+/* Base-composition controls: section header inside the combobox list,
+   rarity tabs (reuses sp-set-tab), priority-stat quick-add chips.
+   The whole section exists only for base-composed items — uniques and
+   freetext never show rarity or priority stats. */
+.skill-popover .gp-base-opts.hidden { display: none; }
+.skill-popover .gp-sect {
+  font-size: 10px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  border-top: 1px dashed var(--border);
+  margin-top: 4px; padding-top: 8px;
+  cursor: default; pointer-events: none;
+}
+.skill-popover .gp-stats-label { display: block; margin-top: 10px; }
+.skill-popover .gp-stat-chips {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;
+  max-height: 96px; overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(154, 145, 126, 0.35) transparent;
+}
+.skill-popover .gp-chip {
+  background: rgba(15, 17, 22, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 2px 9px;
+  color: var(--muted);
+  font: 11px ui-monospace, monospace;
+  cursor: pointer;
+}
+.skill-popover .gp-chip:hover { color: var(--fg); border-color: var(--accent); }
+/* Selected chips: accent edge + warm fill (click again to deselect). */
+.skill-popover .gp-chip.on {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: rgba(201, 166, 90, 0.14);
+}
+.skill-popover .gp-chip-none {
+  color: var(--muted); font: italic 11px ui-monospace, monospace;
+  padding: 2px 4px;
+}
+/* Suffix families get a subtly different edge so the prefix/suffix
+   split reads at a glance. Disabled rarity tabs = below the mod-count
+   floor (3+ mods force rare). */
+.skill-popover .gp-chip-suf { border-style: dashed; }
+.skill-popover .sp-set-tab:disabled {
+  opacity: 0.35; cursor: not-allowed;
+}
+/* Popover: freetext escape-hatch row + unique names in picker list. */
+.skill-popover .gp-freetext {
+  font-style: italic; color: var(--muted);
+  border-bottom: 1px dashed var(--border);
+}
+.skill-popover .gp-freetext b { color: var(--fg); font-style: normal; }
+.skill-popover .sp-combo-name.is-unique { color: var(--accent); }
+.skill-popover .gp-slot { width: 100%; }
+.skills-strip .ss-empty {
+  list-style: none;
+  font: 11px ui-monospace, monospace;
+  color: var(--muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* ---- edit-socket popover ----
+   Centered modal (same anchor as cmdk; the two are mutually exclusive
+   — Esc closes whichever is open — so no collision). Sized generously
+   so the searchable lists show ~12 rows without a scrollbar; mouse
+   wheel still scrolls if the user really wants more, but no chrome. */
+.skill-popover {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 640px; max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  z-index: 200;
+  display: flex; flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  font: 13px ui-monospace, monospace;
+  color: var(--fg);
+}
+.skill-popover.hidden { display: none; }
+.skill-popover .sp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.skill-popover .sp-title { font: 600 14px ui-monospace, monospace; }
+.skill-popover .sp-close {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 20px; line-height: 1; cursor: pointer;
+  padding: 0 4px;
+}
+.skill-popover .sp-close:hover { color: var(--accent); }
+.skill-popover .sp-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 18px;
+  /* Hide scrollbar but keep wheel scroll. The popover is sized large
+     enough that overflow is rare; when it occurs the user can wheel
+     without a visible bar cluttering things. */
+  scrollbar-width: none;
+}
+.skill-popover .sp-body::-webkit-scrollbar { display: none; }
+.skill-popover .sp-section { display: flex; flex-direction: column; gap: 8px; }
+.skill-popover .sp-label {
+  font: 600 10px ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.skill-popover .sp-muted { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+.skill-popover .sp-hint {
+  font: 11px ui-monospace, monospace;
+  color: var(--muted); font-style: italic;
+  margin-top: 2px;
+}
+.skill-popover .sp-row { display: flex; gap: 10px; align-items: stretch; }
+/* Combobox: input + ALWAYS-VISIBLE list right below it (no dropdown
+   that pops over the form). Selecting updates the input but the list
+   stays so the user sees neighboring options. Hidden scrollbar; mouse
+   wheel scrolls when filter exceeds ~12 visible rows. */
+.skill-popover .sp-combobox {
+  display: flex; flex-direction: column; gap: 4px;
+  flex: 1; min-width: 0;
+}
+.skill-popover .sp-combo-input {
+  width: 100%;
+  background: rgba(15, 17, 22, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  color: var(--fg);
+  font: 13px ui-monospace, monospace;
+}
+.skill-popover .sp-combo-input:focus { outline: none; border-color: var(--accent); }
+.skill-popover .sp-combo-list {
+  background: rgba(16, 14, 11, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  list-style: none; padding: 4px 0; margin: 0;
+  max-height: 360px; overflow-y: auto;
+  /* Thin-but-visible scrollbar: the fully hidden one left zero scroll
+     affordance (audit item #7 regression). */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(154, 145, 126, 0.35) transparent;
+}
+.skill-popover .sp-combo-list::-webkit-scrollbar { width: 6px; }
+.skill-popover .sp-combo-list::-webkit-scrollbar-thumb {
+  background: rgba(154, 145, 126, 0.35); border-radius: 3px;
+}
+.skill-popover .sp-combo-list li {
+  padding: 7px 12px;
+  cursor: pointer;
+  display: flex; align-items: center;
+  gap: 8px;
+}
+/* Attribute chip — the red/green/blue gem dot players recognize. */
+.skill-popover .sp-chip {
+  flex: none; width: 9px; height: 9px; border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.55);
+  box-shadow: 0 0 3px rgba(0,0,0,0.4);
+}
+.skill-popover .sp-chip-str  { background: #d8544a; }
+.skill-popover .sp-chip-dex  { background: #5cbf54; }
+.skill-popover .sp-chip-int  { background: #5a9fe0; }
+.skill-popover .sp-chip-none { background: rgba(154,145,126,0.25); }
+.skill-popover .sp-combo-name {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.skill-popover .sp-combo-list li:hover,
+.skill-popover .sp-combo-list li.is-focused {
+  background: rgba(240, 199, 92, 0.10);
+  color: var(--accent);
+}
+.skill-popover .sp-combo-list li.is-selected {
+  background: rgba(240, 199, 92, 0.16);
+  color: var(--accent); font-weight: 600;
+}
+/* Tags: single line, ellipsized at a max width instead of clipping
+   mid-word at the border (audit item #7). */
+.skill-popover .sp-combo-list .sp-combo-tag {
+  flex: 0 1 auto;
+  font-size: 10px; color: var(--muted); white-space: nowrap;
+  max-width: 45%;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.skill-popover .sp-combo-empty,
+.skill-popover .sp-combo-more {
+  padding: 8px 12px;
+  font: 11px ui-monospace, monospace; color: var(--muted); font-style: italic;
+  list-style: none; text-align: center;
+}
+.skill-popover .sp-combo-more { border-top: 1px solid var(--border); font-style: normal; }
+.skill-popover .sp-level {
+  width: 110px;
+  background: rgba(15, 17, 22, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  color: var(--fg);
+  font: 13px ui-monospace, monospace;
+}
+.skill-popover .sp-level-wrap { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.skill-popover .sp-set-tabs { display: flex; gap: 6px; }
+.skill-popover .sp-set-tab {
+  flex: 1;
+  background: rgba(15, 17, 22, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 7px 10px;
+  color: var(--muted);
+  font: 11px ui-monospace, monospace;
+  cursor: pointer;
+}
+.skill-popover .sp-set-tab.is-active { border-color: var(--accent); color: var(--accent); background: rgba(240, 199, 92, 0.10); }
+.skill-popover .sp-set-tab[data-set="set1"].is-active { border-color: #ff66c4; color: #ff66c4; background: rgba(255, 102, 196, 0.10); }
+.skill-popover .sp-set-tab[data-set="set2"].is-active { border-color: #5cf26f; color: #5cf26f; background: rgba(92, 242, 111, 0.10); }
+.skill-popover .sp-supports {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.skill-popover .sp-support-row { display: flex; gap: 6px; align-items: stretch; }
+/* Stack the support's combobox + per-support note textarea vertically
+   on the LEFT, with the × remove button on the right. When collapsed
+   the stack just holds the pill. When expanded it holds combobox +
+   note-input. */
+.skill-popover .sp-support-stack {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.skill-popover .sp-support-row .sp-combobox { flex: none; }
+.skill-popover .sp-support-note {
+  background: rgba(15, 17, 22, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 6px 8px;
+  color: var(--fg);
+  font: 12px ui-monospace, monospace;
+  resize: vertical; min-height: 36px;
+}
+.skill-popover .sp-support-note:focus { outline: none; border-color: var(--accent); }
+/* Collapsed pill — a picker-row lookalike (gem art + name + tags) so
+   the selected support reads as the thing that was picked. */
+.skill-popover .sp-support-pill {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; text-align: left;
+  background: rgba(15, 17, 22, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  color: var(--fg);
+  font: 13px ui-monospace, monospace;
+  cursor: pointer;
+}
+.skill-popover .sp-support-pill:hover { border-color: var(--accent); }
+.skill-popover .sp-support-pill .sp-combo-name {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.skill-popover .sp-support-pill .sp-combo-tag {
+  flex: none; max-width: 45%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Small purple left-edge when the support has a note, matching the
+   strip's has-note pattern so the visual taxonomy is consistent
+   (gold = passive note, purple = skill/support note). */
+.skill-popover .sp-support-pill.has-note {
+  border-left: 3px solid #a78bfa;
+  padding-left: 7px;   /* compensate for the 3 px border so text stays put */
+}
+.skill-popover .sp-pill-note-tag {
+  margin-left: 8px;
+  padding: 1px 5px; border-radius: 2px;
+  background: rgba(167, 139, 250, 0.18); color: #a78bfa;
+  font: 10px ui-monospace, monospace;
+}
+.skill-popover .sp-support-rm {
+  width: 32px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted);
+  cursor: pointer; font-size: 14px;
+}
+.skill-popover .sp-support-rm:hover { color: #ff6b6b; border-color: #ff6b6b; }
+/* Dedicated Add-Support button. Was previously trying to reuse
+   .ss-add styles from the strip but that selector is scoped to
+   .skills-strip — inside the popover it picked up no styling and
+   rendered as a tiny browser-default button. Looked broken even
+   though the click handler did fire. */
+.skill-popover .sp-add-support {
+  width: 100%;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  color: var(--muted);
+  font: 12px ui-monospace, monospace;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.skill-popover .sp-add-support:hover {
+  border-color: rgba(240, 199, 92, 0.55);
+  color: var(--accent);
+}
+.skill-popover .sp-add-support:disabled { opacity: 0.4; cursor: not-allowed; }
+.skill-popover .sp-note {
+  width: 100%;
+  background: rgba(15, 17, 22, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  color: var(--fg);
+  font: 13px ui-monospace, monospace;
+  resize: vertical;
+  min-height: 60px;
+}
+.skill-popover .sp-note:focus { outline: none; border-color: var(--accent); }
+.skill-popover .sp-footer {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+.skill-popover .sp-spacer { flex: 1; }
+.skill-popover .sp-cancel,
+.skill-popover .sp-apply,
+.skill-popover .sp-remove {
+  background: rgba(15, 17, 22, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 18px;
+  color: var(--fg);
+  font: 13px ui-monospace, monospace;
+  cursor: pointer;
+}
+.skill-popover .sp-apply {
+  background: rgba(240, 199, 92, 0.18);
+  border-color: rgba(240, 199, 92, 0.85);
+  color: var(--accent);
+  font-weight: 600;
+}
+.skill-popover .sp-apply:hover { background: rgba(240, 199, 92, 0.28); }
+.skill-popover .sp-remove {
+  background: rgba(255, 107, 107, 0.10);
+  border-color: rgba(255, 107, 107, 0.55);
+  color: #ff6b6b;
+}
+.skill-popover .sp-remove:hover { background: rgba(255, 107, 107, 0.20); }
+.skill-popover .sp-remove[hidden] { display: none; }
+

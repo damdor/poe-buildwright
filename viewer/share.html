@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Import shared build — PoE2 Build Planner</title>
+<style>
+  :root { --bg:#12100d; --fg:#d8d2c5; --muted:#9a917e; --accent:#f0c75c;
+          --error:#ff6b6b; --link:#58a6ff; --border:#2b2418; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+               font: 13px/1.5 ui-monospace, monospace; min-height: 100vh; }
+  main { max-width: 600px; margin: 80px auto; padding: 32px 24px; text-align: center; }
+  h1 { font-size: 18px; margin: 0 0 4px 0; color: var(--accent); }
+  p { color: var(--muted); margin: 8px 0; }
+  .status { margin-top: 24px; padding: 14px 18px; border-radius: 6px;
+            border: 1px solid var(--border); background: rgba(8,10,15,0.5); }
+  .status.ok    { border-color: rgba(106,191,140,0.4); color: #6abf8c; }
+  .status.error { border-color: rgba(255,107,107,0.4); color: var(--error); }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  pre { text-align: left; background: #0d1117; border: 1px solid var(--border);
+        border-radius: 4px; padding: 10px 12px; color: var(--muted);
+        font-size: 11px; overflow-x: auto; max-height: 200px; }
+</style>
+</head>
+<body>
+
+<main>
+  <h1>Importing shared build…</h1>
+  <p>Decoding the share code, then opening it as a new build in your browser.</p>
+  <div id="status" class="status">Working…</div>
+</main>
+
+<script src="/assets/share_codec.js" defer></script>
+<!-- Share-code import flow. Sourced from viewer/assets/share_page.ts,
+     built by esbuild via scripts/build_js.sh. Loaded AFTER share_codec.js
+     so window.PoE2Share is available when it runs. -->
+<script src="/assets/share_page.js" defer></script>
+</body>
+</html>

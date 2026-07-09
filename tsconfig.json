@@ -1,0 +1,59 @@
+// TypeScript config for the planner + wizard frontends.
+//
+// esbuild does the actual compile + IIFE bundle (scripts/build_js.sh);
+// tsc here is invoked ONLY in --noEmit mode (scripts/check_types.sh)
+// to surface type errors. Keep both honest.
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom", "dom.iterable"],
+
+    // Catch null/undefined and implicit-any at type-check time —
+    // the whole point of migrating.
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+
+    // No .js sources remain (every file under crates/tree_render/
+    // assets/planner/ and viewer/assets/ is .ts as of Phase 4b/10).
+    // allowJs stays off so an accidental .js source would silently
+    // typecheck-pass instead of being flagged by scripts/verify_no_js_sources.sh.
+    "allowJs": false,
+    "checkJs": false,
+
+    // tsc never writes files — esbuild handles emit. tsc is purely
+    // a checker here.
+    "noEmit": true,
+
+    // Module resolution niceties — let modules import each other with
+    // ./relative paths the way esbuild expects, while still resolving
+    // global type declarations.
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+
+    // Only consume the in-tree declarations under types/. We have no
+    // npm packages installed, so any other @types lookup would fail.
+    "types": []
+  },
+  "include": [
+    "crates/tree_render/assets/planner/**/*.ts",
+    "viewer/assets/**/*.ts",
+    "types/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "target",
+    "tools",
+    "data",
+    "viewer/assets/sprites",
+    "viewer/assets/skill_icons",
+    "viewer/assets/gem_icons",
+    "viewer/assets/item_icons"
+  ]
+}

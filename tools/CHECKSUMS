@@ -1,0 +1,11 @@
+# Pinned tool versions + SHA-512 integrity hashes for tools/setup.sh.
+#
+# Format: <name> <version> <url> <sha512-base64>
+#
+# Updating: bump the version + URL, run `tools/setup.sh --verify-only`
+# to fetch the upstream integrity hash, then commit the new value here.
+# CI / fresh checkouts MUST get a byte-identical binary or setup.sh
+# refuses to install.
+
+esbuild 0.28.0 https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.0.tgz us0dSb9iFxIi8srnpl931Nvs65it/Jd2a2K3qs7fz2WfGPHqzfzZTfec7oxZJRNPXPnNYZtanmRc4AL/JwVzHQ==
+typescript 6.0.3 https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==

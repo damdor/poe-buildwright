@@ -1,0 +1,18 @@
+[package]
+name = "serve"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Tiny std-only static-file HTTP server for local development."
+
+[lints]
+workspace = true
+
+[dependencies]
+# Intentionally empty: std-only.
+
+[[bin]]
+name = "serve"
+path = "src/main.rs"

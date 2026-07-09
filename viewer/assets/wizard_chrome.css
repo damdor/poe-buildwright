@@ -1,0 +1,177 @@
+/* Shared wizard chrome — top header that appears identically on every
+   step page (identity / passives / skills / items / summary). Lives in
+   its own CSS file so changes propagate to all pages without per-file
+   copy-paste. */
+
+/* Warm-charcoal chrome palette — keep in sync with planner.css :root
+   (and the inline copies in index.html / share.html). */
+:root {
+  --wc-bg: #12100d;
+  --wc-panel: #181511;
+  --wc-border: #2b2418;
+  --wc-fg: #d8d2c5;
+  --wc-muted: #9a917e;
+  --wc-accent: #f0c75c;
+  --wc-link: #58a6ff;
+  --wc-set1: #ff66c4;
+  --wc-set2: #5cf26f;
+  --wc-error: #ff6b6b;
+}
+
+header.wizard-chrome {
+  background: linear-gradient(180deg, #181511, #100e0b);
+  border-bottom: 1px solid var(--wc-border);
+  font: 13px/1.5 ui-monospace, monospace;
+  color: var(--wc-fg);
+  flex-shrink: 0;
+}
+
+/* Row 1: title (left) + step nav (centered in viewport) + actions (right).
+   3-col grid with 1fr/auto/1fr keeps the step nav optically centered
+   regardless of how long the build name or how many actions there are. */
+header.wizard-chrome .wc-row1 {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 20px;
+}
+header.wizard-chrome .wc-title {
+  display: flex; align-items: baseline; gap: 8px;
+  min-width: 200px;
+}
+header.wizard-chrome .wc-title .wc-buildname {
+  color: var(--wc-fg); font-size: 12px;
+  max-width: 220px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+header.wizard-chrome .wc-title .wc-buildname.placeholder {
+  color: var(--wc-muted); font-style: italic;
+}
+header.wizard-chrome .wc-title .wc-buildid {
+  color: var(--wc-muted); font-size: 10px;
+}
+
+/* Step nav (5 chips) — sits in the centered grid column, so it
+   stays visually centered on the viewport regardless of how wide
+   the title or actions clusters grow. */
+header.wizard-chrome .wc-steps {
+  display: flex; gap: 4px;
+  list-style: none; padding: 0; margin: 0;
+  justify-content: center;
+}
+header.wizard-chrome .wc-steps li {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 12px; border-radius: 5px;
+  cursor: pointer; user-select: none;
+  color: var(--wc-muted); font-size: 12px;
+  border: 1px solid transparent;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+header.wizard-chrome .wc-steps li:hover {
+  background: rgba(255,255,255,0.03);
+  color: var(--wc-fg);
+}
+header.wizard-chrome .wc-steps li.active {
+  background: rgba(240,199,92,0.10);
+  border-color: rgba(240,199,92,0.4);
+  color: var(--wc-accent); font-weight: 600;
+}
+header.wizard-chrome .wc-steps li .wc-step-num {
+  display: inline-block; width: 16px; height: 16px;
+  line-height: 16px; text-align: center;
+  background: #0d1117; border: 1px solid var(--wc-border);
+  border-radius: 50%; font-size: 9px;
+}
+header.wizard-chrome .wc-steps li.active .wc-step-num {
+  background: var(--wc-accent); color: #0b0d12; border-color: var(--wc-accent);
+}
+
+/* Action buttons (right side of the 3-col header grid) */
+header.wizard-chrome .wc-actions {
+  display: flex; gap: 8px; align-items: center;
+  justify-self: end;
+}
+/* Save/flash status: transient feedback ("Saved", "Snapshotted at
+   level 7", validation errors) in the actions cluster. Sized like the
+   patch badge; errors flip to the error tone and linger longer (see
+   flashSave in wizard_chrome.ts). */
+header.wizard-chrome #wc-save-status .wc-save-msg {
+  color: var(--wc-muted);
+  font: 600 10px ui-monospace, monospace;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  max-width: 340px;
+  overflow: hidden; text-overflow: ellipsis;
+  display: inline-block;
+}
+header.wizard-chrome #wc-save-status.is-error .wc-save-msg {
+  color: var(--wc-error);
+}
+/* Patch badge: small, muted, sits next to the "Builds" link.
+   Communicates "this is the live data version" without competing
+   with the action buttons. */
+header.wizard-chrome .wc-patch-badge {
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(240, 199, 92, 0.12);
+  border: 1px solid rgba(240, 199, 92, 0.32);
+  color: var(--wc-accent);
+  font: 600 10px ui-monospace, monospace;
+  letter-spacing: 0.04em;
+  cursor: help;
+  user-select: none;
+}
+/* Preview tint: cyan instead of gold so it's visually distinct from
+   the stable badge. Same shape so layout is unaffected. */
+header.wizard-chrome .wc-patch-badge.wc-patch-badge-preview {
+  background: rgba(88, 166, 255, 0.14);
+  border-color: rgba(88, 166, 255, 0.45);
+  color: var(--wc-link);
+}
+header.wizard-chrome .wc-actions a,
+header.wizard-chrome .wc-actions button {
+  background: #0d1117; color: var(--wc-fg);
+  border: 1px solid var(--wc-border);
+  padding: 5px 11px; border-radius: 4px;
+  cursor: pointer; font: inherit; font-size: 11px;
+  text-decoration: none;
+}
+header.wizard-chrome .wc-actions a:hover,
+header.wizard-chrome .wc-actions button:hover {
+  border-color: var(--wc-accent); color: var(--wc-accent);
+}
+
+/* Stale-patch banner — sits directly below the wizard chrome when
+   the loaded plan's authored patch differs from the live data patch.
+   Amber to signal "warning, not error." Dismiss button for users who
+   already understand the trade-off. */
+.wc-stale-banner {
+  background: rgba(240, 199, 92, 0.10);
+  border-bottom: 1px solid rgba(240, 199, 92, 0.32);
+  color: var(--wc-fg);
+  font: 12px ui-monospace, monospace;
+  padding: 8px 20px;
+  display: flex; align-items: center; gap: 12px;
+  flex-shrink: 0;
+}
+.wc-stale-banner b { color: var(--wc-accent); }
+.wc-stale-banner .wc-stale-dismiss {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--wc-border);
+  color: var(--wc-muted);
+  width: 22px; height: 22px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.wc-stale-banner .wc-stale-dismiss:hover {
+  border-color: var(--wc-accent); color: var(--wc-accent);
+}
+
+
+/* GitHub source link in the top bar. */
+.wc-gh { display: inline-flex; align-items: center; color: var(--wc-muted); }
+.wc-gh:hover { color: var(--wc-accent); }

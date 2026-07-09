@@ -1,0 +1,38 @@
+[package]
+name = "data_miner"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "mine"
+path = "src/bin/mine.rs"
+
+[[bin]]
+name = "survey"
+path = "src/bin/survey.rs"
+
+[[bin]]
+name = "decode"
+path = "src/bin/decode.rs"
+
+[[bin]]
+name = "cdn"
+path = "src/bin/cdn.rs"
+
+[dependencies]
+ooz_sys = { path = "../ooz_sys" }
+json = { path = "../json" }
+
+[features]
+# In-progress pure-Rust Oodle port (development-only; dispatch always
+# goes through ooz_sys — see src/oodle/mod.rs).
+oodle-port = []
+
+[lints]
+workspace = true

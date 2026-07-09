@@ -1,0 +1,20 @@
+[package]
+name = "ooz_sys"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+# NOT `license.workspace = true`: the vendored ooz sources are GPL-3.0-or-later
+# (see vendor/kraken.cpp header and VENDOR.md). Any binary linking this crate
+# is GPL — fine for our internal mining pipeline, but data_miner binaries must
+# not be distributed while this is the Oodle backend.
+license = "GPL-3.0-or-later"
+publish.workspace = true
+build = "build.rs"
+links = "ooz"
+
+# No `[lints] workspace = true`: the workspace forbids unsafe_code, and this
+# crate exists precisely to contain the one unsafe FFI call. The unsafe
+# surface is src/lib.rs only; vendored C++ is compiled by build.rs.
+
+[build-dependencies]
+cc = "1"

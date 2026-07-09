@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# bw — the buildwright CLI, one keystroke shorter and always current.
+# Builds (cached, quick when unchanged) and runs the ops CLI:
+#   ./bw              the full command menu
+#   ./bw update-native   mine + shape + bake everything for the live patch
+#   ./bw serve           local site on http://127.0.0.1:8000
+#   ./bw help <cmd>      per-command help
+set -euo pipefail
+cd "$(dirname "$0")"
+exec cargo run --release --quiet -p buildwright -- "$@"

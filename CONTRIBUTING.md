@@ -1,0 +1,74 @@
+# Contributing
+
+Thanks for wanting to help! This is a non-commercial fan project —
+keep that spirit: no monetization, no game-client interaction, no
+unreleased/spoiler content.
+
+**Maintenance expectations, honestly:** this is a spare-time fan
+project, not the maintainer's day job. Issues and PRs are genuinely
+welcome and will be read — but reviews happen when there's time and
+energy, which may mean days or weeks, and some periods will be quiet.
+If a patch drops and the data pipeline needs a re-mine, it'll happen
+when it happens. Friendly nudges are fine; expectations of 24/7
+support are not. Forks for personal use are always fair game under
+the license.
+
+## Ground rules
+
+- **Never commit game data.** Everything mined from GGG's CDN
+  (sprites, TSVs, baked catalogues) is gitignored on purpose — the
+  repo ships code only, and each contributor regenerates data locally
+  with `update-native`. If `git status` shows game assets, something
+  is wrong; don't force-add them.
+- **First-party or bust.** Data comes from GGG's CDN, GGG's own
+  skilltree-export repo, or (for unique-item mod recipes only) Path of
+  Building's pinned export. No scraping third-party wikis/databases.
+- Secrets live in `.cloudflare.env` (gitignored; see the `.example`).
+  Never print tokens in scripts or commit output.
+
+## Dev loop
+
+All operations go through the `./bw` CLI (run it bare for the menu):
+
+```sh
+./bw update-native   # once: mine + shape + bake everything
+./bw serve           # http://127.0.0.1:8000
+
+# after editing planner TS/CSS:
+./bw typecheck       # deno strict
+./bw js              # esbuild bundles
+cargo build --release -p tree_render   # planner.css is include_str! — rebuild on CSS edits
+./bw render --tree-dir data/parsed/0_5_native/tree
+
+# after editing Rust shapers:
+cargo test --release
+./bw verify --patch 0_5_native
+```
+
+Gotchas the diary learned the hard way:
+
+- `shape tree` rewrites `meta.tsv`, wiping the portrait rows that
+  `sprites` appends — always re-run `sprites` before `render` after a
+  tree reshape.
+- `tree_render` embeds `planner.css` at build time (`include_str!`);
+  a CSS edit needs a `cargo build -p tree_render` before `render`.
+- Visual changes get verified with headless Chromium screenshots —
+  see the harness pattern in the git history (an iframe page +
+  `--headless=new --virtual-time-budget`).
+
+## Where things live
+
+- `docs/plan.md` — the architecture plan and data layout.
+- `docs/native-data-miner.md` — the CDN mining pipeline in depth.
+- `docs/build_contracts.md`, `docs/captures_data_model.md` — the plan
+  format and snapshot model the UI persists.
+- `docs/agent-builds.md` — the agent URL contract and grounding data.
+- `docs/diary/` — dated engineering notes; the "why" behind odd code.
+
+## Style
+
+- Rust: match the existing handler style; datasets get provenance +
+  a manifest entry; loud errors over silent partial output.
+- TypeScript: strict (deno check); no frameworks, no deps — plain DOM
+  and small modules with numeric prefixes for reading order.
+- Comments explain constraints the code can't show, not narration.

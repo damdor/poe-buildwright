@@ -1,0 +1,21 @@
+[package]
+name = "buildwright"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+# Links data_miner → ooz_sys (GPL-3.0). Internal ops tool only; never
+# distributed. The shipped viewer/ artefact links none of this.
+license = "GPL-3.0-or-later"
+publish.workspace = true
+
+[[bin]]
+name = "buildwright"
+path = "src/main.rs"
+
+[dependencies]
+data_miner = { path = "../data_miner" }
+json = { path = "../json" }
+hash = { path = "../hash" }
+
+[lints]
+workspace = true

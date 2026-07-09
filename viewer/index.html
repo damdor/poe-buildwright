@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PoE2 build planner</title>
+<style>
+  :root { --bg:#12100d; --fg:#d8d2c5; --muted:#9a917e; --accent:#f0c75c; --link:#58a6ff; --panel:#181511; --border:#2b2418; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font: 14px/1.6 ui-monospace, monospace; }
+  main { max-width: 880px; margin: 0 auto; padding: 32px 24px; }
+  .titlebar { display: flex; align-items: center; gap: 12px; }
+  .titlebar h1 { flex: 1; }
+  .gh-link { color: var(--muted); display: inline-flex; }
+  .gh-link:hover { color: var(--accent); }
+  h1 { font-size: 26px; margin: 0 0 4px 0; color: var(--accent); }
+  p.sub { color: var(--muted); margin: 0 0 28px 0; font-size: 13.5px; max-width: 640px; }
+  .row { display: flex; gap: 12px; margin-bottom: 18px; }
+  a.cta, button.cta {
+    flex: 1; padding: 14px 18px; border-radius: 8px;
+    background: linear-gradient(180deg, #1a1f29, #131820);
+    border: 1px solid var(--border); color: var(--fg);
+    text-decoration: none; cursor: pointer; font: inherit;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  a.cta:hover, button.cta:hover { border-color: var(--accent); }
+  a.cta.primary {
+    background: linear-gradient(180deg, rgba(240,199,92,0.10), rgba(240,199,92,0.04));
+    border-color: rgba(240,199,92,0.5);
+  }
+  a.cta b { color: var(--accent); font-size: 14px; }
+  a.cta .desc { color: var(--muted); font-size: 12px; }
+
+  section.builds { margin-top: 30px; }
+  ul.build-list { list-style: none; padding: 0; margin: 0; }
+  ul.build-list li {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px;
+  }
+  ul.build-list li:hover { border-color: var(--accent); }
+  ul.build-list a.name { color: var(--accent); text-decoration: none; font-weight: 600; flex: 1; }
+  ul.build-list a.name:hover { text-decoration: underline; }
+  ul.build-list .meta { color: var(--muted); font-size: 12px; }
+  ul.build-list .meta b { color: var(--fg); }
+  ul.build-list button.rm {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); padding: 2px 8px; border-radius: 4px;
+    font: inherit; font-size: 11px; cursor: pointer;
+  }
+  ul.build-list button.rm:hover { color: #ff6b6b; border-color: #ff6b6b; }
+  .empty { color: var(--muted); font-style: italic; padding: 14px; text-align: center;
+           border: 1px dashed var(--border); border-radius: 6px; }
+
+  .storage-warning {
+    margin-top: 28px; padding: 10px 14px;
+    background: rgba(240, 199, 92, 0.05);
+    border: 1px solid rgba(240, 199, 92, 0.25);
+    border-radius: 6px;
+    color: var(--muted); font-size: 11px; line-height: 1.5;
+  }
+  .storage-warning strong { color: var(--accent); }
+  .storage-warning em { color: var(--fg); font-style: normal; }
+
+  /* How-it-works: three numbered steps */
+  section.how { margin-top: 30px; }
+  section.how h2, section.agents h2, section.builds h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); margin: 0 0 12px 0;
+  }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .step { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+          padding: 14px 16px; }
+  .step .n { display: inline-flex; align-items: center; justify-content: center;
+             width: 20px; height: 20px; border-radius: 50%;
+             background: var(--accent); color: #12100d; font-weight: 700; font-size: 11px;
+             margin-bottom: 8px; }
+  .step > b { display: block; color: var(--fg); margin-bottom: 6px; font-size: 15px; }
+  .step span { color: var(--muted); font-size: 12.5px; line-height: 1.6; display: block; }
+  .step kbd { background: #0a0d12; border: 1px solid var(--border); padding: 0 4px;
+              border-radius: 3px; color: var(--accent); font-size: 10px; }
+
+  /* AI-agents panel */
+  section.agents { margin-top: 30px; }
+  .agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .agent-card { background: linear-gradient(180deg, rgba(88,166,255,0.06), rgba(88,166,255,0.02));
+                border: 1px solid rgba(88, 166, 255, 0.25); border-radius: 8px;
+                padding: 14px 16px; }
+  .agent-card > b { color: #82c4ff; display: block; margin-bottom: 6px; font-size: 15px; }
+  .agent-card span { color: var(--muted); font-size: 12.5px; line-height: 1.6; display: block; }
+  .agent-card code { background: #0a0d12; padding: 1px 5px; border-radius: 3px;
+                     color: #82c4ff; font-size: 11px; }
+  .agent-card .quote { margin-top: 8px; padding: 8px 10px; border-left: 2px solid rgba(88,166,255,0.4);
+                       background: rgba(10, 13, 18, 0.6); color: var(--fg); font-style: italic;
+                       font-size: 11.5px; border-radius: 0 4px 4px 0; }
+
+  /* Saved-build cards: ascendancy portrait art */
+  ul.build-list .portrait {
+    flex: none; width: 58px; height: 58px; border-radius: 50%;
+    overflow: hidden; border: 1px solid var(--border);
+    background: #0a0d12;
+  }
+  ul.build-list .portrait img { width: 100%; height: 100%; object-fit: cover; }
+  ul.build-list .portrait.blank { opacity: 0.4; }
+  ul.build-list .build-main { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+
+  footer { margin-top: 24px; color: var(--muted); font-size: 11px;
+           border-top: 1px solid var(--border); padding-top: 12px; }
+  footer code { background: #0a0d12; padding: 1px 5px; border-radius: 3px; color: var(--accent); }
+  footer a { color: var(--link); text-decoration: none; }
+</style>
+</head>
+<body>
+<main>
+  <div class="titlebar"><h1>PoE2 Build Planner</h1><a class="gh-link" href="https://github.com/damdor/poe-buildwright" target="_blank" rel="noopener" title="Source on GitHub — issues &amp; contact"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a></div>
+  <p class="sub">A fan-made build planner for Path of Exile 2 — plan the tree, gems, and gear; snapshot your leveling; read it back as a typeset guide.<br>Exports <code>.build</code> files the game reads directly. Works with any AI assistant.</p>
+
+  <div class="row">
+    <a class="cta primary" href="/planner.html?new=1" id="new-build-link">
+      <b>+ New build &rarr;</b>
+      <span class="desc">Open the planner with a fresh build. Everything happens on one page: the tree, the gems, the gear, the timeline.</span>
+    </a>
+  </div>
+
+  <section class="how">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step"><span class="n">1</span>
+        <b>Plan on the tree</b>
+        <span>Pick a class, click nodes — pathing is automatic. Add gems and gear from the side panels. Hover anything for real in-game numbers.</span>
+      </div>
+      <div class="step"><span class="n">2</span>
+        <b>Snapshot the leveling story</b>
+        <span>Hit <kbd>+ SNAPSHOT</kbd> at milestones. Each one freezes tree, gems, and gear. Scrub the timeline to replay the journey level by level.</span>
+      </div>
+      <div class="step"><span class="n">3</span>
+        <b>Read it as a guide</b>
+        <span>Open <b>&#128214; Build Guide</b>: your build as a chaptered, typeset guide. Drag it beside the tree — hover anything in the text and it lights up on the tree. Edit the prose inline.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="agents">
+    <h2>Build with an AI assistant</h2>
+    <div class="agent-grid">
+      <div class="agent-card">
+        <b>Have an agent make you a build</b>
+        <span>Any LLM that can browse. No login, no API key — it reads <code>/llms.txt</code> and hands back a planner link you just click:</span>
+        <div class="quote">&ldquo;Read https://&lt;this-site&gt;/llms.txt and make me a Sorceress cold-crit build with leveling snapshots. Give me the planner link.&rdquo;</div>
+      </div>
+      <div class="agent-card">
+        <b>Have an agent write your guide</b>
+        <span>For a build you made: hit <b>Copy for agent</b> in the Build Guide — the whole story as structured JSON. Paste it to any LLM:</span>
+        <div class="quote">&ldquo;Turn this into a written leveling guide.&rdquo; &mdash; it already contains the writing instructions.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="builds">
+    <h2>Saved builds</h2>
+    <ul class="build-list" id="build-list"><li class="empty">No saved builds yet. Start one above.</li></ul>
+  </section>
+
+  <div class="storage-warning">
+    <strong>Heads up:</strong> builds are saved <em>in this browser only</em> right now. Clearing site data, switching browsers, or using private mode will lose them. Use <strong>Export .build</strong> in the planner sidebar to back up. A server-side share-link store lands in a later iteration.
+  </div>
+
+  <footer>
+    Wizard + planner saves live in browser <code>localStorage</code> under <code>poe2-planner:plan:&lt;id&gt;</code>. Format: <a href="https://github.com/" title="see docs/build_contracts.md in repo">poe2-planner-plan v1</a>. Targets GGG <code>.build</code> schema rev 1.
+    <br><br>
+    This product isn't affiliated with or endorsed by Grinding Gear Games in any way.
+    All Path of Exile 2 game content, images, and materials are trademarks and copyrights
+    of Grinding Gear Games. Site code and original content &copy; Damdor —
+    non-commercial; not for commercial reuse.
+  </footer>
+</main>
+
+<!-- Builds-list rendering + delete-handlers. Sourced from
+     viewer/assets/index_page.ts, built by esbuild via scripts/build_js.sh. -->
+<script src="/assets/index_page.js" defer></script>
+</body>
+</html>

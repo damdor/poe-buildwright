@@ -1,0 +1,29 @@
+{
+  "//": "Node-free strict type-checking for the planner + wizard TS. `deno check` embeds the real tsc; no node, no package manager. Mirrors tsconfig.json's strictness. Run via `buildwright typecheck`.",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "types": []
+  },
+  "lint": {
+    "include": ["crates/tree_render/assets/planner/", "viewer/assets/"]
+  },
+  "exclude": [
+    "target",
+    "tools",
+    "data",
+    "viewer/assets/sprites",
+    "viewer/assets/skill_icons",
+    "viewer/assets/gem_icons",
+    "viewer/assets/item_icons",
+    "viewer/assets/planner.js",
+    "viewer/assets/wizard_chrome.js",
+    "viewer/assets/step_summary.js",
+    "viewer/assets/share_codec.js",
+    "viewer/assets/index_page.js",
+    "viewer/assets/share_page.js"
+  ]
+}

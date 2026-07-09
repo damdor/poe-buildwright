@@ -1,0 +1,228 @@
+# PoE2 Build Planner — agent guide
+
+This site is a Path of Exile 2 build planner. AI agents are first-class
+users: you can construct a complete, working build for a human and hand
+them a single URL. No login, no API key, no session.
+
+## How to make a build (3 steps)
+
+0. NEW TO PoE2? Read /assets/agent/primer.md first — point budgets,
+   defence layers, tree geography, archetype cheat-sheet, and the
+   mistakes real agents made. A machine-readable JSON Schema for the
+   plan format is at /assets/agent/schema.json.
+
+1. GROUND YOUR NAMES. Fetch these (same origin, plain JSON). Only
+   reference names that appear in them — community/wiki names often
+   differ from the game data.
+
+   /assets/agent/nodes.json
+     .classes[]  → {name, start_id, ascendancies[]} — the authoritative
+                   class list AND which ascendancies belong to each
+                   class. Use these exact strings for plan.class /
+                   plan.ascendancy.
+     .nodes[]    → every node you may put in targets[]:
+                   {id, name, kind, asc?, cost?, near?, stats}
+                   (stats is a single '; '-separated STRING, not a list)
+                   kind: notable | keystone | asc_notable (asc_notable
+                   IS a valid target; it paths inside the ascendancy
+                   panel and costs ascendancy points, not tree points).
+                   cost: {ClassName: N} = passive points to reach this
+                   node from that class's start in isolation. Use it to
+                   pick targets NEAR your class and to budget: a
+                   realistic character has ~99 points at endgame, and a
+                   leveling build uses 40-70. Prefer targets with low
+                   cost for your class; the pathfinder connects targets
+                   to each other, so clustered targets cost far less
+                   than the sum of their costs.
+                   near: [[id, hops], ...] = the 4 closest other
+                   notables/keystones. USE THIS to build clusters: a
+                   chain of targets whose `near` lists reference each
+                   other shares travel and stays in budget; validate
+                   reports the exact total.
+
+   /assets/skill_catalogue.json
+     .gems[] → {id, name, gem_type: Active|Support, color_name,
+                tag_string, skill_types, require_skill_types,
+                exclude_skill_types, natural_max_level, req_level}
+     req_level = character level when the gem becomes obtainable — a
+     capture at level L may only use gems with req_level <= L (validate
+     enforces this, plus gem level <= L and base drop level <= L).
+     Notes:
+     - SUPPORT NAMES ARE TIERED: "Fist of War I", "Multishot I",
+       "Brutality I" — the Roman numeral is part of the name. Community
+       names without the numeral will not resolve.
+     - Compatibility: a support fits an active gem when its
+       require_skill_types match and exclude_skill_types don't.
+       These are POSTFIX (RPN) boolean expressions, not flat sets:
+       plain tokens push (active.skill_types contains token); literal
+       "AND"/"OR"/"NOT" tokens are stack operators; the result is true
+       if ANY value left on the stack is true. Empty require = always
+       allowed. You do NOT have to evaluate this yourself — the import
+       validates every pairing and reports incompatibilities — but
+       evaluating it yourself yields better builds.
+     - Each support gem may be used ONCE per character at a time —
+       i.e. unique within each snapshot's skill set; reusing a support
+       in a LATER capture's replaced skill list is fine. Max 5 supports
+       per skill.
+     - An active gem with an EMPTY skill_types array is a data gap
+       (compatibility unknown): the importer allows any support on it
+       rather than flagging.
+
+   /assets/item_catalogue.json
+     .uniques[] → {name, base, slot, latest_stats}. Use a unique's EXACT
+     name in gear[].name when the build wants that specific item.
+
+   /assets/agent/bases.json
+     .bases[] → {name, slot, class, lvl, str?, dex?, int?, ar?, ev?, es?}
+     Every equipment base with attribute requirements and defence
+     numbers. For NON-unique gear, don't write "any rare with ES" —
+     pick a real base whose defence type matches the build's layer and
+     attributes (es-only body for int builds, ar/ev hybrid for str/dex,
+     ...), then spec it: {"slot":"body", "base":"Expert Hexer's Robe",
+     "rarity":"rare", "mods":["+# to maximum Life",
+     "+#% to Lightning Resistance"]}. The importer renders it as
+     "Rare Expert Hexer's Robe" with the mods as the slot note.
+     Freetext gear[].name still works as a last resort.
+
+   /assets/agent/mods.json
+     .mods[] → {type, kind: prefix|suffix, stats[], slots[]} — the
+     finite affix vocabulary that can actually roll on equipment.
+     Type names and stat ids are INTERNAL identifiers (e.g.
+     'IncreasedLife', 'base_maximum_life') — use them to verify a wish
+     is real, then write gear[].mods as human-readable text ('+# to
+     maximum Life'); the mods land as display notes, not machine keys.
+     slots[] uses GGG spawn-tags: armour pieces appear under group tags
+     like str_armour/int_armour/armour rather than body/helmet. A
+     prefix+suffix mix is what a realistic rare looks like.
+
+2. WRITE ONE JSON OBJECT (the agent plan):
+
+   {
+     "format": "poe2-agent-plan",
+     "version": 1,
+     "name": "Stormcaller Druid",
+     "class": "Druid",
+     "ascendancy": "Shaman",
+     "targets": ["Brain Storm", "Heart of the Storm"],
+     "skills": [
+       {"gem": "Spark", "level": 12,
+        "supports": ["Arcane Surge", "Lightning Penetration"]}
+     ],
+     "gear": [
+       {"slot": "weapon1", "name": "Quill Rain", "note": "swap at 60"},
+       {"slot": "body", "name": "any rare with +life and resists"}
+     ],
+     "notes": "Totem-flavored lightning leveling."
+   }
+
+   Rules:
+   - class / ascendancy: exact strings from nodes.json .classes[].
+   - targets: notables/keystones/asc_notables by name (case-insensitive)
+     or numeric id. DO NOT list travel nodes — the site's pathfinder
+     connects your targets to the class start automatically and
+     deterministically. 8-20 targets is a sensible build; sum the cost
+     values as a rough upper bound and keep it under ~99.
+   - If a name is shared by several node copies, the importer picks the
+     copy nearest the growing build.
+   - gear[].slot: weapon1 | offhand1 | weapon2 | offhand2 | helmet |
+     body | gloves | boots | amulet | ring1 | ring2 | belt | flask |
+     jewel. Slot names from item_catalogue also work as aliases
+     (bow/mace/staff/… → weapon1; shield/focus/quiver → offhand1;
+     ring → ring1, bumping to ring2 if taken).
+   - Unknown names never break the import — they are skipped and
+     reported to the user in an import summary. Prefer exact names.
+   - Ascendancy nodes that say "Grants Skill: X" give that skill
+     automatically in-game; you don't need to add X to skills[].
+   - NOTES ON IMPORTANT CHOICES: any target may be an object
+     {"node": "Heart of the Storm", "note": "take before Act 3 boss"} —
+     the note lands on that node in the planner (visible on hover,
+     numbered in the guide timeline). Use these for decisive picks.
+   - LEVELING SNAPSHOTS + RESPECS: instead of top-level targets/skills/
+     gear you may send "captures": [...] — an ordered list of
+     snapshots, each {level, name?, notes?, remove?, respec?, targets?,
+     skills?, gear?}. Captures are CUMULATIVE (each keeps earlier
+     passives and paths to its additional targets); skills/gear
+     omitted = inherited, provided = replaced.
+     RESPECS ARE PARTIAL, like in the game: put the nodes to
+     deallocate in "remove": [...] — travel nodes orphaned by the
+     removal are pruned automatically (same cascade the planner's own
+     dealloc does), then the capture's new targets are pathed. The
+     timeline shows the diff naturally. "respec": true (full tree
+     reset) exists as a rare escape hatch — prefer "remove". For a
+     duplicated node name, remove targets the ALLOCATED copy.
+     Ascendancy targets auto-path within their panel and spend asc
+     points (8 max; earned in 2-point chunks from trials during acts).
+     Example:
+       "captures": [
+         {"level": 35, "name": "Acts: totems",
+          "targets": ["Ancestral Artifice", "Hardened Wood"],
+          "skills": [{"gem": "Ancestral Warrior Totem"}]},
+         {"level": 70, "name": "Maps: pivot to melee",
+          "remove": ["Hardened Wood"],
+          "targets": ["Heavy Weaponry", {"node": "Resolute Technique",
+            "note": "no-crit keystone — core of the pivot"}]}
+       ]
+
+3. EMIT THE URL. base64url-encode the UTF-8 JSON (replace + with -,
+   / with _, strip =). Then:
+
+     https://<this-site>/planner.html#agent=<base64url-json>
+
+   JavaScript reference:
+     const b64u = btoa(unescape(encodeURIComponent(JSON.stringify(plan))))
+                    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+     const url = origin + '/planner.html#agent=' + b64u;
+
+   Give that URL to the user. Opening it materializes the build locally
+   in their browser (they own it and can edit); an import summary
+   reports the allocated point count and anything that didn't resolve.
+   Realistic plans encode to 1-4 KB; keep the URL under ~16 KB.
+
+   VALIDATE FIRST (recommended): GET /agent/validate?plan=<same b64url>
+   (or POST the raw JSON) returns the exact import result headlessly —
+   per-capture point totals, unresolved/unreachable targets, gem and
+   support-compatibility problems. Iterate until "ok": true, THEN hand
+   over the URL. (Available on deployments with Functions; a 404 means
+   validate isn't enabled — fall back to careful grounding.)
+
+## Live collaboration (where enabled)
+
+Deployments with the live channel enabled accept:
+
+  PUT /live/<token>    body: {"rev": <increasing int>, "plan": <agent plan>}
+  GET /live/<token>    returns the latest body; ETag = rev
+
+Token: 16-64 chars of [A-Za-z0-9_-]; generate it randomly — knowing the
+URL is the permission. A human watching
+  https://<this-site>/planner.html?live=<token>
+sees every revision you PUT appear on their tree within ~3 seconds.
+Write a new rev after each meaningful change (raise "rev" each time).
+If PUT returns 503, the deployment hasn't enabled the channel — fall
+back to handing over a #agent= URL.
+
+PRESENCE: include "focus": "<node name or id>" alongside rev/plan and
+the watcher's camera pans to that node with a pulse — narrate where you
+are working ("focus": "Heart of the Storm" while you refine that
+cluster). One PUT per meaningful step reads as a live build session.
+
+## Notes for agents
+
+- The passive tree is a connectivity graph; the reason you should NOT
+  attempt full node lists is that travel-node selection requires graph
+  search. targets[] + our pathfinder is the reliable contract.
+- The #agent= fragment never reaches any server; there is no rate limit
+  because there is no backend call.
+- To READ an existing build: ask the user to run the planner's
+  ⌘K → "Copy agent link" — it exports their current build in exactly
+  this format (decode the fragment).
+- The import validates support-gem pairings with the same RPN evaluator
+  the site's own picker uses, and flags (not drops) incompatibilities.
+- WRITING a guide from a finished build: the Summary page
+  (/summary.html?build=<id>) embeds the whole build as one
+  chronological JSON in <script id="poe2-agent-summary"
+  type="application/json"> — chapters with per-pick levels, node stats,
+  skill numbers at each gem level, gear with mods, every author note,
+  plus writing_hints describing the expected guide structure
+  (Mobalytics/Maxroll shape). Users can also hand it to you via the
+  page's "Copy agent summary" button. Per-gem-level numbers are also
+  served raw at /assets/skill_stats.json.
