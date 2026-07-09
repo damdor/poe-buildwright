@@ -1,3 +1,28 @@
+# poe-buildwright workspace.
+#
+# ZERO-DEPENDENCY PHILOSOPHY
+# ==========================
+# This project deliberately carries (almost) no third-party code:
+#
+# - Rust: no crates.io dependencies beyond `cc` (build-time, for the
+#   one C++ decoder). JSON parsing/emitting and SHA-256 are our own
+#   `crates/json` and `crates/hash`; the HTTP/CDN client shells out to
+#   curl; the static server is std-only. Every line that runs at
+#   mine-time or render-time is auditable in this repo.
+# - TypeScript: NO package manager. No npm, no package.json, no
+#   node_modules, no lockfile churn. The two toolchain binaries
+#   (esbuild for bundling, Deno for strict typechecking) are fetched
+#   as pinned, SHA-512-verified tarballs by tools/setup.sh — the npm
+#   registry is used strictly as a dumb CDN, and no dependency code
+#   ever executes in the site. The planner is plain DOM + WebGL2.
+# - The one true third-party code path is the Oodle decoder
+#   (crates/ooz_sys): GPL/unlicensed upstream, so it is NOT in this
+#   repo — build.rs fetches it from zao/ooz at a pinned, SHA-256
+#   verified commit. See crates/ooz_sys/VENDOR.md.
+#
+# Contributions should preserve this: a PR that adds a package
+# manager or a dependency tree needs an extraordinary justification.
+
 [workspace]
 resolver = "3"
 members = [
@@ -11,10 +36,15 @@ members = [
 ]
 
 # Shared metadata picked up by member crates via `*.workspace = true`.
+# License: the repo ships under PolyForm Noncommercial 1.0.0 (see
+# LICENSE.md). ooz_sys and anything linking it (buildwright) carry
+# GPL-3.0-or-later markers instead because of the fetched decoder —
+# see crates/ooz_sys/VENDOR.md. `publish = false` everywhere: these
+# crates are not for crates.io.
 [workspace.package]
 edition = "2024"
 rust-version = "1.95"
-license = "MIT OR Apache-2.0"
+license = "PolyForm-Noncommercial-1.0.0"
 publish = false
 
 [workspace.lints.rust]

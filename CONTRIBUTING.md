@@ -13,6 +13,32 @@ when it happens. Friendly nudges are fine; expectations of 24/7
 support are not. Forks for personal use are always fair game under
 the license.
 
+## How changes land
+
+- **Pull requests only.** Nothing merges to `master` directly; the
+  branch is protected. Small, focused PRs with a clear "why" review
+  fastest.
+- **No CI.** There are deliberately no GitHub Actions here — verify
+  locally before opening a PR: `cargo test --release`,
+  `./bw typecheck`, and `./bw verify --patch <p>` if you touched the
+  pipeline. State in the PR what you ran.
+- **On AI-assisted contributions:** using an AI to help write a patch
+  is fine — this project is agent-first, after all. What gets closed
+  without review is *unverified volume*: auto-generated issues, bulk
+  "fix" PRs nobody ran locally, or reports without a reproduction.
+  One well-tested change beats ten speculative ones. If an AI wrote
+  it, you still own it: run it, understand it, and say so.
+
+## Zero-dependency philosophy
+
+The workspace has no crates.io dependencies (beyond build-time `cc`)
+and the TypeScript side has **no package manager at all** — no npm,
+no package.json, no node_modules. esbuild and Deno arrive as pinned,
+hash-verified binaries via `tools/setup.sh`. The full rationale is at
+the top of `Cargo.toml`. PRs that introduce a dependency tree or a
+package manager need an extraordinary justification and will
+usually be declined.
+
 ## Ground rules
 
 - **Never commit game data.** Everything mined from GGG's CDN
