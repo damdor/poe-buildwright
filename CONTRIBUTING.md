@@ -30,7 +30,7 @@ No copyright assignment; you keep ownership of your work.
 
 ## How changes land
 
-- **Pull requests only.** Nothing merges to `master` directly; the
+- **Pull requests only.** Nothing merges to `main` directly; the
   branch is protected. Small, focused PRs with a clear "why" review
   fastest.
 - **No CI.** There are deliberately no GitHub Actions here — verify
