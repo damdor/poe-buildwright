@@ -13,6 +13,21 @@ when it happens. Friendly nudges are fine; expectations of 24/7
 support are not. Forks for personal use are always fair game under
 the license.
 
+## Licensing of contributions
+
+By submitting a contribution you agree that:
+
+- your contribution is licensed to the project under the same
+  [PolyForm Noncommercial 1.0.0](LICENSE.md) terms as the rest of the
+  code (inbound = outbound), and
+- the maintainer may additionally grant **Grinding Gear Games** a
+  license to your contribution for any purpose, including commercial
+  use, free of charge — this project's standing promise (see the
+  LICENSE.md preamble) is that GGG gets anything they ask for, and
+  outside contributions must not be able to block that.
+
+No copyright assignment; you keep ownership of your work.
+
 ## How changes land
 
 - **Pull requests only.** Nothing merges to `master` directly; the
