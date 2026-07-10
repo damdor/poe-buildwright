@@ -28,34 +28,52 @@ function classOfAsc(asc: string): string | null {
   return TREE.asc_internal?.[asc]?.class ?? null;
 }
 
-// Every sprite URL → the single class that owns it, or null when the
-// main tree or more than one class references it. Shared chrome (the
-// generic AscendancyFrame* sprites, connectors, backgrounds) ends up
-// null and must be present at first paint; per-class art (portraits,
-// panel backgrounds, asc node icons) carries its class name so it can
-// be deferred.
-function collectOwnedUrls(): Map<string, string | null> {
-  const owners = new Map<string, string | null>();
-  const add = (url: string | undefined, owner: string | null): void => {
+// Loading tier within the eager (boot-owned) set:
+//   0 blocking — the tree skeleton: node frames, connectors,
+//     backgrounds. First paint waits for these and nothing else.
+//   1 icons — node/option icons. Streamed in immediately after first
+//     paint (04g); each arrival is baked in by a throttled rebuild,
+//     so the tree fills with icons over the first seconds.
+//   2 flavor — mastery glow patterns, ascendancy panel art,
+//     portraits. Visually rich but never load-bearing for starting a
+//     build; loads after the icons.
+// Everything still loads — the tiers change ordering, not fidelity.
+export type SpriteTier = 0 | 1 | 2;
+
+// Every sprite URL → the single class that owns it (null when the
+// main tree or more than one class references it — shared chrome must
+// live in the boot set) + the loading tier. A URL referenced from
+// several places gets the most urgent tier any reference needs: a
+// frame shared by main-tree and ascendancy nodes stays blocking.
+function collectOwnedUrls(): Map<string, { owner: string | null; tier: SpriteTier }> {
+  const meta = new Map<string, { owner: string | null; tier: SpriteTier }>();
+  const add = (url: string | undefined, owner: string | null, tier: SpriteTier): void => {
+    const m = url ? meta.get(url) : undefined;
     if (!url) return;
-    if (!owners.has(url)) {
-      owners.set(url, owner);
-    } else if (owners.get(url) !== owner) {
-      owners.set(url, null); // referenced from two owners → shared
+    if (!m) {
+      meta.set(url, { owner, tier });
+      return;
     }
+    if (m.owner !== owner) m.owner = null; // referenced from two owners → shared
+    if (tier < m.tier) m.tier = tier;
   };
   for (const id in TREE.nodes) {
     const n = TREE.nodes[id];
     if (!n) continue;  // noUncheckedIndexedAccess: TREE.nodes[id] is possibly undefined
     const owner = n.a ? classOfAsc(n.a) : null;
-    add(n.i, owner);
-    add(n.f0, owner);
-    add(n.f1, owner);
-    add(n.me, owner);
-    if (n.o) for (const o of n.o) add(o.i, owner);
+    // Ascendancy nodes live in the side panel — even for the default
+    // class every sprite of theirs is flavor, including the heavy
+    // shared AscendancyFrame* files (min-tier keeps anything the main
+    // tree also uses in blocking).
+    const t = (roleTier: SpriteTier): SpriteTier => (n.a ? 2 : roleTier);
+    add(n.i, owner, t(1));
+    add(n.f0, owner, t(0));
+    add(n.f1, owner, t(0));
+    add(n.me, owner, 2);
+    if (n.o) for (const o of n.o) add(o.i, owner, t(1));
   }
-  for (const cn in TREE.class_portraits) add(TREE.class_portraits[cn], cn);
-  for (const an in TREE.asc_panels) add(TREE.asc_panels[an]?.p, classOfAsc(an));
+  for (const cn in TREE.class_portraits) add(TREE.class_portraits[cn], cn, 2);
+  for (const an in TREE.asc_panels) add(TREE.asc_panels[an]?.p, classOfAsc(an), 2);
   // Variant-ascendancy override icons (Abyssal Lich) — referenced only
   // via TREE.asc_variants, so the node loop above never sees them.
   // Without this they're absent from texCache and the panel bake
@@ -64,12 +82,12 @@ function collectOwnedUrls(): Map<string, string | null> {
     const owner = classOfAsc(v);
     const nodes = TREE.asc_variants![v]!.nodes;
     for (const id in nodes) {
-      add(nodes[id]!.i, owner);
+      add(nodes[id]!.i, owner, 2);
     }
   }
-  add(TREE.bgtree, null);
-  add(TREE.bgtree_active, null);
-  add(TREE.bg_tile, null);
+  add(TREE.bgtree, null, 0);
+  add(TREE.bgtree_active, null, 0);
+  add(TREE.bg_tile, null, 0);
   // GGG-authored connector sprites: 3 prefixes × 10 orbits × 3 states
   // (normal = dim/unallocated, intermediateactive = allocated,
   // intermediate = hover preview) — exactly the 90 loose PNGs PoB
@@ -81,35 +99,37 @@ function collectOwnedUrls(): Map<string, string | null> {
     for (const stateName of ["normal", "intermediate", "intermediateactive"]) {
       for (let o = 0; o <= 9; o++) {
         const idx = o === 0 ? 0 : (orbitFileSuffix[o] ?? 0);
-        add("/assets/sprites/" + prefix + "_orbit_" + stateName + idx + ".png", null);
+        add("/assets/sprites/" + prefix + "_orbit_" + stateName + idx + ".png", null, 0);
       }
     }
   }
-  return owners;
+  return meta;
 }
 
-// Eager set: main tree, shared chrome, and the default class's art.
-// This is what boot blocks first paint on.
-export function collectSpriteUrls(): string[] {
+// The boot-owned sprites (main tree, shared chrome, default class's
+// art) split by loading tier. Boot blocks first paint on `blocking`
+// only; `icons` then `flavor` stream in behind it (see 10_boot).
+export function collectSpriteTiers(): { blocking: string[]; icons: string[]; flavor: string[] } {
   const def = defaultClassName();
-  const urls: string[] = [];
-  for (const [url, owner] of collectOwnedUrls()) {
-    if (owner === null || owner === def) urls.push(url);
+  const tiers = { blocking: [] as string[], icons: [] as string[], flavor: [] as string[] };
+  for (const [url, m] of collectOwnedUrls()) {
+    if (m.owner !== null && m.owner !== def) continue; // other classes: 04g lazy path
+    (m.tier === 0 ? tiers.blocking : m.tier === 1 ? tiers.icons : tiers.flavor).push(url);
   }
-  return urls;
+  return tiers;
 }
 
 // Deferred art grouped by owning class (the default class is excluded
-// — its art rides the eager path above). Consumed by 04g_lazy_art.ts.
+// — its art rides the boot tiers above). Consumed by 04g_lazy_art.ts.
 export function lazyClassUrls(): Map<string, string[]> {
   const def = defaultClassName();
   const map = new Map<string, string[]>();
-  for (const [url, owner] of collectOwnedUrls()) {
-    if (owner === null || owner === def) continue;
-    let arr = map.get(owner);
+  for (const [url, m] of collectOwnedUrls()) {
+    if (m.owner === null || m.owner === def) continue;
+    let arr = map.get(m.owner);
     if (!arr) {
       arr = [];
-      map.set(owner, arr);
+      map.set(m.owner, arr);
     }
     arr.push(url);
   }

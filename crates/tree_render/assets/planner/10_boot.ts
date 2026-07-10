@@ -5,25 +5,29 @@
 // this file LAST so every dependency module has already evaluated by
 // the time `resize()` and friends fire.
 
-import { collectSpriteUrls, preload } from "./01_image_preload.ts";
+import { collectSpriteTiers, preload } from "./01_image_preload.ts";
 import { loadingEl, state } from "./02_state.ts";
 import { fitToView, resize } from "./03_viewport.ts";
 import { uploadAllTextures } from "./04a_webgl_setup.ts";
 import { buildStaticGeometry } from "./04d_static_geom.ts";
 import { initSearchGlowTexture } from "./04e_overlay.ts";
 import { requestRender } from "./04f_render.ts";
-import { ensureClassArt, prefetchRemainingClasses } from "./04g_lazy_art.ts";
+import { ensureClassArt, prefetchRemainingClasses, streamSprites } from "./04g_lazy_art.ts";
 import { initDefaultClass } from "./07_sidebar.ts";
 import { syncFromWizardStore } from "./11_wizard_sync.ts";
 
 resize();
 initDefaultClass();
 fitToView();
-// Preload all sprites, upload them to the GPU, build the static
-// geometry, then unhide the canvas. Until preload+upload finishes we
-// render nothing (geomReady gate in render()). Show a fade-out loading
-// overlay during this window.
-preload(collectSpriteUrls()).then(() => {
+// Progressive boot: first paint waits ONLY for the tree skeleton
+// (frames, connectors, backgrounds — tiers.blocking, a few MB). Node
+// icons then stream in with throttled rebuilds, followed by the
+// flavor art (mastery patterns, panel art, portraits), followed by
+// the other classes' lazy sets. Until the blocking preload+upload
+// finishes we render nothing (geomReady gate in render()) and show
+// the fade-out loading overlay.
+const tiers = collectSpriteTiers();
+preload(tiers.blocking).then(() => {
   uploadAllTextures();
   buildStaticGeometry();
   initSearchGlowTexture();
@@ -46,11 +50,14 @@ preload(collectSpriteUrls()).then(() => {
   // capture) or active.levelRange[1] (frozen snapshot).
   window.dispatchEvent(new CustomEvent("poe2-capture-change", { detail: { reason: "boot" } }));
   // The wizard restore above may have switched to a class whose art
-  // is deferred (only the default class ships with the boot preload)
+  // is deferred (only the default class ships with the boot tiers)
   // — fetch it now. refreshAscOptions also ensures on every change;
   // this covers restore paths that set state.klass directly.
   void ensureClassArt(state.klass);
-  // Warm the remaining classes once the first paint is done and the
-  // network is quiet, so a later class switch finds its art resident.
-  setTimeout(prefetchRemainingClasses, 1500);
+  // Fill in the rest behind the first paint, most-useful first:
+  // node icons pop in over the first seconds, then the flavor art,
+  // then the remaining classes warm so a class switch is instant.
+  streamSprites(tiers.icons)
+    .then(() => streamSprites(tiers.flavor))
+    .then(() => prefetchRemainingClasses());
 });
