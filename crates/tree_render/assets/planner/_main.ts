@@ -28,6 +28,7 @@ import "./07_sidebar.ts";
 import "./08_build_io.ts";
 import "./09_cmdk.ts";
 import "./11_wizard_sync.ts";
+import "./11b_sidebar_collapse.ts";
 import "./12_captures_bar.ts";
 import "./13_level_slider.ts";
 import "./14_note_overlay.ts";
