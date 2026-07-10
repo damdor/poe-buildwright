@@ -71,3 +71,40 @@ export function prefetchRemainingClasses(): void {
     chain = chain.then(() => ensureClassArt(klass));
   }
 }
+
+// Rebuild throttle for streamed sprites: baking a texture into the
+// static geometry means a full buildStaticGeometry() pass (cheap —
+// lock toggles run it per click — but not 350-times-in-two-seconds
+// cheap). Coalesce arrivals into one rebuild per window.
+let rebuildTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRebuild(): void {
+  if (rebuildTimer !== null) return;
+  rebuildTimer = setTimeout(() => {
+    rebuildTimer = null;
+    if (state.geomReady) {
+      buildStaticGeometry();
+      requestRender();
+    }
+  }, 250);
+}
+
+/// Fetch sprites WITHOUT blocking anything: each one is GPU-uploaded
+/// the moment it decodes and appears on the next throttled rebuild —
+/// this is what makes node icons pop in progressively after the
+/// skeleton first paint. Failures are skipped (same policy as the
+/// boot preload). Resolves when every URL has been attempted.
+export function streamSprites(urls: string[]): Promise<void> {
+  return Promise.all(urls.map(async url => {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const blob = await resp.blob();
+      const bitmap = await createImageBitmap(blob, { imageOrientation: "none", premultiplyAlpha: "premultiply" });
+      uploadOne(url, bitmap);
+      try { bitmap.close(); } catch (e) { /* GPU has its copy */ }
+      scheduleRebuild();
+    } catch (e) {
+      // Ignore — geometry builder skips sprites with no uploaded texture.
+    }
+  })).then(() => undefined);
+}
