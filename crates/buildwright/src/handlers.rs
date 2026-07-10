@@ -3729,6 +3729,169 @@ pub fn render(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     sh(ctx, "render planner.html", &program, &argv)
 }
 
+// ---------------------------------------------------------------------
+// fixture: a runnable viewer with zero game data
+// ---------------------------------------------------------------------
+
+/// Paint a filled disc (icons) as RGBA: `rgb` at full alpha inside the
+/// radius, soft edge, transparent outside.
+fn fx_disc(size: u32, rgb: [u8; 3]) -> Vec<u8> {
+    let mut px = vec![0u8; (size * size * 4) as usize];
+    let c = (size as f64 - 1.0) / 2.0;
+    let r = c - 1.0;
+    for y in 0..size {
+        for x in 0..size {
+            let d = (((x as f64 - c).powi(2) + (y as f64 - c).powi(2)).sqrt() - r).max(0.0);
+            let a = (255.0 * (1.0 - d / 1.5).clamp(0.0, 1.0)) as u8;
+            let i = ((y * size + x) * 4) as usize;
+            px[i] = rgb[0];
+            px[i + 1] = rgb[1];
+            px[i + 2] = rgb[2];
+            px[i + 3] = a;
+        }
+    }
+    px
+}
+
+/// Paint a ring (frames): transparent center, `rgb` band of the given
+/// thickness at the rim.
+fn fx_ring(size: u32, rgb: [u8; 3], thickness: f64) -> Vec<u8> {
+    let mut px = vec![0u8; (size * size * 4) as usize];
+    let c = (size as f64 - 1.0) / 2.0;
+    let r_out = c - 1.0;
+    let r_in = r_out - thickness;
+    for y in 0..size {
+        for x in 0..size {
+            let d = ((x as f64 - c).powi(2) + (y as f64 - c).powi(2)).sqrt();
+            let edge = (r_out - d).min(d - r_in);
+            let a = (255.0 * (edge / 1.5).clamp(0.0, 1.0)) as u8;
+            let i = ((y * size + x) * 4) as usize;
+            px[i] = rgb[0];
+            px[i + 1] = rgb[1];
+            px[i + 2] = rgb[2];
+            px[i + 3] = a;
+        }
+    }
+    px
+}
+
+/// Radial falloff glow (mastery pattern, tree background).
+fn fx_glow(size: u32, rgb: [u8; 3]) -> Vec<u8> {
+    let mut px = vec![0u8; (size * size * 4) as usize];
+    let c = (size as f64 - 1.0) / 2.0;
+    for y in 0..size {
+        for x in 0..size {
+            let d = ((x as f64 - c).powi(2) + (y as f64 - c).powi(2)).sqrt() / c;
+            let a = (160.0 * (1.0 - d).clamp(0.0, 1.0)) as u8;
+            let i = ((y * size + x) * 4) as usize;
+            px[i] = rgb[0];
+            px[i + 1] = rgb[1];
+            px[i + 2] = rgb[2];
+            px[i + 3] = a;
+        }
+    }
+    px
+}
+
+/// Solid square with a contrasting rim (portraits, panels, bg tile).
+fn fx_square(size: u32, rgb: [u8; 3], rim: [u8; 3]) -> Vec<u8> {
+    let mut px = vec![0u8; (size * size * 4) as usize];
+    for y in 0..size {
+        for x in 0..size {
+            let on_rim = x < 2 || y < 2 || x >= size - 2 || y >= size - 2;
+            let col = if on_rim { rim } else { rgb };
+            let i = ((y * size + x) * 4) as usize;
+            px[i] = col[0];
+            px[i + 1] = col[1];
+            px[i + 2] = col[2];
+            px[i + 3] = 255;
+        }
+    }
+    px
+}
+
+/// `./bw fixture` — make a clean clone runnable with ZERO game data.
+/// Generates original placeholder sprites (procedural discs/rings —
+/// no GGG content anywhere) into viewer/assets/sprites/, then renders
+/// planner.html from the committed toy tree at data/fixture/tree/.
+pub fn fixture(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
+    let dir = ctx.root.join("viewer/assets/sprites");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir {}: {e}", dir.display()))?;
+    let write = |name: &str, size: u32, rgba: &[u8]| -> Result<(), String> {
+        let png = data_miner::png::encode_rgba(size, size, rgba);
+        std::fs::write(dir.join(name), png).map_err(|e| format!("writing {name}: {e}"))
+    };
+
+    // Icons (discs) + frames (rings) — dim "off", bright "on".
+    write("fixture_icon_small.png", 48, &fx_disc(48, [90, 140, 220]))?;
+    write("fixture_icon_notable.png", 56, &fx_disc(56, [220, 180, 80]))?;
+    write("fixture_icon_keystone.png", 80, &fx_disc(80, [170, 110, 220]))?;
+    write("fixture_icon_asc_a.png", 48, &fx_disc(48, [110, 210, 140]))?;
+    write("fixture_icon_asc_b.png", 48, &fx_disc(48, [220, 110, 110]))?;
+    write("fixture_frame_small_off.png", 64, &fx_ring(64, [110, 110, 120], 4.0))?;
+    write("fixture_frame_small_on.png", 64, &fx_ring(64, [230, 230, 200], 4.0))?;
+    write("fixture_frame_notable_off.png", 96, &fx_ring(96, [130, 115, 80], 6.0))?;
+    write("fixture_frame_notable_on.png", 96, &fx_ring(96, [255, 215, 130], 6.0))?;
+    write("fixture_frame_keystone_off.png", 128, &fx_ring(128, [120, 95, 140], 8.0))?;
+    write("fixture_frame_keystone_on.png", 128, &fx_ring(128, [220, 170, 255], 8.0))?;
+    write("fixture_frame_asc_off.png", 96, &fx_ring(96, [80, 130, 130], 6.0))?;
+    write("fixture_frame_asc_on.png", 96, &fx_ring(96, [140, 240, 240], 6.0))?;
+    write("fixture_frame_class_start.png", 48, &fx_ring(48, [200, 200, 210], 3.0))?;
+    write("fixture_asc_middle.png", 100, &fx_ring(100, [180, 220, 220], 10.0))?;
+    write("fixture_mastery_glow.png", 256, &fx_glow(256, [120, 160, 255]))?;
+    write("fixture_face_alpha.png", 128, &fx_square(128, [40, 70, 110], [140, 180, 230]))?;
+    write("fixture_face_beta.png", 128, &fx_square(128, [110, 50, 50], [230, 150, 150]))?;
+    write("fixture_panel_alpha.png", 256, &fx_square(256, [24, 40, 60], [90, 130, 170]))?;
+    write("fixture_panel_beta.png", 256, &fx_square(256, [60, 28, 28], [170, 100, 100]))?;
+    write("fixture_bgtree.png", 256, &fx_glow(256, [40, 44, 56]))?;
+    write("fixture_bg_tile.png", 64, &fx_square(64, [14, 15, 19], [20, 22, 28]))?;
+
+    // Orbit connector sprites: the planner fetches these 90 fixed
+    // names directly (01_image_preload) — same tiny strip per state.
+    let strip = |rgb: [u8; 3]| -> Vec<u8> {
+        let (w, h) = (24u32, 6u32);
+        let mut px = vec![0u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                px[i] = rgb[0];
+                px[i + 1] = rgb[1];
+                px[i + 2] = rgb[2];
+                px[i + 3] = if y == 0 || y == h - 1 { 90 } else { 220 };
+            }
+        }
+        px
+    };
+    let states = [
+        ("normal", [95u8, 95, 105]),
+        ("intermediate", [170, 170, 150]),
+        ("intermediateactive", [235, 215, 150]),
+    ];
+    for prefix in ["Character", "CharacterPlanned", "CharacterAscendancy"] {
+        for (state, rgb) in states {
+            for idx in 0..=9u32 {
+                let name = format!("{prefix}_orbit_{state}{idx}.png");
+                let png = data_miner::png::encode_rgba(24, 6, &strip(rgb));
+                std::fs::write(dir.join(&name), png)
+                    .map_err(|e| format!("writing {name}: {e}"))?;
+            }
+        }
+    }
+    println!("fixture sprites → viewer/assets/sprites/ (all procedural, zero game content)");
+
+    // Render the committed toy tree, then remind about the bundles.
+    render(ctx, &[
+        "--tree-dir".to_string(),
+        "data/fixture/tree".to_string(),
+        "--title".to_string(),
+        "poe-buildwright fixture tree".to_string(),
+    ])?;
+    println!("\nFixture viewer ready:");
+    println!("  ./bw js       # build the JS bundles (once per TS edit)");
+    println!("  ./bw serve    # http://127.0.0.1:8000/planner.html");
+    Ok(())
+}
+
 pub fn js(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let mut argv = vec!["scripts/build_js.sh".to_string()];
     if has_flag(args, "--watch") {

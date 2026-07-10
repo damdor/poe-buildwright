@@ -1,0 +1,16 @@
+min_x	-1200
+max_x	1200
+min_y	-1000
+max_y	400
+orbit_radii	0|82|162|335|493
+group	1	0	0
+group	2	-800	-700
+group	3	800	-700
+class	Alpha	AlphaAsc
+class	Beta	BetaAsc
+asc_internal	AlphaAsc	Alpha1	Alpha
+asc_internal	BetaAsc	Beta1	Beta
+portrait	class	Alpha	FaceAlpha	-300	0	110	110
+portrait	class	Beta	FaceBeta	300	0	110	110
+portrait	asc	AlphaAsc	FxPanelAlpha	-800	-700	190	190
+portrait	asc	BetaAsc	FxPanelBeta	800	-700	190	190

@@ -66,6 +66,9 @@ menu with grouped commands and per-command help:
 ./bw update-native    # one command: mine GGG's CDN → shape datasets →
                       # sprites → catalogues → manifest (~minutes)
 ./bw serve            # the site on http://127.0.0.1:8000
+
+# No PoE2 install? `./bw fixture` renders a committed toy tree with
+# procedural placeholder art — a fully working planner, zero game data.
 ```
 
 Every derived dataset is integrity-manifested (`./bw manifest` writes
