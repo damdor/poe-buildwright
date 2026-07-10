@@ -137,3 +137,6 @@ crates/ooz_sys/vendor/kraken.cpp
 crates/ooz_sys/vendor/bitknit.cpp
 crates/ooz_sys/vendor/lzna.cpp
 crates/ooz_sys/vendor/stdafx.h
+
+# Deploy provenance stamp — written by scripts/deploy.sh per deploy.
+viewer/assets/deploy_meta.json
