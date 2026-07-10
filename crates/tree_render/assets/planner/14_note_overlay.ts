@@ -309,7 +309,14 @@ document.addEventListener('mousedown', (e) => {
     // the build and picking a class — both live here, and the old
     // behaviour hid them behind an unlabeled 10px chevron while the
     // class silently defaulted. Pairs with the #firstrun-hint chip.
-    apply(state.selected.size > 0);
+    //
+    // EXCEPTION to the exception — phones/tablets (coarse pointer)
+    // and narrow viewports: the open panel covers the whole tree and
+    // reads as "stuck" (there's no hover-peek on touch to hint that
+    // it collapses). There the tree is always the first surface; the
+    // toggle tab still opens the panel for class selection.
+    const smallScreen = window.matchMedia('(pointer: coarse), (max-width: 768px)').matches;
+    apply(state.selected.size > 0 || smallScreen);
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       apply(!collapsed());
