@@ -377,6 +377,26 @@ rest as users ask for them.
 
 ---
 
+## Codified schema (source of truth in code)
+
+This prose doc is the *companion*; the machine-readable mapping lives
+in `crates/tree_render/assets/planner/08a_build_schema.ts` as frozen,
+versioned tables:
+
+- **Both** the import validator and the exporter derive from the same
+  table — field names and shapes exist in exactly one place.
+- Every export is checked against the schema revision it targets and
+  **throws on drift** (unknown field, missing required field,
+  deprecated alias, short-form interval), so the exporter cannot
+  silently diverge from what the client reads.
+- Revisions are **append-only**: rev 1 is deep-frozen; if GGG changes
+  the format, add a rev 2 table and repoint `GGG_BUILD_SCHEMA_CURRENT`
+  — rev 1 stays for validating old files. Our extensions are flagged
+  `ours`, legacy aliases `importAlias`, so the official-vs-ours split
+  is explicit in code.
+
+---
+
 ## Post-launch changes (0.5.1 → 0.5.4)
 
 Audited 2026-07-10 against patch notes and the developer docs:

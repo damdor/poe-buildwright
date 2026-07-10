@@ -24,6 +24,7 @@
 
 
 import { ascSel, buildDescInput, buildNameInput, classSel, state , resolveAscName} from "./02_state.ts";
+import { GGG_BUILD_SCHEMA_CURRENT, checkGGGBuild } from "./08a_build_schema.ts";
 import { requestRender } from "./04f_render.ts";
 import { updatePreview } from "./06_pathfind.ts";
 import { applyAsc, refreshAscOptions, updateSelectionUI } from "./07_sidebar.ts";
@@ -34,9 +35,10 @@ export const PLAN_FORMAT: PlanFormat = 'poe2-planner-plan';
 // Keep this in sync with types/poe2.d.ts:PlanVersion (currently 2).
 // The on-disk snapshot's version field is stamped from this constant.
 export const PLAN_VERSION: PlanVersion = 2;
-// Schema rev of the GGG .build format we target. Bump when GGG
-// changes the shape (new field, dropped field, renamed enum).
-export const GGG_BUILD_SCHEMA = 1;
+// Schema rev of the GGG .build format we target. The mapping itself
+// is codified (and frozen per revision) in 08a_build_schema.ts —
+// changing the format means adding a revision there, never editing.
+export const GGG_BUILD_SCHEMA = GGG_BUILD_SCHEMA_CURRENT;
 
 // -------- Internal plan snapshot / restore --------
 
@@ -273,6 +275,16 @@ export function planToGGGBuild(plan: Plan, meta?: SnapshotMeta): GGGBuild {
   if (skills.length   > 0) out.skills   = skills;
   if (items.length    > 0) out.inventory_slots = items;
   if (out.passives) stampAscPivots(out.passives, plan.captures);
+  // The lock: every export is checked against the frozen schema
+  // revision it claims to target (08a_build_schema.ts). A drift —
+  // renamed field, wrong shape, deprecated alias — throws here, at
+  // the first export, instead of silently shipping guides the client
+  // ignores parts of.
+  const drift = checkGGGBuild(out, GGG_BUILD_SCHEMA, 'export');
+  if (drift) {
+    throw new Error('.build export does not conform to schema rev ' +
+      GGG_BUILD_SCHEMA + ': ' + drift);
+  }
   return out;
 }
 
@@ -523,76 +535,12 @@ export function normalizeInterval(li: GGGLevelInterval | undefined): [number, nu
   return [lo, hi];
 }
 
-// Shared shape check for the "(array of uint, or uint)" form.
-function isValidInterval(v: unknown): boolean {
-  if (typeof v === 'number') return true;
-  return Array.isArray(v) && v.length > 0 && v.every((n) => typeof n === 'number');
-}
-
-// Validate a GGG .build object. Strict on TYPES; lenient on
-// UNKNOWN fields (we ignore them so a forward-compatible field GGG
-// adds doesn't break our import). Shapes verified against the
-// official spec (pathofexile.com/developer/docs, "Version 1
-// (Experimental)", checked 2026-07-10 at game patch 0.5.4).
+// Validate an incoming GGG .build object. Derived entirely from the
+// codified schema tables in 08a_build_schema.ts — lenient on unknown
+// fields (GGG can add forward-compatible properties), strict on the
+// types of fields we know.
 export function validateGGGBuild(d: unknown): string | null {
-  if (!d || typeof d !== 'object') return 'not a JSON object';
-  const r = d as Record<string, unknown>;
-  for (const f of ['name', 'author', 'link', 'description', 'ascendancy', 'patch'] as const) {
-    if (r[f] !== undefined && typeof r[f] !== 'string') return f + ' must be string';
-  }
-  if (r.passives !== undefined) {
-    if (!Array.isArray(r.passives)) return 'passives must be an array';
-    for (let i = 0; i < r.passives.length; i++) {
-      const p = r.passives[i] as Record<string, unknown> | string | number | null;
-      if (typeof p === 'string' || typeof p === 'number') continue;
-      if (!p || typeof p !== 'object') return 'passives[' + i + '] must be id-string or object';
-      if (typeof p.id !== 'string' && typeof p.id !== 'number') {
-        return 'passives[' + i + '].id required (string or number)';
-      }
-      if (p.weapon_set !== undefined && p.weapon_set !== 1 && p.weapon_set !== 2) {
-        return 'passives[' + i + '].weapon_set must be 1 or 2';
-      }
-      if (p.level_interval !== undefined && !isValidInterval(p.level_interval)) {
-        return 'passives[' + i + '].level_interval must be [low, high], [low], or a number';
-      }
-    }
-  }
-  if (r.skills !== undefined) {
-    if (!Array.isArray(r.skills)) return 'skills must be an array';
-    for (let i = 0; i < r.skills.length; i++) {
-      const s = r.skills[i] as Record<string, unknown> | null;
-      if (!s || typeof s !== 'object') return 'skills[' + i + '] must be an object';
-      if (typeof s.id !== 'string') return 'skills[' + i + '].id required (string)';
-      if (s.level_interval !== undefined && !isValidInterval(s.level_interval)) {
-        return 'skills[' + i + '].level_interval must be [low, high], [low], or a number';
-      }
-      if (s.support_skills !== undefined) {
-        if (!Array.isArray(s.support_skills)) return 'skills[' + i + '].support_skills must be an array';
-        for (let j = 0; j < s.support_skills.length; j++) {
-          const sup = s.support_skills[j] as Record<string, unknown> | string | null;
-          if (typeof sup === 'string') continue; // bare id form is spec-legal
-          if (!sup || typeof sup !== 'object' || typeof sup.id !== 'string') {
-            return 'skills[' + i + '].support_skills[' + j + '] must be id-string or object with id';
-          }
-        }
-      }
-    }
-  }
-  // Official field is inventory_slots; our pre-audit exports wrote items.
-  for (const field of ['inventory_slots', 'items'] as const) {
-    const arr = r[field];
-    if (arr === undefined) continue;
-    if (!Array.isArray(arr)) return field + ' must be an array';
-    for (let i = 0; i < arr.length; i++) {
-      const it = arr[i] as Record<string, unknown> | null;
-      if (!it || typeof it !== 'object') return field + '[' + i + '] must be an object';
-      if (typeof it.inventory_id !== 'string') return field + '[' + i + '].inventory_id required (string)';
-      if (it.level_interval !== undefined && !isValidInterval(it.level_interval)) {
-        return field + '[' + i + '].level_interval must be [low, high], [low], or a number';
-      }
-    }
-  }
-  return null;
+  return checkGGGBuild(d, GGG_BUILD_SCHEMA, 'import');
 }
 
 // Reverse-lookup: variant id (Str / Dex / Int) → its parent attribute
