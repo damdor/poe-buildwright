@@ -2,8 +2,10 @@
 // === Sidebar: class / asc / selection list ================================
 // ============================================================================
 
+import { defaultClassName } from "./01_image_preload.ts";
 import { MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, allocModeSel, ascSel, classSel, countAsc, countMain, countSelected, countSet1, countSet2, countSets, exportBtn, isMcParent, pickedMcOption, resetBtn, selCount, selList, state, weaponSetCapAt , resolveAscName, ascNodeOverride} from "./02_state.ts";
 import { maybeRebuildStaticForLocks } from "./02b_lock_rebuild.ts";
+import { ensureClassArt } from "./04g_lazy_art.ts";
 import { requestRender } from "./04f_render.ts";
 import { esc } from "./05_hover.ts";
 import { computeDeallocResult, updatePreview } from "./06_pathfind.ts";
@@ -17,6 +19,11 @@ export function refreshAscOptions(): void {
   const klass = classSel.value || null;
   const klassChanged = state.klass !== klass;
   state.klass = klass;
+  // Kick the lazy fetch for this class's art (no-op if resident or if
+  // it's the default class, whose art shipped with the boot preload).
+  // Every class change funnels through here — the sidebar select, plan
+  // import, wizard restore — so this is the single choke point.
+  void ensureClassArt(klass);
   state.asc = null;
   state.ascVariant = null;
   ascSel.innerHTML = '';
@@ -291,9 +298,11 @@ export function applyAsc(): void {
 
 // Default class on load = alphabetically first.
 export function initDefaultClass(): void {
-  if (!TREE.classes.length) return;
-  const first = [...TREE.classes].sort((a, b) => a.name.localeCompare(b.name))[0];
-  if (first) { classSel.value = first.name; refreshAscOptions(); }
+  // defaultClassName is also what 01_image_preload builds the eager
+  // sprite set from — one rule, so the boot-visible class is always
+  // the one whose art loaded eagerly.
+  const first = defaultClassName();
+  if (first) { classSel.value = first; refreshAscOptions(); }
 }
 
 export function updateSelectionUI(): void {

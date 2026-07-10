@@ -6,12 +6,13 @@
 // the time `resize()` and friends fire.
 
 import { collectSpriteUrls, preload } from "./01_image_preload.ts";
-import { loadingEl } from "./02_state.ts";
+import { loadingEl, state } from "./02_state.ts";
 import { fitToView, resize } from "./03_viewport.ts";
 import { uploadAllTextures } from "./04a_webgl_setup.ts";
 import { buildStaticGeometry } from "./04d_static_geom.ts";
 import { initSearchGlowTexture } from "./04e_overlay.ts";
 import { requestRender } from "./04f_render.ts";
+import { ensureClassArt, prefetchRemainingClasses } from "./04g_lazy_art.ts";
 import { initDefaultClass } from "./07_sidebar.ts";
 import { syncFromWizardStore } from "./11_wizard_sync.ts";
 
@@ -44,4 +45,12 @@ preload(collectSpriteUrls()).then(() => {
   // 13_level_slider.ts routes to currentCharacterLevel (working
   // capture) or active.levelRange[1] (frozen snapshot).
   window.dispatchEvent(new CustomEvent("poe2-capture-change", { detail: { reason: "boot" } }));
+  // The wizard restore above may have switched to a class whose art
+  // is deferred (only the default class ships with the boot preload)
+  // — fetch it now. refreshAscOptions also ensures on every change;
+  // this covers restore paths that set state.klass directly.
+  void ensureClassArt(state.klass);
+  // Warm the remaining classes once the first paint is done and the
+  // network is quiet, so a later class switch finds its art resident.
+  setTimeout(prefetchRemainingClasses, 1500);
 });

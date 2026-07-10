@@ -21,6 +21,7 @@ import "./04c_edge_tessellate.ts";
 import "./04d_static_geom.ts";
 import "./04e_overlay.ts";
 import "./04f_render.ts";
+import "./04g_lazy_art.ts";
 import "./05_hover.ts";
 import "./06_pathfind.ts";
 import "./07_sidebar.ts";
