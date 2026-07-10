@@ -1,3 +1,7 @@
 # Bulk reformatting commits to skip in git blame (git config blame.ignoreRevsFile .git-blame-ignore-revs).
 # style: cargo fmt --all (adopt rustfmt repo-wide)
 03a2c745fba62cc978afc17e113d07c94a59ae32
+
+# 2026-07-11 planner module rename (numeric prefixes -> semantic names);
+# pure rename verified by byte-identical bundle.
+b9f0e7cf5f7fa9e3b95d54a65786763a6a71bfad
