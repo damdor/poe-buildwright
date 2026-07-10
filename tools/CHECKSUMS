@@ -1,11 +1,25 @@
 # Pinned tool versions + SHA-512 integrity hashes for tools/setup.sh.
 #
-# Format: <name> <version> <url> <sha512-base64>
+# Format: <name> <platform> <version> <url> <sha512-base64>
+# Platforms: darwin-arm64 | darwin-x64 | linux-x64 | linux-arm64
+# setup.sh installs only the lines matching the machine it runs on.
 #
-# Updating: bump the version + URL, run `tools/setup.sh --verify-only`
-# to fetch the upstream integrity hash, then commit the new value here.
-# CI / fresh checkouts MUST get a byte-identical binary or setup.sh
-# refuses to install.
+# Updating: bump version + URLs for ALL platforms and re-pin each
+# hash as one reviewable commit:
+#   esbuild — the npm registry's `dist.integrity` field
+#             (curl https://registry.npmjs.org/@esbuild/<plat>/<ver>)
+#   deno    — download the release zip, cross-check the upstream
+#             .sha256sum asset, then
+#             `openssl dgst -sha512 -binary <zip> | openssl base64 -A`
+# A tarball that doesn't match is rejected; fresh checkouts MUST get
+# byte-identical binaries or setup.sh refuses to install.
 
-esbuild 0.28.0 https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.0.tgz us0dSb9iFxIi8srnpl931Nvs65it/Jd2a2K3qs7fz2WfGPHqzfzZTfec7oxZJRNPXPnNYZtanmRc4AL/JwVzHQ==
-typescript 6.0.3 https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==
+esbuild darwin-arm64 0.28.0 https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.28.0.tgz 0T+A9WZm+bZ84nZBtk1ckYsOvyA3x7e2Acj1KdVfV4/2tdG4fzUp91YHx+GArWLtwqp77pBXVCPn2We7Letr0Q==
+esbuild darwin-x64 0.28.0 https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.28.0.tgz fyzLm/DLDl/84OCfp2f/XQ4flmORsjU7VKt8HLjvIXChJoFFOIL6pLJPH4Yhd1n1gGFF9mPwtlN5Wf82DZs+LQ==
+esbuild linux-x64 0.28.0 https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.0.tgz us0dSb9iFxIi8srnpl931Nvs65it/Jd2a2K3qs7fz2WfGPHqzfzZTfec7oxZJRNPXPnNYZtanmRc4AL/JwVzHQ==
+esbuild linux-arm64 0.28.0 https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.28.0.tgz RVyzfb3FWsGA55n6WY0MEIEPURL1FcbhFE6BffZEMEekfCzCIMtB5yyDcFnVbTnwk+CLAgTujmV/Lgvih56W+A==
+
+deno darwin-arm64 2.9.2 https://github.com/denoland/deno/releases/download/v2.9.2/deno-aarch64-apple-darwin.zip WFGmT78slvHl6VO9iSNcdwUqksqznsQODSr//2bQaGQYqT8hOtR5GgqVRklpkgWUq9JFxAudqSEmOZ7lQn9EOw==
+deno darwin-x64 2.9.2 https://github.com/denoland/deno/releases/download/v2.9.2/deno-x86_64-apple-darwin.zip JNuQiz03iEF7jMtVFgRdqsfVRh8IdnqrnkhEY0z4n2raXMdwiV41B9/FiBVXnjTwv0NLNB+7lySiEjkmzehZPQ==
+deno linux-x64 2.9.2 https://github.com/denoland/deno/releases/download/v2.9.2/deno-x86_64-unknown-linux-gnu.zip vbzLQqyljvh4CdT7hrmIH/DKBlUsdeKeshEU/4Tm4xWQTb7ec2JEeklMHwyRYXrG7PieQJzgYE4Jkam1GaQvbQ==
+deno linux-arm64 2.9.2 https://github.com/denoland/deno/releases/download/v2.9.2/deno-aarch64-unknown-linux-gnu.zip 3IDM1binkY0q30Cst82FBUPME+q8Nj8NLs6Wqk0uIRzIBgoaK2vF6SyQX/UrygPaNs+pitjsYnRSh1guyeCm9g==

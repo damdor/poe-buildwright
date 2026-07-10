@@ -3750,9 +3750,17 @@ const TS_ENTRIES: &[&str] = &[
 pub fn typecheck(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
     // `deno check` embeds the real TS compiler — full strict checking,
     // no node, no package manager. deno.json holds the strict config.
+    // Prefer the pinned binary tools/setup.sh installs; fall back to
+    // a system deno for anyone who already has one on PATH.
+    let pinned = ctx.root.join("tools/bin/deno");
+    let program = if pinned.is_file() {
+        pinned.to_string_lossy().into_owned()
+    } else {
+        "deno".to_string()
+    };
     let mut argv = vec!["check".to_string()];
     argv.extend(TS_ENTRIES.iter().map(|s| s.to_string()));
-    sh(ctx, "typecheck (deno, strict)", "deno", &argv)
+    sh(ctx, "typecheck (deno, strict)", &program, &argv)
 }
 
 // ---------------------------------------------------------------------
@@ -3922,8 +3930,8 @@ pub fn doctor(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
     );
     probe_line(
         "deno (typecheck)",
-        ui::probe("deno", &["--version"]),
-        "native tsc, no node — install deno",
+        ctx.root.join("tools/bin/deno").is_file() || ui::probe("deno", &["--version"]),
+        "native tsc, no node — run tools/setup.sh",
     );
 
     println!("\n{}", s.bold("first-party mining"));

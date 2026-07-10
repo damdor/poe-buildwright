@@ -50,8 +50,10 @@ docs/            design docs + data contracts + dev diary
 
 ## Quickstart
 
-Prereqs: Rust (stable), [Deno](https://deno.com) (typecheck +
-esbuild), and optionally Chromium (headless screenshot checks).
+Prereqs: Rust (stable) and optionally Chromium (headless screenshot
+checks). The JS toolchain (esbuild + Deno, pinned and hash-verified,
+any of macOS/Linux × arm64/x64) installs itself into `tools/bin/` via
+`tools/setup.sh` — no npm, no node.
 
 Everything runs through one discoverable ops CLI — `./bw` (a thin
 wrapper around `cargo run -p buildwright`). Run it bare for the full

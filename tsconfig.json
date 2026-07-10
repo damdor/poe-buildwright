@@ -1,8 +1,9 @@
 // TypeScript config for the planner + wizard frontends.
 //
 // esbuild does the actual compile + IIFE bundle (scripts/build_js.sh);
-// tsc here is invoked ONLY in --noEmit mode (scripts/check_types.sh)
-// to surface type errors. Keep both honest.
+// type checking runs through `./bw typecheck` (Deno's embedded tsc,
+// configured by deno.json). This file keeps editors and esbuild
+// aligned with the same strictness. Keep all three honest.
 {
   "compilerOptions": {
     "target": "es2022",

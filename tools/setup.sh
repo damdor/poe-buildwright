@@ -1,34 +1,27 @@
 #!/usr/bin/env bash
-# Idempotent installer for the JS-build toolchain.
+# Idempotent installer for the JS-build toolchain: esbuild + Deno,
+# platform-detected, pinned, integrity-verified.
 #
-# Fetches two pinned, integrity-verified tarballs from the npm registry
-# (used here strictly as a CDN — no `npm` CLI, no `package.json`, no
-# `node_modules`, no postinstall scripts ever run) and extracts the
-# pieces we need into tools/. Re-running is a no-op if both binaries
-# already match the pinned SHA-512.
+# Fetches per-platform binaries from their canonical sources and drops
+# them into tools/bin/. Re-running is a no-op once installed. Every
+# artifact must match the SHA-512 pinned in tools/CHECKSUMS or the
+# install is refused.
 #
-# Why npm.org and not GitHub releases?
-#   • esbuild publishes its prebuilt binaries ONLY to npm (Evan Wallace
-#     has explained this in upstream issues — too much work to mirror).
-#     Source builds need a Go toolchain.
-#   • TypeScript publishes the pre-bundled .tgz to npm; GitHub releases
-#     are source-only and TypeScript bootstraps itself (it builds with
-#     TypeScript), so building from source is impractical.
-#
-# What we're actually trusting:
-#   • Evan Wallace (esbuild) signed the .tgz.
-#   • Microsoft (TypeScript) signed the .tgz.
-#   • The pinned SHA-512 in tools/CHECKSUMS — a tarball that doesn't
-#     match is rejected. Updating CHECKSUMS is a deliberate, reviewable
-#     commit.
+# Sources:
+#   • esbuild — the npm registry, used strictly as a CDN (no `npm`
+#     CLI, no package.json, no node_modules, no postinstall scripts).
+#     Evan Wallace publishes prebuilt binaries only there; source
+#     builds would need a Go toolchain.
+#   • Deno — GitHub release zips (single static binary embedding tsc;
+#     the typecheck needs no node and no package manager).
 #
 # What we explicitly do NOT do:
 #   • Run `npm install`. No transitive deps fetched. No lockfile.
-#   • Execute any script from the tarballs (no postinstall hooks).
+#   • Execute anything from the archives (no postinstall hooks).
 #
 # Usage:
-#   tools/setup.sh              # install if missing/mismatched
-#   tools/setup.sh --verify     # check installed binaries match CHECKSUMS
+#   tools/setup.sh              # install if missing
+#   tools/setup.sh --verify     # check installed binaries respond
 #   tools/setup.sh --reinstall  # nuke + reinstall regardless
 
 set -euo pipefail
@@ -36,7 +29,6 @@ set -euo pipefail
 cd "$(dirname "$0")"
 CHECKSUMS_FILE="$PWD/CHECKSUMS"
 BIN_DIR="$PWD/bin"
-TS_DIR="$PWD/typescript"
 mkdir -p "$BIN_DIR"
 
 MODE="install"
@@ -47,89 +39,99 @@ case "${1:-}" in
   *) echo "unknown arg: $1" >&2; exit 2 ;;
 esac
 
-# sha512_base64 <file> — emit the file's SHA-512 in the same base64
-# encoding npm uses for the `integrity` field (the "sha512-..." prefix
-# is stripped from the CHECKSUMS file, just the base64 body here).
+# ---- platform detection ----------------------------------------------------
+case "$(uname -s)" in
+  Darwin) os="darwin" ;;
+  Linux)  os="linux" ;;
+  *) echo "ERROR: unsupported OS: $(uname -s)" >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+  arm64|aarch64) arch="arm64" ;;
+  x86_64|amd64)  arch="x64" ;;
+  *) echo "ERROR: unsupported arch: $(uname -m)" >&2; exit 1 ;;
+esac
+PLATFORM="$os-$arch"
+
+# sha512_base64 <file> — SHA-512 in the base64 encoding npm uses for
+# `integrity` (the "sha512-" prefix stripped). openssl's own base64
+# is used because `base64 -w` isn't portable to macOS.
 sha512_base64() {
-  openssl dgst -sha512 -binary "$1" | base64 -w 0
+  openssl dgst -sha512 -binary "$1" | openssl base64 -A
 }
 
 # install_one <name> <version> <url> <expected_sha512_b64>
 install_one() {
   local name=$1 version=$2 url=$3 want=$4
-  local tarball
-  tarball=$(mktemp)
-  echo "==> fetching $name@$version"
-  curl --fail --silent --show-error --location --output "$tarball" "$url"
+  local archive
+  archive=$(mktemp)
+  echo "==> fetching $name@$version ($PLATFORM)"
+  curl --fail --silent --show-error --location --output "$archive" "$url"
   local got
-  got=$(sha512_base64 "$tarball")
+  got=$(sha512_base64 "$archive")
   if [ "$got" != "$want" ]; then
     echo "ERROR: $name@$version integrity check failed" >&2
     echo "  expected: $want" >&2
     echo "  got:      $got" >&2
-    rm -f "$tarball"
+    rm -f "$archive"
     exit 1
   fi
   echo "    integrity OK"
 
   case "$name" in
     esbuild)
-      # The @esbuild/linux-x64 tarball lays out as package/bin/esbuild.
+      # The @esbuild/<platform> tarball lays out as package/bin/esbuild.
       # We want only that one binary, not the surrounding scaffolding.
-      tar -xzf "$tarball" -C /tmp --strip-components=2 package/bin/esbuild
-      mv /tmp/esbuild "$BIN_DIR/esbuild"
+      local tmpdir
+      tmpdir=$(mktemp -d)
+      tar -xzf "$archive" -C "$tmpdir" --strip-components=2 package/bin/esbuild
+      mv "$tmpdir/esbuild" "$BIN_DIR/esbuild"
       chmod +x "$BIN_DIR/esbuild"
+      rm -rf "$tmpdir"
       echo "    installed → tools/bin/esbuild ($($BIN_DIR/esbuild --version))"
       ;;
-    typescript)
-      # The typescript tarball is much bigger and has a more complex
-      # layout (lib/, bin/, etc.). Strip the top-level `package/` prefix
-      # and drop the whole thing under tools/typescript/. Only `lib/tsc.js`
-      # is the actual entry point we invoke; the rest is supporting code.
-      rm -rf "$TS_DIR"
-      mkdir -p "$TS_DIR"
-      tar -xzf "$tarball" -C "$TS_DIR" --strip-components=1
-      # We don't run the bin/ shell shims — invoke lib/tsc.js with node directly.
-      # Drop bin/ to make that explicit and shrink the install footprint.
-      rm -rf "$TS_DIR/bin"
-      echo "    installed → tools/typescript/ ($(node "$TS_DIR/lib/tsc.js" --version))"
+    deno)
+      # The release zip contains the single `deno` binary.
+      local tmpdir
+      tmpdir=$(mktemp -d)
+      unzip -q -o "$archive" -d "$tmpdir" deno
+      mv "$tmpdir/deno" "$BIN_DIR/deno"
+      chmod +x "$BIN_DIR/deno"
+      rm -rf "$tmpdir"
+      echo "    installed → tools/bin/deno ($($BIN_DIR/deno --version | head -1))"
+      ;;
+    *)
+      echo "ERROR: unknown tool '$name' in CHECKSUMS" >&2
+      rm -f "$archive"
+      exit 1
       ;;
   esac
-  rm -f "$tarball"
+  rm -f "$archive"
 }
 
-# verify_one <name> <expected_sha512_b64_of_tarball>
-# Note: we can't recover the tarball SHA from the installed files (we
-# stripped scaffolding), so verify-mode just checks the binary exists +
-# runs --version. Use --reinstall to re-verify against the network.
+# verify_one <name>
+# Note: we can't recover the archive SHA from the installed binary
+# (scaffolding was stripped), so verify-mode checks the binary exists
+# and runs --version. Use --reinstall to re-verify against the network.
 verify_one() {
   local name=$1
-  case "$name" in
-    esbuild)
-      if [ ! -x "$BIN_DIR/esbuild" ]; then
-        echo "MISSING: tools/bin/esbuild" >&2
-        return 1
-      fi
-      echo "  esbuild: $($BIN_DIR/esbuild --version)"
-      ;;
-    typescript)
-      if [ ! -f "$TS_DIR/lib/tsc.js" ]; then
-        echo "MISSING: tools/typescript/lib/tsc.js" >&2
-        return 1
-      fi
-      echo "  typescript: $(node "$TS_DIR/lib/tsc.js" --version)"
-      ;;
-  esac
+  if [ ! -x "$BIN_DIR/$name" ]; then
+    echo "MISSING: tools/bin/$name" >&2
+    return 1
+  fi
+  echo "  $name: $($BIN_DIR/$name --version | head -1)"
 }
 
-# Read CHECKSUMS and act on each line.
+# Read CHECKSUMS and act on the lines for this platform.
+matched=0
 while IFS= read -r line; do
   case "$line" in
     ""|"#"*) continue ;;
   esac
   # shellcheck disable=SC2086
   set -- $line
-  name=$1; version=$2; url=$3; integrity=$4
+  name=$1; platform=$2; version=$3; url=$4; integrity=$5
+  [ "$platform" = "$PLATFORM" ] || continue
+  matched=$((matched + 1))
   case "$MODE" in
     verify)
       verify_one "$name"
@@ -138,17 +140,21 @@ while IFS= read -r line; do
       install_one "$name" "$version" "$url" "$integrity"
       ;;
     install)
-      # Already installed? Skip.
-      case "$name" in
-        esbuild)    [ -x "$BIN_DIR/esbuild" ] && { echo "==> esbuild already installed"; continue; } ;;
-        typescript) [ -f "$TS_DIR/lib/tsc.js" ] && { echo "==> typescript already installed"; continue; } ;;
-      esac
-      install_one "$name" "$version" "$url" "$integrity"
+      if [ -x "$BIN_DIR/$name" ]; then
+        echo "==> $name already installed"
+      else
+        install_one "$name" "$version" "$url" "$integrity"
+      fi
       ;;
   esac
 done < "$CHECKSUMS_FILE"
 
+if [ "$matched" -eq 0 ]; then
+  echo "ERROR: no CHECKSUMS entries for platform $PLATFORM" >&2
+  exit 1
+fi
+
 echo ""
-echo "Toolchain ready."
-echo "  • esbuild:    $BIN_DIR/esbuild"
-echo "  • typescript: node $TS_DIR/lib/tsc.js"
+echo "Toolchain ready ($PLATFORM)."
+echo "  • esbuild: $BIN_DIR/esbuild"
+echo "  • deno:    $BIN_DIR/deno"
