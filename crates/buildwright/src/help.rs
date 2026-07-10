@@ -596,11 +596,25 @@ node and no package manager (esbuild strips types without checking
 them). Strict config in deno.json.
 
 USAGE
-    buildwright typecheck
-
-NOTE
-    Wraps scripts/check_types.sh (vendored tsc).",
+    buildwright typecheck",
         run: crate::handlers::typecheck,
+    },
+    Command {
+        name: "test-js",
+        group: Group::Build,
+        badge: Badge::Deno,
+        summary: "Run the TypeScript unit tests (deno test, no node)",
+        help: "\
+buildwright test-js — run the TS unit tests
+
+Runs `deno test` over the planner + viewer TypeScript. Tests live as
+*_test.ts next to the modules they cover and are limited to pure
+logic (the .build schema walker, sprite tier partitioning) — anything
+needing DOM or WebGL is exercised in the browser instead.
+
+USAGE
+    buildwright test-js",
+        run: crate::handlers::test_js,
     },
     // ---- RUN & SHIP --------------------------------------------------
     Command {

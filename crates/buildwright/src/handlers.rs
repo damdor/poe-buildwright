@@ -3747,20 +3747,38 @@ const TS_ENTRIES: &[&str] = &[
     "viewer/assets/share_page.ts",
 ];
 
-pub fn typecheck(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
-    // `deno check` embeds the real TS compiler — full strict checking,
-    // no node, no package manager. deno.json holds the strict config.
-    // Prefer the pinned binary tools/setup.sh installs; fall back to
-    // a system deno for anyone who already has one on PATH.
+/// Prefer the pinned deno that tools/setup.sh installs; fall back to
+/// a system deno for anyone who already has one on PATH.
+fn deno_program(ctx: &Ctx) -> String {
     let pinned = ctx.root.join("tools/bin/deno");
-    let program = if pinned.is_file() {
+    if pinned.is_file() {
         pinned.to_string_lossy().into_owned()
     } else {
         "deno".to_string()
-    };
+    }
+}
+
+pub fn typecheck(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
+    // `deno check` embeds the real TS compiler — full strict checking,
+    // no node, no package manager. deno.json holds the strict config.
+    let program = deno_program(ctx);
     let mut argv = vec!["check".to_string()];
     argv.extend(TS_ENTRIES.iter().map(|s| s.to_string()));
     sh(ctx, "typecheck (deno, strict)", &program, &argv)
+}
+
+pub fn test_js(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
+    // `deno test` discovers *_test.ts next to the modules they test,
+    // typechecks them strictly, and runs them — no node, no test
+    // framework dependency. Pure-logic modules only (schema walker,
+    // sprite tiering); anything needing DOM/WebGL stays out.
+    let program = deno_program(ctx);
+    let argv = vec![
+        "test".to_string(),
+        "crates/tree_render/assets/planner/".to_string(),
+        "viewer/assets/".to_string(),
+    ];
+    sh(ctx, "test-js (deno)", &program, &argv)
 }
 
 // ---------------------------------------------------------------------

@@ -35,8 +35,8 @@ No copyright assignment; you keep ownership of your work.
   fastest.
 - **No CI.** There are deliberately no GitHub Actions here — verify
   locally before opening a PR: `cargo test --release`,
-  `./bw typecheck`, and `./bw verify --patch <p>` if you touched the
-  pipeline. State in the PR what you ran.
+  `./bw typecheck`, `./bw test-js`, and `./bw verify --patch <p>` if
+  you touched the pipeline. State in the PR what you ran.
 - **On AI-assisted contributions:** using an AI to help write a patch
   is fine — this project is agent-first, after all. What gets closed
   without review is *unverified volume*: auto-generated issues, bulk
@@ -77,6 +77,7 @@ All operations go through the `./bw` CLI (run it bare for the menu):
 
 # after editing planner TS/CSS:
 ./bw typecheck       # deno strict
+./bw test-js         # deno test — pure-logic units (*_test.ts)
 ./bw js              # esbuild bundles
 cargo build --release -p tree_render   # planner.css is include_str! — rebuild on CSS edits
 ./bw render --tree-dir data/parsed/0_5_native/tree
