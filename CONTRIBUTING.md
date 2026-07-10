@@ -72,6 +72,12 @@ usually be declined.
 All operations go through the `./bw` CLI (run it bare for the menu):
 
 ```sh
+# No PoE2 install? Start here — a committed toy tree + procedural
+# placeholder art (zero game content) gives you a working planner:
+./bw fixture         # sprites + planner.html from data/fixture/tree
+./bw js && ./bw serve
+
+# With the game installed, the real dataset:
 ./bw update-native   # once: mine + shape + bake everything
 ./bw serve           # http://127.0.0.1:8000
 

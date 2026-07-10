@@ -565,6 +565,24 @@ DEFAULTS
         run: crate::handlers::render,
     },
     Command {
+        name: "fixture",
+        group: Group::Build,
+        badge: Badge::Native,
+        summary: "Runnable viewer from the committed toy tree — zero game data",
+        help: "\
+buildwright fixture — dev viewer without a PoE2 install
+
+Generates original procedural placeholder sprites (discs/rings; no
+GGG content) into viewer/assets/sprites/ and renders planner.html
+from the committed toy tree at data/fixture/tree/. Follow with
+`./bw js` and `./bw serve` for a fully working planner — real tree
+shape and art come from `update-native` when you have the game.
+
+USAGE
+    buildwright fixture",
+        run: crate::handlers::fixture,
+    },
+    Command {
         name: "js",
         group: Group::Build,
         badge: Badge::Esbuild,

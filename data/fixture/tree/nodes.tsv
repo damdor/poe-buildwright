@@ -1,0 +1,16 @@
+id	x	y	kind	class	ascendancy	name	stats	group	orbit	orbit_index	icon	node_overlay	active_effect	node_options	connection_art	unlock_constraint
+100	-300	0	class_start	Alpha		Alpha Start		1	0	0		FxFrameClassStart||FxFrameClassStart				
+200	300	0	class_start	Beta		Beta Start		1	0	0		FxFrameClassStart||FxFrameClassStart				
+101	-200	0	small			Fixture Vigor	+10 to Fixture Life	1	0	0	FxIconSmall	FxFrameSmallOn||FxFrameSmallOff				
+102	-120	-80	notable			Fixture Might	+25% Fixture Damage	1	0	0	FxIconNotable	FxFrameNotableOn||FxFrameNotableOff				
+103	-120	80	small			Fixture Grace	+10 Fixture Evasion	1	0	0	FxIconSmall	FxFrameSmallOn||FxFrameSmallOff				
+104	0	-180	keystone			Fixture Resolve	Fixture hits cannot be lucky	1	0	0	FxIconKeystone	FxFrameKeystoneOn||FxFrameKeystoneOff				
+105	0	120	small			Fixture Speed	+3% Fixture Speed	1	0	0	FxIconSmall	FxFrameSmallOn||FxFrameSmallOff				
+106	0	-320	mastery			Fixture Mastery		1	0	0	FxIconNotable		FxMasteryGlow			
+201	200	0	small			Fixture Focus	+10 Fixture Mana	1	0	0	FxIconSmall	FxFrameSmallOn||FxFrameSmallOff				
+202	120	-80	notable			Fixture Insight	+20% Fixture Spell Damage	1	0	0	FxIconNotable	FxFrameNotableOn||FxFrameNotableOff				
+900	-800	-700	asc_start		AlphaAsc	AlphaAsc		2	0	0						
+901	-880	-780	asc_small		AlphaAsc	Fixture Zeal	+8% Fixture Attack Speed	2	0	0	FxIconAscA	FxFrameAscOn||FxFrameAscOff				
+902	-720	-780	asc_notable		AlphaAsc	Fixture Fury	+40% Fixture Damage	2	0	0	FxIconAscA	FxFrameNotableOn||FxFrameNotableOff				
+910	800	-700	asc_start		BetaAsc	BetaAsc		3	0	0						
+911	880	-780	asc_small		BetaAsc	Fixture Calm	+8% Fixture Cast Speed	3	0	0	FxIconAscB	FxFrameAscOn||FxFrameAscOff				
