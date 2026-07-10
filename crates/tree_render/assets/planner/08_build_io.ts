@@ -24,19 +24,21 @@
 
 
 import { ascSel, buildDescInput, buildNameInput, classSel, state , resolveAscName} from "./02_state.ts";
+import { GGG_BUILD_SCHEMA_CURRENT, checkGGGBuild } from "./08a_build_schema.ts";
 import { requestRender } from "./04f_render.ts";
 import { updatePreview } from "./06_pathfind.ts";
 import { applyAsc, refreshAscOptions, updateSelectionUI } from "./07_sidebar.ts";
 import { flushPersistNow, hydrateFromActiveCapture } from "./11_wizard_sync.ts";
-import type { Allocation, Capture, GGGBuild, GGGItem, GGGPassive, GGGPassiveEntry, GGGSkill, GGGSupport, Item, Plan, PlanFormat, PlanVersion, Skill, SupportGem } from "../../../../types/poe2.d.ts";
+import type { Allocation, Capture, GGGBuild, GGGItem, GGGLevelInterval, GGGPassive, GGGPassiveEntry, GGGSkill, GGGSupport, Item, Plan, PlanFormat, PlanVersion, Skill, SupportGem } from "../../../../types/poe2.d.ts";
 
 export const PLAN_FORMAT: PlanFormat = 'poe2-planner-plan';
 // Keep this in sync with types/poe2.d.ts:PlanVersion (currently 2).
 // The on-disk snapshot's version field is stamped from this constant.
 export const PLAN_VERSION: PlanVersion = 2;
-// Schema rev of the GGG .build format we target. Bump when GGG
-// changes the shape (new field, dropped field, renamed enum).
-export const GGG_BUILD_SCHEMA = 1;
+// Schema rev of the GGG .build format we target. The mapping itself
+// is codified (and frozen per revision) in 08a_build_schema.ts —
+// changing the format means adding a revision there, never editing.
+export const GGG_BUILD_SCHEMA = GGG_BUILD_SCHEMA_CURRENT;
 
 // -------- Internal plan snapshot / restore --------
 
@@ -252,7 +254,8 @@ export function planToGGGBuild(plan: Plan, meta?: SnapshotMeta): GGGBuild {
   const out: GGGBuild = {};
   const name = (meta && meta.name) || plan.name;
   const desc = (meta && meta.description) || plan.description;
-  if (name) out.name = name;
+  // `name` is the one field GGG's schema marks required — always emit.
+  out.name = name || 'Untitled Build';
   if (desc) out.description = desc;
   // Stamp the game patch this build was authored against. Lets the
   // in-game planner / any third-party tool know which tree shape
@@ -270,8 +273,18 @@ export function planToGGGBuild(plan: Plan, meta?: SnapshotMeta): GGGBuild {
   const items    = collapseItems(plan.captures);
   if (passives.length > 0) out.passives = passives;
   if (skills.length   > 0) out.skills   = skills;
-  if (items.length    > 0) out.items    = items;
+  if (items.length    > 0) out.inventory_slots = items;
   if (out.passives) stampAscPivots(out.passives, plan.captures);
+  // The lock: every export is checked against the frozen schema
+  // revision it claims to target (08a_build_schema.ts). A drift —
+  // renamed field, wrong shape, deprecated alias — throws here, at
+  // the first export, instead of silently shipping guides the client
+  // ignores parts of.
+  const drift = checkGGGBuild(out, GGG_BUILD_SCHEMA, 'export');
+  if (drift) {
+    throw new Error('.build export does not conform to schema rev ' +
+      GGG_BUILD_SCHEMA + ': ' + drift);
+  }
   return out;
 }
 
@@ -310,9 +323,11 @@ export function stampAscPivots(passives: GGGPassive[], captures: Capture[]): voi
     const lastA  = ascA[ascA.length - 1]!;
     const firstB = ascB[0]!;
     const lvl    = capB.levelRange[0];
-    const outgoingProse = '<bold>Respec at Lv ' + lvl + ':</bold> refund ' +
+    // <b> is the official bold tag (GGG markup uses single-letter
+    // font tags: <r> <b> <i> <u> <s> <m> <l> — see the format doc).
+    const outgoingProse = '<b>Respec at Lv ' + lvl + ':</b> refund ' +
       A + ' ascendancy and pick ' + B + ' (costs ascendancy refund orbs).';
-    const incomingProse = '<bold>Picked at Lv ' + lvl + '</bold> after refunding ' +
+    const incomingProse = '<b>Picked at Lv ' + lvl + '</b> after refunding ' +
       A + ' ascendancy.';
     annotateById(passives, String(lastA.id),  outgoingProse);
     annotateById(passives, String(firstB.id), incomingProse);
@@ -494,8 +509,8 @@ export function collapseItems(captures: Capture[]): GGGItem[] {
     (e, range) => {
       const out: GGGItem = {
         inventory_id: e.inventoryId || '',
-        x: e.slotX || 0,
-        y: e.slotY || 0,
+        slot_x: e.slotX || 0,
+        slot_y: e.slotY || 0,
       };
       if (e.uniqueName) out.unique_name = e.uniqueName;
       if (range) out.level_interval = range;
@@ -505,38 +520,27 @@ export function collapseItems(captures: Capture[]): GGGItem[] {
   );
 }
 
-// Validate a GGG .build object. Strict on TYPES; lenient on
-// UNKNOWN fields (we ignore them so a forward-compatible field GGG
-// adds doesn't break our import).
+// GGG's schema writes level applicability as "(array of uint, or
+// uint)": an inclusive [lo, hi] pair, a shorter array, or a bare
+// number. The short forms have no documented upper bound — we read
+// them as "from lo onward". Returns undefined for absent/garbage
+// values (garbage is caught separately by validateGGGBuild).
+export function normalizeInterval(li: GGGLevelInterval | undefined): [number, number] | undefined {
+  if (li === undefined) return undefined;
+  if (typeof li === 'number') return [li, 100];
+  if (!Array.isArray(li) || li.length === 0) return undefined;
+  const lo = li[0];
+  if (typeof lo !== 'number') return undefined;
+  const hi = li.length > 1 && typeof li[1] === 'number' ? li[1] : 100;
+  return [lo, hi];
+}
+
+// Validate an incoming GGG .build object. Derived entirely from the
+// codified schema tables in 08a_build_schema.ts — lenient on unknown
+// fields (GGG can add forward-compatible properties), strict on the
+// types of fields we know.
 export function validateGGGBuild(d: unknown): string | null {
-  if (!d || typeof d !== 'object') return 'not a JSON object';
-  const r = d as Record<string, unknown>;
-  if (r.name !== undefined && typeof r.name !== 'string') return 'name must be string';
-  if (r.description !== undefined && typeof r.description !== 'string') return 'description must be string';
-  if (r.ascendancy !== undefined && typeof r.ascendancy !== 'string') return 'ascendancy must be string';
-  if (r.passives !== undefined) {
-    if (!Array.isArray(r.passives)) return 'passives must be an array';
-    for (let i = 0; i < r.passives.length; i++) {
-      const p = r.passives[i] as Record<string, unknown> | string | number | null;
-      if (typeof p === 'string' || typeof p === 'number') continue;
-      if (!p || typeof p !== 'object') return 'passives[' + i + '] must be id-string or object';
-      if (typeof p.id !== 'string' && typeof p.id !== 'number') {
-        return 'passives[' + i + '].id required (string or number)';
-      }
-      if (p.weapon_set !== undefined && p.weapon_set !== 1 && p.weapon_set !== 2) {
-        return 'passives[' + i + '].weapon_set must be 1 or 2';
-      }
-      if (p.level_interval !== undefined) {
-        const li = p.level_interval as unknown[];
-        if (!Array.isArray(li) || li.length !== 2
-            || typeof li[0] !== 'number' || typeof li[1] !== 'number') {
-          return 'passives[' + i + '].level_interval must be [low, high] numbers';
-        }
-      }
-    }
-  }
-  // skills / items / support_skills — accept but don't process yet.
-  return null;
+  return checkGGGBuild(d, GGG_BUILD_SCHEMA, 'import');
 }
 
 // Reverse-lookup: variant id (Str / Dex / Int) → its parent attribute
@@ -592,7 +596,8 @@ export function gggBuildToPlan(b: GGGBuild): Plan {
       e.attrVariantId = idStr;
     }
     if (!isBare) {
-      if (p.level_interval) e.level_interval = p.level_interval;
+      const li = normalizeInterval(p.level_interval);
+      if (li) e.level_interval = li;
       if (p.additional_text) e.note = p.additional_text;
       // For asc + weapon-set entries, the level_interval[0] is the
       // authoring level the export stamped on them. Restore it as
@@ -601,8 +606,8 @@ export function gggBuildToPlan(b: GGGBuild): Plan {
       // this — their level_interval[0] is just the capture's lo.
       const node = TREE.nodes[e.id];
       const isAscOrSet = (node && node.a) || e.set === 'set1' || e.set === 'set2';
-      if (isAscOrSet && p.level_interval) {
-        e.level = p.level_interval[0];
+      if (isAscOrSet && li) {
+        e.level = li[0];
       }
     }
     return e;
@@ -615,6 +620,8 @@ export function gggBuildToPlan(b: GGGBuild): Plan {
       quality: typeof s.quality === 'number' ? s.quality : 0,
       set:   s.weapon_set === 1 ? 'set1' : s.weapon_set === 2 ? 'set2' : 'main',
       supports: (s.support_skills || []).map((sup) => {
+        // GGG allows a bare id string as a support entry.
+        if (typeof sup === 'string') return { id: sup, level: 1, quality: 0 };
         const so: SupportGem = {
           id:    sup.id,
           level: typeof sup.level === 'number' ? sup.level : 1,
@@ -624,18 +631,22 @@ export function gggBuildToPlan(b: GGGBuild): Plan {
         return so;
       }),
     };
-    if (s.level_interval) e.level_interval = s.level_interval;
+    const sli = normalizeInterval(s.level_interval);
+    if (sli) e.level_interval = sli;
     if (s.additional_text) e.note = s.additional_text;
     return e;
   });
-  const itemEntries: Item[] = (b.items || []).map((it) => {
+  // Official field is inventory_slots (slot_x/slot_y); accept our
+  // pre-audit items (x/y) alias so old exports keep importing.
+  const itemEntries: Item[] = (b.inventory_slots || b.items || []).map((it) => {
     const e: Item = {
       inventoryId: it.inventory_id,
-      slotX: typeof it.x === 'number' ? it.x : 0,
-      slotY: typeof it.y === 'number' ? it.y : 0,
+      slotX: typeof it.slot_x === 'number' ? it.slot_x : (typeof it.x === 'number' ? it.x : 0),
+      slotY: typeof it.slot_y === 'number' ? it.slot_y : (typeof it.y === 'number' ? it.y : 0),
     };
     if (it.unique_name) e.uniqueName = it.unique_name;
-    if (it.level_interval) e.level_interval = it.level_interval;
+    const ili = normalizeInterval(it.level_interval);
+    if (ili) e.level_interval = ili;
     if (it.additional_text) e.note = it.additional_text;
     return e;
   });

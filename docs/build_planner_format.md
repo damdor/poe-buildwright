@@ -67,22 +67,51 @@ under the "Build Planner (PoE2 only)" section.
 
 ### Root: `Build`
 
+Schema level: **"Version 1 (Experimental)"** — re-verified against the
+official docs on **2026-07-10** (game patch 0.5.4).
+
 ```jsonc
 {
-  "name":        "string, required — display name in the panel",
-  "description": "string, optional — short blurb shown under the name",
-  "ascendancy":  "string, optional — class internalId, e.g. \"Druid1\"",
-  "passives":    [ /* string or BuildPassive */ ],
-  "skills":      [ /* string or BuildSkill   */ ],
-  "items":       [ /* BuildItem              */ ]
+  "name":            "string, REQUIRED — display name in the panel",
+  "author":          "string, optional",
+  "link":            "string, optional — added in 0.5.3; renders a button in the client (whitelisted domains only)",
+  "description":     "string, optional — short blurb shown under the name",
+  "ascendancy":      "string, optional — class internalId, e.g. \"Druid1\"",
+  "passives":        [ /* string or BuildPassive */ ],
+  "skills":          [ /* BuildSkill */ ],
+  "inventory_slots": [ /* InventorySlot */ ]
 }
 ```
 
-- All four arrays are **optional**. A tree-only guide can omit
-  `skills` / `items`; a leveling-skills guide can omit `passives`.
-- Within `passives` and `skills`, entries may be bare strings (just the
-  id) when no metadata is needed. The object form is required as soon
-  as you want `level_interval`, `weapon_set`, or `additional_text`.
+- `name` is the ONLY required field. Our exporter always emits it
+  (falling back to "Untitled Build").
+- The arrays are **optional**. A tree-only guide can omit `skills` /
+  `inventory_slots`; a leveling-skills guide can omit `passives`.
+- The gear-hints field is **`inventory_slots`** (NOT `items` — our
+  exports before the 2026-07-10 audit wrote `items`, which the client
+  silently ignored; our importer still accepts the old name).
+- Within `passives` (and `support_skills`), entries may be bare strings
+  (just the id) when no metadata is needed. The object form is required
+  as soon as you want `level_interval`, `weapon_set`, or
+  `additional_text`.
+- **Our extensions** (not in GGG's schema, ignored by the client,
+  round-tripped by our importer): top-level `patch`, and `level` /
+  `quality` / `weapon_set` on skills and supports.
+
+### `level_interval` accepted forms
+
+Everywhere it appears the docs write the type as **"(array of uint, or
+uint)"** — so all of these are legal:
+
+| Form        | Meaning (our reading)             |
+|-------------|-----------------------------------|
+| `[lo, hi]`  | inclusive range                   |
+| `[lo]`      | from `lo` onward (no documented upper bound) |
+| `lo`        | from `lo` onward                  |
+
+Our importer normalizes the short forms to `[lo, 100]`
+(`normalizeInterval` in 08_build_io.ts); our exporter always emits the
+two-element form.
 
 ### `BuildPassive`
 
@@ -120,35 +149,38 @@ One entry per slot on the player's skill bar.
 ```jsonc
 {
   "id":              "string, required — Skills table id",
-  "level_interval":  [low, high],     // optional
+  "level_interval":  [low, high],     // optional — or [low], or a bare uint
   "additional_text": "string",         // optional
-  "support_skills":  [ BuildSupport ]   // optional
+  "support_skills":  [ /* string or BuildSupport */ ]   // optional
 }
 ```
 
 ### `BuildSupport`
 
-A support gem socketed into the parent skill.
+A support gem socketed into the parent skill. A bare id string is also
+legal in `support_skills` when no metadata is needed.
 
 ```jsonc
 {
   "id":              "string, required",
-  "level_interval":  [low, high],
+  "level_interval":  [low, high],     // optional — or [low], or a bare uint
   "additional_text": "string"
 }
 ```
 
-### `BuildItem`
+### `InventorySlot`
 
 A hint about an inventory slot — **not** an item award. The client uses
 these to annotate which slots to focus on and what stats to look for.
+(Called `BuildItem` in earlier drafts of this doc; the official object
+is `InventorySlot`, and the array it lives in is `inventory_slots`.)
 
 ```jsonc
 {
   "inventory_id":    "string, required — slot identifier (e.g. \"Weapon1\")",
-  "slot_x":          uint, required,
-  "slot_y":          uint, required,
-  "level_interval":  [low, high],     // optional
+  "slot_x":          uint,             // optional, defaults to 0
+  "slot_y":          uint,             // optional, defaults to 0
+  "level_interval":  [low, high],     // optional — or [low], or a bare uint
   "unique_name":     "string",         // optional — recommended unique
   "additional_text": "string"          // optional — stat priorities, etc.
 }
@@ -167,20 +199,20 @@ these to annotate which slots to focus on and what stats to look for.
 
 ## Inline markup (in `additional_text`)
 
-Supports a small set of tags:
+The official tag set (verified against the developer docs 2026-07-10 —
+earlier drafts of this doc guessed spelled-out tags like `<bold>`,
+which the client renders as literal text):
 
-| Tag                       | Renders as                         |
-|---------------------------|------------------------------------|
-| `<bold>...</bold>`        | bold                               |
-| `<italics>...</italics>`  | italic                             |
-| `<underline>...</underline>` | underlined                      |
-| `<red>...</red>`          | red text                           |
-| `<green>...</green>`      | green text                         |
-| `<rgb(r,g,b)>...</rgb>`   | arbitrary RGB (0–255 channels)     |
+| Kind  | Tags |
+|-------|------|
+| Font  | `<r>` `<b>` `<i>` `<u>` `<s>` `<m>` `<l>` (regular, bold, italic, underline, strikethrough, plus two further font styles) |
+| Color | `<red>` `<orange>` `<yellow>` `<green>` `<blue>` `<indigo>` `<violet>` `<black>` `<white>` `<grey>` `<bronze>` `<silver>` `<gold>` `<unique>` |
+| Custom color | `<rgb(255, 255, 255)>` |
 
 No nesting depth limit is documented. There are **no headings, lists,
-images, or links** — guide prose is plain-runs-of-words with these
-inline emphases only.
+or images** — guide prose is plain-runs-of-words with these inline
+emphases only. (External links exist only via the top-level `link`
+field added in 0.5.3, not inside `additional_text`.)
 
 ---
 
@@ -345,6 +377,47 @@ rest as users ask for them.
 
 ---
 
+## Codified schema (source of truth in code)
+
+This prose doc is the *companion*; the machine-readable mapping lives
+in `crates/tree_render/assets/planner/08a_build_schema.ts` as frozen,
+versioned tables:
+
+- **Both** the import validator and the exporter derive from the same
+  table — field names and shapes exist in exactly one place.
+- Every export is checked against the schema revision it targets and
+  **throws on drift** (unknown field, missing required field,
+  deprecated alias, short-form interval), so the exporter cannot
+  silently diverge from what the client reads.
+- Revisions are **append-only**: rev 1 is deep-frozen; if GGG changes
+  the format, add a rev 2 table and repoint `GGG_BUILD_SCHEMA_CURRENT`
+  — rev 1 stays for validating old files. Our extensions are flagged
+  `ours`, legacy aliases `importAlias`, so the official-vs-ours split
+  is explicit in code.
+
+---
+
+## Post-launch changes (0.5.1 → 0.5.4)
+
+Audited 2026-07-10 against patch notes and the developer docs:
+
+- **0.5.3**: top-level `link` field added — "Build Planner files can
+  now contain a `link` field, which will present a button for users to
+  click on the build description info. Currently only a subset of
+  domains are whitelisted to appear in the client." The whitelist is
+  GGG-controlled and not published.
+- **0.5.3**: client bugfix — `additional_text` on skill gems was not
+  showing (format unchanged; our exports were fine).
+- **0.5.4**: no Build Planner format changes (endgame-focused patch).
+- The account-linked **Subscribe API is still not shipped** as of
+  0.5.4 — file-system drop remains the only delivery mechanism.
+- Meta gems remain unsupported in the schema.
+- The schema is still labeled "Version 1 (Experimental)". No version
+  field exists in the file itself, so watch patch notes for breaking
+  changes.
+
+---
+
 ## Open questions
 
 These weren't pinned down in the public materials I could fetch:
@@ -357,7 +430,9 @@ These weren't pinned down in the public materials I could fetch:
   tree (different skill bars per set), so it probably applies; not yet
   confirmed.
 - **`ascendancy` value form** — `internalId` (`"Druid1"`) vs `id`
-  (`"Oracle"`). Need to verify at 0.5 launch.
+  (`"Oracle"`). Still not spelled out in the developer docs as of the
+  2026-07-10 audit; we emit `internalId`, matching the third-party
+  converters. Verify empirically in the client if a report comes in.
 - **Per-node attribute picks** — the Str/Dex/Int sub-choice on
   attribute nodes (which we model as `state.pickedAttrs`) isn't
   obviously a field in the schema. May ride inside the node id (an

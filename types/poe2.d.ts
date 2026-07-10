@@ -147,6 +147,14 @@ export interface PlanIndexEntry {
 // on UNKNOWN fields (GGG can add forward-compatible properties without
 // breaking our import).
 
+/** Level applicability per GGG's schema: an inclusive [lo, hi] pair,
+ *  a single-element [lo] array, or a bare uint — the docs write it as
+ *  "(array of uint, or uint)". The short forms have no documented
+ *  upper bound; our importer reads them as "from lo onward"
+ *  (normalizeInterval in 08_build_io). Our exporter always emits the
+ *  two-element form. */
+export type GGGLevelInterval = number | number[];
+
 /** A passive entry in a GGG .build. Bare string/number form means
  *  "always present" (no level_interval). Object form carries the
  *  optional metadata. */
@@ -155,48 +163,67 @@ export type GGGPassive = string | number | GGGPassiveEntry;
 export interface GGGPassiveEntry {
   id: string | number;                     // passive node id (or attr-variant id)
   weapon_set?: 1 | 2;                      // unset = main tree
-  level_interval?: [number, number];       // inclusive [lo, hi]
+  level_interval?: GGGLevelInterval;
   additional_text?: string;                // author note + auto-pivot annotations
 }
 
-/** A skill entry. Mirrors GGG's BuildSkill. */
+/** A skill entry. Mirrors GGG's BuildSkill (id, level_interval,
+ *  additional_text, support_skills). `level`, `quality`, and
+ *  `weapon_set` are OUR extensions — not in GGG's schema; the client
+ *  ignores unknown fields, and our re-import round-trips them. */
 export interface GGGSkill {
   id: string;
-  level: number;
+  level?: number;
   quality?: number;
   weapon_set?: 1 | 2;
-  level_interval?: [number, number];
+  level_interval?: GGGLevelInterval;
   additional_text?: string;
-  support_skills?: GGGSupport[];
+  support_skills?: Array<string | GGGSupport>; // GGG allows bare id strings
 }
 
-/** A support gem inside a GGGSkill.support_skills. */
+/** A support gem inside a GGGSkill.support_skills. Mirrors GGG's
+ *  BuildSupport (id, level_interval, additional_text); `level` and
+ *  `quality` are our extensions. */
 export interface GGGSupport {
   id: string;
-  level: number;
+  level?: number;
   quality?: number;
+  level_interval?: GGGLevelInterval;
   additional_text?: string;
 }
 
-/** An equipped item entry. */
+/** An equipped item entry. Mirrors GGG's InventorySlot: the official
+ *  positional fields are `slot_x`/`slot_y` (default 0). `x`/`y` are
+ *  accepted on import for files our exporter wrote before the
+ *  2026-07-10 spec audit. */
 export interface GGGItem {
   inventory_id: string;
-  x: number;
-  y: number;
+  slot_x?: number;
+  slot_y?: number;
+  /** @deprecated pre-audit alias of slot_x — import-only */
+  x?: number;
+  /** @deprecated pre-audit alias of slot_y — import-only */
+  y?: number;
   unique_name?: string;
-  level_interval?: [number, number];
+  level_interval?: GGGLevelInterval;
   additional_text?: string;
 }
 
-/** Top-level .build JSON. All fields optional from the schema's view —
- *  a stripped build can carry name only. */
+/** Top-level .build JSON (GGG schema "Version 1 (Experimental)").
+ *  `name` is the one field GGG marks required — our exporter always
+ *  emits it. `patch` is OUR extension (client ignores it; other tools
+ *  and our re-import can use it). */
 export interface GGGBuild {
-  name?: string;
+  name?: string;                           // required by the client; optional here so import can degrade gracefully
+  author?: string;
+  link?: string;                           // 0.5.3+: renders a button in the client (whitelisted domains only)
   description?: string;
   ascendancy?: string;                     // GGG internal id (TreeData.asc_internal[name].internal)
-  patch?: string;                          // game patch the build was authored against
+  patch?: string;                          // our extension: game patch the build was authored against
   passives?: GGGPassive[];
   skills?: GGGSkill[];
+  inventory_slots?: GGGItem[];             // official field name
+  /** @deprecated pre-audit exports used `items` — import-only */
   items?: GGGItem[];
 }
 
