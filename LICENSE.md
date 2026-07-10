@@ -8,6 +8,19 @@
   NONCOMMERCIAL purpose. Commercial use requires separate permission
   from the copyright holder (open a GitHub issue to ask).
 
+  WHY NONCOMMERCIAL, in plain words: this is a fan project. The
+  intent is that players, the community, and other fan projects can
+  use, learn from, and build on everything here freely — and that
+  commercial guide/build sites cannot lift it into a paid or
+  ad-monetized product without asking first.
+
+  GRINDING GEAR GAMES: none of the restrictions above are aimed at
+  GGG. Grinding Gear Games may use, adapt, or incorporate anything
+  in this repository, for any purpose including commercial, free of
+  charge — open an issue or reach out and a formal grant follows
+  immediately. (Contributions are accepted under terms that allow
+  this grant — see CONTRIBUTING.md.)
+
   NOT COVERED BY THIS LICENSE: all Path of Exile 2 game content,
   images, and materials are trademarks and copyrights of Grinding
   Gear Games and are NOT distributed in this repository — the data
