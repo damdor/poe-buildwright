@@ -1,5 +1,5 @@
 /* Warm-charcoal chrome palette. The CANVAS zone stays GGG's cool
-   near-black (--canvas-bg matches gl.clearColor in 04a_webgl_setup);
+   near-black (--canvas-bg matches gl.clearColor in webgl_setup);
    panels/menus shift from GitHub blue-grey to warm charcoal that sits
    naturally next to the game art and matches the tooltip's existing
    #2b2515-family borders. --muted is AA-checked (≥4.5:1 on --panel).
@@ -263,7 +263,7 @@ aside#panel.collapsed:not(.hover-peek) {
    top of both. */
 /* Pill backdrop. The "unfilled" portion mirrors the passive tree's
    unselected-edge tint (faint warm gold-gray, see EDGE_TINT in
-   04d_static_geom.js: rgb(94,88,70) * 0.55) so the slider reads as
+   static_geom.js: rgb(94,88,70) * 0.55) so the slider reads as
    a "potential path" the same way an un-allocated tree edge does. */
 .ls-track-wrap::before {
   content: '';
@@ -304,7 +304,7 @@ aside#panel.collapsed:not(.hover-peek) {
 /* Active-path gold treatment.
    The tree renders allocated edges with TINT_MAIN = #f0e0a0 (a warm
    pale gold sampled directly from GGG's BGTreeActive sprite — see
-   04e_overlay.js). We use that exact color here so the slider's
+   overlay.js). We use that exact color here so the slider's
    filled portion matches the actual allocated-edge color in the
    canvas, not the UI accent (#f0c75c, which the note pills + thumb
    still use). 3-stop vertical gradient adds depth; box-shadow halo
@@ -326,7 +326,7 @@ aside#panel.collapsed:not(.hover-peek) {
   box-shadow: 0 0 6px rgba(240, 224, 160, 0.45);
 }
 /* Thumb echoes the allocated-node frame: gold core with a dark ring
-   and the same gold glow halo (see GOLD_HALO in 04f_render.js). */
+   and the same gold glow halo (see GOLD_HALO in render.js). */
 #ls-input::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
   width: 20px; height: 20px;
@@ -591,7 +591,7 @@ aside#panel.collapsed:not(.hover-peek) {
 main#viewport {
   flex: 1; position: relative; overflow: hidden;
   /* The game-art zone keeps GGG's cool near-black — must match the
-     WebGL clearColor (04a_webgl_setup) or resizes flash a seam. */
+     WebGL clearColor (webgl_setup) or resizes flash a seam. */
   background: var(--canvas-bg);
   cursor: grab;
   contain: strict;
@@ -790,7 +790,7 @@ main#viewport canvas { display: block; width: 100%; height: 100%; }
 .firstrun-hint button:hover { color: var(--fg); background: rgba(201,209,217,0.08); }
 
 /* Live-channel badge — pinned top-center while following a ?live=
-   token (18_live_channel). Red pulse dot = "receiving". */
+   token (live_channel). Red pulse dot = "receiving". */
 .live-badge {
   position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
   z-index: 31;

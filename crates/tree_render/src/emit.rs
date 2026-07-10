@@ -739,7 +739,7 @@ pub(crate) fn render_canvas_html(
   </div>
   <canvas id="tree" tabindex="0"></canvas>
   <!-- First-run guidance — visible only while the build has zero
-       allocations (07_sidebar syncs it on every selection change).
+       allocations (sidebar syncs it on every selection change).
        Kills the "silently defaulted to Druid, allocated half a tree"
        trap by naming the two first steps explicitly. -->
   <div id="firstrun-hint" class="firstrun-hint hidden" role="status">

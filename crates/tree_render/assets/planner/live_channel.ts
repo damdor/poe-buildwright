@@ -11,12 +11,12 @@
 // the LIVE badge's "take over" detaches into a normal editable plan by
 // simply stopping the poll and dropping ?live from the URL.
 // ============================================================================
-import { state } from "./02_state.ts";
-import { requestRender } from "./04f_render.ts";
-import { syncPulse } from "./04e_overlay.ts";
-import { focusNode } from "./09_cmdk.ts";
-import { importAgentPlan } from "./17_agent_import.ts";
-import type { AgentPlan } from "./17_agent_import.ts";
+import { state } from "./state.ts";
+import { requestRender } from "./render.ts";
+import { syncPulse } from "./overlay.ts";
+import { focusNode } from "./cmdk.ts";
+import { importAgentPlan } from "./agent_import.ts";
+import type { AgentPlan } from "./agent_import.ts";
 
 const token = new URL(location.href).searchParams.get("live");
 if (token && /^[A-Za-z0-9_-]{16,64}$/.test(token)) {

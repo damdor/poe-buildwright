@@ -20,9 +20,9 @@
 // node id without re-walking captures.
 
 
-import { state } from "./02_state.ts";
-import { ascOffsetX, ascOffsetY } from "./04f_render.ts";
-import { persistToWizardStore } from "./11_wizard_sync.ts";
+import { state } from "./state.ts";
+import { ascOffsetX, ascOffsetY } from "./render.ts";
+import { persistToWizardStore } from "./wizard_sync.ts";
 import type { Plan } from "../../../../types/poe2.d.ts";
 
 const noteOverlayEl = document.getElementById('note-overlay') as HTMLElement | null;
@@ -267,7 +267,7 @@ document.addEventListener('mousedown', (e) => {
   requestAnimationFrame(tick);
 })();
 
-// (Sidebar collapse/hover-peek moved to 11b_sidebar_collapse.ts —
+// (Sidebar collapse/hover-peek moved to sidebar_collapse.ts —
 // it was only here for evaluation-order reasons.)
 
 // -------------------------------------------------------------------

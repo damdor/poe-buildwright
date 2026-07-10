@@ -23,12 +23,12 @@
 // corrupting state.
 
 
-import { ascSel, buildDescInput, buildNameInput, classSel, state , resolveAscName} from "./02_state.ts";
-import { GGG_BUILD_SCHEMA_CURRENT, checkGGGBuild } from "./08a_build_schema.ts";
-import { requestRender } from "./04f_render.ts";
-import { updatePreview } from "./06_pathfind.ts";
-import { applyAsc, refreshAscOptions, updateSelectionUI } from "./07_sidebar.ts";
-import { flushPersistNow, hydrateFromActiveCapture } from "./11_wizard_sync.ts";
+import { ascSel, buildDescInput, buildNameInput, classSel, state , resolveAscName} from "./state.ts";
+import { GGG_BUILD_SCHEMA_CURRENT, checkGGGBuild } from "./build_schema.ts";
+import { requestRender } from "./render.ts";
+import { updatePreview } from "./pathfind.ts";
+import { applyAsc, refreshAscOptions, updateSelectionUI } from "./sidebar.ts";
+import { flushPersistNow, hydrateFromActiveCapture } from "./wizard_sync.ts";
 import type { Allocation, Capture, GGGBuild, GGGItem, GGGLevelInterval, GGGPassive, GGGPassiveEntry, GGGSkill, GGGSupport, Item, Plan, PlanFormat, PlanVersion, Skill, SupportGem } from "../../../../types/poe2.d.ts";
 
 export const PLAN_FORMAT: PlanFormat = 'poe2-planner-plan';
@@ -36,7 +36,7 @@ export const PLAN_FORMAT: PlanFormat = 'poe2-planner-plan';
 // The on-disk snapshot's version field is stamped from this constant.
 export const PLAN_VERSION: PlanVersion = 2;
 // Schema rev of the GGG .build format we target. The mapping itself
-// is codified (and frozen per revision) in 08a_build_schema.ts —
+// is codified (and frozen per revision) in build_schema.ts —
 // changing the format means adding a revision there, never editing.
 export const GGG_BUILD_SCHEMA = GGG_BUILD_SCHEMA_CURRENT;
 
@@ -276,7 +276,7 @@ export function planToGGGBuild(plan: Plan, meta?: SnapshotMeta): GGGBuild {
   if (items.length    > 0) out.inventory_slots = items;
   if (out.passives) stampAscPivots(out.passives, plan.captures);
   // The lock: every export is checked against the frozen schema
-  // revision it claims to target (08a_build_schema.ts). A drift —
+  // revision it claims to target (build_schema.ts). A drift —
   // renamed field, wrong shape, deprecated alias — throws here, at
   // the first export, instead of silently shipping guides the client
   // ignores parts of.
@@ -536,7 +536,7 @@ export function normalizeInterval(li: GGGLevelInterval | undefined): [number, nu
 }
 
 // Validate an incoming GGG .build object. Derived entirely from the
-// codified schema tables in 08a_build_schema.ts — lenient on unknown
+// codified schema tables in build_schema.ts — lenient on unknown
 // fields (GGG can add forward-compatible properties), strict on the
 // types of fields we know.
 export function validateGGGBuild(d: unknown): string | null {

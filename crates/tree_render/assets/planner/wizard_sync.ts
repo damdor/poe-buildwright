@@ -12,10 +12,10 @@
 // Mirrors viewer/assets/wizard_chrome.ts's CommitMeta. Kept local to
 // avoid an import cycle through the closure-IIFE bundling.
 
-import { allocModeSel, ascSel, buildDescInput, buildNameInput, classSel, state , ascDisplayName, resolveAscName} from "./02_state.ts";
-import { requestRender } from "./04f_render.ts";
-import { updatePreview } from "./06_pathfind.ts";
-import { applyAsc, refreshAscOptions, syncModeBadge, updateSelectionUI } from "./07_sidebar.ts";
+import { allocModeSel, ascSel, buildDescInput, buildNameInput, classSel, state , ascDisplayName, resolveAscName} from "./state.ts";
+import { requestRender } from "./render.ts";
+import { updatePreview } from "./pathfind.ts";
+import { applyAsc, refreshAscOptions, syncModeBadge, updateSelectionUI } from "./sidebar.ts";
 import type { Capture, Item, Plan, Skill } from "../../../../types/poe2.d.ts";
 
 export interface CommitMeta {

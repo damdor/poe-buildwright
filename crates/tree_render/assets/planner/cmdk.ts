@@ -12,14 +12,14 @@
 // (a tree node we'll focus on). Discriminated by `type` so the
 // keydown handler can branch on it without losing type information.
 
-import { allocModeSel, isLocked, isMcOption, state, viewport } from "./02_state.ts";
-import { fitToView } from "./03_viewport.ts";
-import { syncPulse } from "./04e_overlay.ts";
-import { requestRender } from "./04f_render.ts";
-import { updatePreview } from "./06_pathfind.ts";
-import { doShareLink, syncModeBadge } from "./07_sidebar.ts";
-import { GGG_BUILD_SCHEMA, PLAN_VERSION, doExportBuild, doExportPlan, doImportBuild, doImportPlan } from "./08_build_io.ts";
-import { copyAgentLink } from "./17_agent_import.ts";
+import { allocModeSel, isLocked, isMcOption, state, viewport } from "./state.ts";
+import { fitToView } from "./viewport.ts";
+import { syncPulse } from "./overlay.ts";
+import { requestRender } from "./render.ts";
+import { updatePreview } from "./pathfind.ts";
+import { doShareLink, syncModeBadge } from "./sidebar.ts";
+import { GGG_BUILD_SCHEMA, PLAN_VERSION, doExportBuild, doExportPlan, doImportBuild, doImportPlan } from "./build_io.ts";
+import { copyAgentLink } from "./agent_import.ts";
 import type { Allocation, TreeData, TreeNode } from "../../../../types/poe2.d.ts";
 
 export interface CmdkActionItem {

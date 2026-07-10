@@ -2,12 +2,12 @@
 // === Hit-test & hover =====================================================
 // ============================================================================
 
-import { MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, countSelected, isLocked, isMcOption, isMcParent, pickedMcOption, state, tooltip , ascNodeOverride} from "./02_state.ts";
-import { clientToTree } from "./03_viewport.ts";
-import { POPOUT_FRAME_SIZE, PopoutOptionEntry, popoutOptionCenter, popoutOptionsFor, requestRender } from "./04f_render.ts";
-import { isGlobalNode, updatePreview } from "./06_pathfind.ts";
-import { effectiveActiveSet } from "./07_sidebar.ts";
-import { currentCharacterLevel } from "./12_captures_bar.ts";
+import { MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, countSelected, isLocked, isMcOption, isMcParent, pickedMcOption, state, tooltip , ascNodeOverride} from "./state.ts";
+import { clientToTree } from "./viewport.ts";
+import { POPOUT_FRAME_SIZE, PopoutOptionEntry, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
+import { isGlobalNode, updatePreview } from "./pathfind.ts";
+import { effectiveActiveSet } from "./sidebar.ts";
+import { currentCharacterLevel } from "./captures_bar.ts";
 import type { Skill } from "../../../../types/poe2.d.ts";
 
 export function findHoverNode(treeX: number, treeY: number): string | null {

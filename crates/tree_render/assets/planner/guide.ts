@@ -15,9 +15,9 @@
 // - "Copy for agent" serializes the whole story as chronological JSON
 //   with writing hints — the hand-off for a full written guide.
 // ============================================================================
-import { state, tooltip } from "./02_state.ts";
-import { focusNode } from "./09_cmdk.ts";
-import { requestRender } from "./04f_render.ts";
+import { state, tooltip } from "./state.ts";
+import { focusNode } from "./cmdk.ts";
+import { requestRender } from "./render.ts";
 import type { Allocation, Capture, Item, Skill } from "../../../../types/poe2.d.ts";
 
 {

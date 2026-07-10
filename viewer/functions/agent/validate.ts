@@ -53,7 +53,7 @@ function b64urlDecode(s: string): string | null {
   } catch { return null; }
 }
 
-// Same RPN evaluator as the in-browser importer (17_agent_import.ts).
+// Same RPN evaluator as the in-browser importer (agent_import.ts).
 function evalTypeExpr(expr: string[] | undefined, types: Set<string>): boolean {
   if (!expr || expr.length === 0) return false;
   const st: boolean[] = [];

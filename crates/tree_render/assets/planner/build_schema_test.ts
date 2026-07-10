@@ -6,7 +6,7 @@
 // Deno test namespace is pulled in per test file:
 /// <reference lib="deno.ns" />
 
-import { GGG_BUILD_SCHEMAS, GGG_BUILD_SCHEMA_CURRENT, checkGGGBuild } from "./08a_build_schema.ts";
+import { GGG_BUILD_SCHEMAS, GGG_BUILD_SCHEMA_CURRENT, checkGGGBuild } from "./build_schema.ts";
 
 function expectOk(got: string | null): void {
   if (got !== null) throw new Error(`expected null, got: ${got}`);

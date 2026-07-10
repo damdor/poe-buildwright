@@ -2,25 +2,25 @@
 // === Lock-mask rebuild + cascade prune ====================================
 // ============================================================================
 //
-// This file exists to break a cyclic ESM dependency between 02_state and
-// {04d_static_geom, 06_pathfind}. The rebuild logic uses
+// This file exists to break a cyclic ESM dependency between state and
+// {static_geom, pathfind}. The rebuild logic uses
 // buildStaticGeometry (from 04d) and computeDeallocResult (from 06) inside
 // its function body — both safe deferred references. But putting it in
-// 02_state forced 02_state to `import` from those two files, and 04d /
-// 06 already import from 02_state for `gl`, `state`, etc. The bidirectional
-// import-at-module-init order can break: esbuild evaluated 04a_webgl_setup
-// before 02_state had finished initializing `gl`, leaving
+// state forced state to `import` from those two files, and 04d /
+// 06 already import from state for `gl`, `state`, etc. The bidirectional
+// import-at-module-init order can break: esbuild evaluated webgl_setup
+// before state had finished initializing `gl`, leaving
 // `gl.createProgram()` calling on undefined.
 //
-// Extracting the rebuild here keeps 02_state cycle-free with the two
-// large-graph files. The remaining cycle (this file ↔ 06_pathfind via
+// Extracting the rebuild here keeps state cycle-free with the two
+// large-graph files. The remaining cycle (this file ↔ pathfind via
 // computeDeallocResult ↔ maybeRebuildStaticForLocks) is entirely
 // deferred — both directions only reference each other inside function
 // bodies, so ES module init runs cleanly.
 
-import { isLocked, state } from "./02_state.ts";
-import { buildStaticGeometry } from "./04d_static_geom.ts";
-import { computeDeallocResult } from "./06_pathfind.ts";
+import { isLocked, state } from "./state.ts";
+import { buildStaticGeometry } from "./static_geom.ts";
+import { computeDeallocResult } from "./pathfind.ts";
 
 // Set of node ids that GATE locked clusters (i.e. they appear in some
 // node's uc.n list). For Oracle that's exactly {"5571"}. Used to

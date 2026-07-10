@@ -110,7 +110,7 @@ uint)"** — so all of these are legal:
 | `lo`        | from `lo` onward                  |
 
 Our importer normalizes the short forms to `[lo, 100]`
-(`normalizeInterval` in 08_build_io.ts); our exporter always emits the
+(`normalizeInterval` in build_io.ts); our exporter always emits the
 two-element form.
 
 ### `BuildPassive`
@@ -380,7 +380,7 @@ rest as users ask for them.
 ## Codified schema (source of truth in code)
 
 This prose doc is the *companion*; the machine-readable mapping lives
-in `crates/tree_render/assets/planner/08a_build_schema.ts` as frozen,
+in `crates/tree_render/assets/planner/build_schema.ts` as frozen,
 versioned tables:
 
 - **Both** the import validator and the exporter derive from the same

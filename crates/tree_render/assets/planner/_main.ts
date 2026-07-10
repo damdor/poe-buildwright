@@ -1,46 +1,60 @@
 // _main.ts — esbuild entry point for the planner.
 //
 // esbuild bundles from this single entry: it walks the import graph,
-// deduplicates, emits one IIFE. Numeric filenames are preserved for
-// chronological readability — the real load order is whatever the
-// dependency graph requires, not the lexical sort.
+// deduplicates, emits one IIFE. Every file below is imported for its
+// SIDE EFFECTS — they register DOM listeners, build module-level
+// state, wire up the WebGL pipeline.
 //
-// Every file below is imported for its SIDE EFFECTS — they register
-// DOM listeners, build module-level state, wire up the WebGL pipeline.
-// The 02_state foundation throws synchronously if WebGL2 isn't
-// available, so importing it must run before anything else that
-// touches `gl`.
+// THIS LIST IS THE LOAD ORDER. Filenames carry no ordering (they are
+// named for what they do); the position in this list — refined by the
+// import graph — is the one source of truth for module evaluation.
+// The constraints that matter, in order:
+//
+//   1. state must evaluate before anything that touches `gl` — it
+//      throws synchronously when WebGL2 is unavailable, so nothing
+//      downstream ever sees a null context.
+//   2. The render pipeline (webgl_setup → … → render, lazy_art)
+//      evaluates before the interaction modules that import from it.
+//   3. sidebar_collapse must evaluate AFTER wizard_sync: its initial
+//      open/collapsed decision reads state.selected as hydrated from
+//      the stored plan.
+//   4. boot stays LAST (see the note above its import).
+//
+// When adding a module: place it after everything it imports from,
+// and before boot. If it has a genuine evaluation-order dependency
+// beyond its imports (like sidebar_collapse), document it here AND
+// at the top of the module.
 
-import "./01_image_preload.ts";
-import "./02_state.ts";
-import "./02b_lock_rebuild.ts";
-import "./03_viewport.ts";
-import "./04a_webgl_setup.ts";
-import "./04b_vertex_helpers.ts";
-import "./04c_edge_tessellate.ts";
-import "./04d_static_geom.ts";
-import "./04e_overlay.ts";
-import "./04f_render.ts";
-import "./04g_lazy_art.ts";
-import "./05_hover.ts";
-import "./06_pathfind.ts";
-import "./07_sidebar.ts";
-import "./08_build_io.ts";
-import "./09_cmdk.ts";
-import "./11_wizard_sync.ts";
-import "./11b_sidebar_collapse.ts";
-import "./12_captures_bar.ts";
-import "./13_level_slider.ts";
-import "./14_note_overlay.ts";
-import "./15_skills_overlay.ts";
-import "./16_gear_overlay.ts";
-import "./17_agent_import.ts";
-import "./18_live_channel.ts";
-import "./19_guide.ts";
+import "./image_preload.ts";
+import "./state.ts";
+import "./lock_rebuild.ts";
+import "./viewport.ts";
+import "./webgl_setup.ts";
+import "./vertex_helpers.ts";
+import "./edge_tessellate.ts";
+import "./static_geom.ts";
+import "./overlay.ts";
+import "./render.ts";
+import "./lazy_art.ts";
+import "./hover.ts";
+import "./pathfind.ts";
+import "./sidebar.ts";
+import "./build_io.ts";
+import "./cmdk.ts";
+import "./wizard_sync.ts";
+import "./sidebar_collapse.ts";
+import "./captures_bar.ts";
+import "./level_slider.ts";
+import "./note_overlay.ts";
+import "./skills_overlay.ts";
+import "./gear_overlay.ts";
+import "./agent_import.ts";
+import "./live_channel.ts";
+import "./guide.ts";
 
-// 10_boot is loaded LAST. Its top-level statements run the actual boot
+// boot is loaded LAST. Its top-level statements run the actual boot
 // sequence (resize, initDefaultClass, fitToView, then async preload →
 // uploadAllTextures → buildStaticGeometry → init searchGlowTex →
 // requestRender). Loading it last guarantees every dependency module
 // has fully initialized before boot starts touching them.
-import "./10_boot.ts";
+import "./boot.ts";

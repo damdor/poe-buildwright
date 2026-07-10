@@ -1496,7 +1496,7 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // renderer loads them: `<prefix>_orbit_<state><fileIdx>.png`.
     const UI: &str = "art/textures/interface/2d/2dart/uiimages/ingame/passiveskillscreen";
     // orbit → connector-file index (radius rank); index → sprite width;
-    // orbit → arc radius in sprite pixels. Mirrors 04c_edge_tessellate.ts.
+    // orbit → arc radius in sprite pixels. Mirrors edge_tessellate.ts.
     let orbit_file_idx = [0usize, 9, 8, 6, 5, 4, 3, 7, 2, 1];
     let sprite_w = [1435u32, 1333, 1090, 853, 671, 501, 346, 263, 176, 91];
     let arc_r = [
@@ -3847,7 +3847,7 @@ pub fn fixture(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
     write("fixture_bg_tile.png", 64, &fx_square(64, [14, 15, 19], [20, 22, 28]))?;
 
     // Orbit connector sprites: the planner fetches these 90 fixed
-    // names directly (01_image_preload) — same tiny strip per state.
+    // names directly (image_preload) — same tiny strip per state.
     let strip = |rgb: [u8; 3]| -> Vec<u8> {
         let (w, h) = (24u32, 6u32);
         let mut px = vec![0u8; (w * h * 4) as usize];

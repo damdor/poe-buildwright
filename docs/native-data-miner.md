@@ -458,7 +458,7 @@ only the *straight* connector line texture
 cross-section). The renderer samples per-orbit **arc** sprites whose
 curvature is baked into the PNG alpha (the WebGL kite-quad maps the
 texture onto a corner and the alpha carves the arc — see
-`04c_edge_tessellate.ts`). GGG doesn't ship those arcs, so
+`edge_tessellate.ts`). GGG doesn't ship those arcs, so
 [`crate::arc`] generates them: it extracts the line's cross-section and
 bends it into a quarter circle of the orbit's radius, centred at the
 sprite's bottom-right corner (= the orbit centre in kite space). Verified

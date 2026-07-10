@@ -6,12 +6,12 @@
 // any freetext base/rare description) plus a note ("any rare with
 // +life and lightning res"). Persists as Capture.items via
 // window.PoE2Plan.data.commit(items, 'items') — the plan
-// schema/plumbing already existed (11_wizard_sync round-trips it).
+// schema/plumbing already existed (wizard_sync round-trips it).
 // Rows carry first-party inventory art (unique art via
 // UniqueStashLayout, base art via BaseItemTypes→ItemVisualIdentity)
 // and GGG rarity colors; hover shows the unique's stats or the note.
 // ============================================================================
-import { state } from "./02_state.ts";
+import { state } from "./state.ts";
 import type { Item } from "../../../../types/poe2.d.ts";
 
 {

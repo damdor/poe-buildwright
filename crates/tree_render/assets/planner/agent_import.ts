@@ -13,11 +13,11 @@
 // (flash summary), malformed payloads flash an error and the planner
 // boots normally. A bad link never breaks the page.
 // ============================================================================
-import { ASC_VARIANT_PARENT, state } from "./02_state.ts";
-import { fitToView } from "./03_viewport.ts";
-import { requestRender } from "./04f_render.ts";
-import { adj } from "./06_pathfind.ts";
-import { loadPlanData } from "./08_build_io.ts";
+import { ASC_VARIANT_PARENT, state } from "./state.ts";
+import { fitToView } from "./viewport.ts";
+import { requestRender } from "./render.ts";
+import { adj } from "./pathfind.ts";
+import { loadPlanData } from "./build_io.ts";
 import type { Allocation, Capture, Item, Plan, Skill, TreeNode } from "../../../../types/poe2.d.ts";
 
 interface AgentSkill { gem?: string; level?: number; supports?: string[] }
@@ -143,7 +143,7 @@ export function supportCompatible(
 
 // ---------------------------------------------------------------
 // Graph resolution — traversal uses the SAME adjacency the click
-// pathfinder uses (06_pathfind's `adj`, built from edges_for_sel,
+// pathfinder uses (pathfind's `adj`, built from edges_for_sel,
 // which includes the class-hub spokes edges_meta drops for drawing).
 // ---------------------------------------------------------------
 interface Ctx {
@@ -219,7 +219,7 @@ async function runImport(payload: string): Promise<void> {
 }
 
 /** Materialize a decoded agent plan into the current build. Shared by
- *  the #agent= fragment path and the ?live= channel (18_live_channel).
+ *  the #agent= fragment path and the ?live= channel (live_channel).
  *  Returns a short human summary, or null if the plan was unusable. */
 export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
   const problems: string[] = [];

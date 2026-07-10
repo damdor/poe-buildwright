@@ -2,17 +2,17 @@
 // === Sidebar: class / asc / selection list ================================
 // ============================================================================
 
-import { defaultClassName } from "./01_image_preload.ts";
-import { MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, allocModeSel, ascSel, classSel, countAsc, countMain, countSelected, countSet1, countSet2, countSets, exportBtn, isMcParent, pickedMcOption, resetBtn, selCount, selList, state, weaponSetCapAt , resolveAscName, ascNodeOverride} from "./02_state.ts";
-import { maybeRebuildStaticForLocks } from "./02b_lock_rebuild.ts";
-import { ensureClassArt } from "./04g_lazy_art.ts";
-import { requestRender } from "./04f_render.ts";
-import { esc } from "./05_hover.ts";
-import { computeDeallocResult, updatePreview } from "./06_pathfind.ts";
-import { doExportBuild } from "./08_build_io.ts";
-import { focusNode } from "./09_cmdk.ts";
-import { flushPersistNow, persistToWizardStore } from "./11_wizard_sync.ts";
-import { currentCharacterLevel } from "./12_captures_bar.ts";
+import { defaultClassName } from "./image_preload.ts";
+import { MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, allocModeSel, ascSel, classSel, countAsc, countMain, countSelected, countSet1, countSet2, countSets, exportBtn, isMcParent, pickedMcOption, resetBtn, selCount, selList, state, weaponSetCapAt , resolveAscName, ascNodeOverride} from "./state.ts";
+import { maybeRebuildStaticForLocks } from "./lock_rebuild.ts";
+import { ensureClassArt } from "./lazy_art.ts";
+import { requestRender } from "./render.ts";
+import { esc } from "./hover.ts";
+import { computeDeallocResult, updatePreview } from "./pathfind.ts";
+import { doExportBuild } from "./build_io.ts";
+import { focusNode } from "./cmdk.ts";
+import { flushPersistNow, persistToWizardStore } from "./wizard_sync.ts";
+import { currentCharacterLevel } from "./captures_bar.ts";
 import type { Allocation, Capture } from "../../../../types/poe2.d.ts";
 
 export function refreshAscOptions(): void {
@@ -298,7 +298,7 @@ export function applyAsc(): void {
 
 // Default class on load = alphabetically first.
 export function initDefaultClass(): void {
-  // defaultClassName is also what 01_image_preload builds the eager
+  // defaultClassName is also what image_preload builds the eager
   // sprite set from — one rule, so the boot-visible class is always
   // the one whose art loaded eagerly.
   const first = defaultClassName();

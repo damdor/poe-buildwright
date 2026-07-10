@@ -31,11 +31,11 @@
 // Edge-tint callback used by tessellateConnectorsTextured / selEdges:
 // return null to skip the edge, or a tint to recolor it.
 
-import { texCache } from "./01_image_preload.ts";
-import { ASC_EFFECTS, isLocked, isMcOption, state } from "./02_state.ts";
-import { STRIDE_FLOATS } from "./04a_webgl_setup.ts";
-import { Tint, pushArc, pushLineSeg, pushVtx } from "./04b_vertex_helpers.ts";
-import { edgeTint } from "./04e_overlay.ts";
+import { texCache } from "./image_preload.ts";
+import { ASC_EFFECTS, isLocked, isMcOption, state } from "./state.ts";
+import { STRIDE_FLOATS } from "./webgl_setup.ts";
+import { Tint, pushArc, pushLineSeg, pushVtx } from "./vertex_helpers.ts";
+import { edgeTint } from "./overlay.ts";
 import type { TreeNode } from "../../../../types/poe2.d.ts";
 
 export type EdgeFilter = (aId: string, bId: string) => Tint | null;
@@ -383,7 +383,7 @@ export function tessellateSelEdges(outArr: number[], tint: Tint | null, scope: '
     }
     // tint=null means "color per-edge by set membership". Used by
     // rebuildSelEdges so a single buffer can mix gold/pink/green.
-    // edgeTint (declared in 04e_overlay) returns `number[]`; cast to
+    // edgeTint (declared in overlay) returns `number[]`; cast to
     // the strict Tint tuple at the boundary so downstream tessellation
     // calls type-check. 4-channel guaranteed by the function's
     // contract — all return paths produce [r,g,b,a].

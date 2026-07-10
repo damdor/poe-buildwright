@@ -16,11 +16,11 @@
 //   mainEdgeBatch:   { start, count }                          (main tree edges)
 
 
-import { texCache } from "./01_image_preload.ts";
-import { gl, isLocked, isMcOption, state } from "./02_state.ts";
-import { STRIDE_FLOATS, makeVAO } from "./04a_webgl_setup.ts";
-import { pushSprite } from "./04b_vertex_helpers.ts";
-import { tessellateConnectorsTextured, tessellateEdges } from "./04c_edge_tessellate.ts";
+import { texCache } from "./image_preload.ts";
+import { gl, isLocked, isMcOption, state } from "./state.ts";
+import { STRIDE_FLOATS, makeVAO } from "./webgl_setup.ts";
+import { pushSprite } from "./vertex_helpers.ts";
+import { tessellateConnectorsTextured, tessellateEdges } from "./edge_tessellate.ts";
 
 export interface SpriteBatch { tex: WebGLTexture; start: number; count: number; clipIcon: boolean; }
 export interface EdgeBatch { start: number; count: number; }
@@ -36,7 +36,7 @@ export let staticBuf: WebGLBuffer | null = null;
 // VAO for the static geometry buffer. Created on first geometry build
 // and reused for every subsequent frame's draw. Declared next to its
 // single reassignment so ES module live-bindings work — readonly
-// imports from 04a_webgl_setup wouldn't let buildStaticGeometry
+// imports from webgl_setup wouldn't let buildStaticGeometry
 // assign it.
 export let staticVAO: WebGLVertexArrayObject | null = null;
 export let staticBatches: SpriteBatch[] = [];

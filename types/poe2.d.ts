@@ -60,7 +60,7 @@ export interface SupportGem {
 
 /** Equipped item inside a capture. Shape evolves with the items overlay.
  *
- * The export pipeline (08_build_io.ts) needs the GGG-style positional
+ * The export pipeline (build_io.ts) needs the GGG-style positional
  * fields (`inventoryId` + `slotX/slotY`); the items overlay UI carries
  * the higher-level display fields (`name`, `slot`, `uniqueName`).
  * Both surface here optionally — call sites populate what's relevant.
@@ -139,7 +139,7 @@ export interface PlanIndexEntry {
 // GGG .build format (patch 0.5+, interop boundary)
 // ===========================================================================
 //
-// The in-game Build Planner's JSON shape. Used by 08_build_io.ts both
+// The in-game Build Planner's JSON shape. Used by build_io.ts both
 // as an export target (planToGGGBuild) and an import source
 // (gggBuildToPlan). Fields here mirror the spec at
 // <https://www.pathofexile.com/developer/docs/game> and the
@@ -151,7 +151,7 @@ export interface PlanIndexEntry {
  *  a single-element [lo] array, or a bare uint — the docs write it as
  *  "(array of uint, or uint)". The short forms have no documented
  *  upper bound; our importer reads them as "from lo onward"
- *  (normalizeInterval in 08_build_io). Our exporter always emits the
+ *  (normalizeInterval in build_io). Our exporter always emits the
  *  two-element form. */
 export type GGGLevelInterval = number | number[];
 
@@ -289,7 +289,7 @@ export interface TreeData {
   //   ["l", aId, bId, midX, midY, dist, angleRad, asc?]  — straight line
   // Trailing asc field is present only for ascendancy edges. Typed as
   // a loose mixed array because the indexed access pattern in
-  // 04c_edge_tessellate.ts inspects [0] before branching on [3..7]
+  // edge_tessellate.ts inspects [0] before branching on [3..7]
   // shape — a stricter discriminated tuple would force every consumer
   // to narrow before accessing.
   edges_meta: Array<(string | number)[]>;
@@ -374,7 +374,7 @@ export interface PoE2PlanAPI {
   };
 }
 
-/** 13_level_slider exposes this so tests + the summary page can inspect
+/** level_slider exposes this so tests + the summary page can inspect
  *  the slider's resolved per-level state without driving the UI. */
 export interface PoE2SliderDebugAPI {
   capCache: () => Array<{
@@ -409,8 +409,8 @@ declare global {
     PoE2SliderDebug?: PoE2SliderDebugAPI;
     PoE2SliderExit?: () => void;
     PoE2SliderExitRestore?: () => void;
-    // Note map published by 13_level_slider.ts so the tree-side note
-    // overlay (14_note_overlay.ts) and the tooltip (05_hover.ts) can
+    // Note map published by level_slider.ts so the tree-side note
+    // overlay (note_overlay.ts) and the tooltip (hover.ts) can
     // look up author notes by node id without re-walking captures.
     PoE2Notes?: Map<string, { num: number; level: number; text: string }>;
     PoE2Share?: {
@@ -422,7 +422,7 @@ declare global {
     POE2_SOURCE?: string;
     POE2_GEMS_BY_ID?: Record<string, unknown>;
     // Test/debug surface for export/import flows. Exposed by
-    // 08_build_io.ts so Playwright tests + console diagnostics can
+    // build_io.ts so Playwright tests + console diagnostics can
     // exercise the pipeline without going through the file dialog.
     PoE2BuildIO?: {
       planToGGGBuild: (plan: Plan, meta?: { name?: string; description?: string }) => GGGBuild;
