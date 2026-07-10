@@ -4,7 +4,7 @@
 // Type-narrow at the source. `document.getElementById` returns
 // `HTMLElement | null`; the planner can't boot without these
 // elements present in planner.html, so an `as` cast documents the
-// invariant + lets consumers (03_viewport, 04*, etc.) use them
+// invariant + lets consumers (viewport, 04*, etc.) use them
 // without null guards. If a fresh emit.rs ever drops one of these
 // ids the planner will hard-fail at boot — preferable to silent
 // misbehaviour later.
@@ -116,8 +116,8 @@ export const state = {
   selDirty: true,
   geomReady: false,
   // Accumulated stats + cost + level-needed for the currently-hovered
-  // allocate-preview path. Populated by 06_pathfind's hover handler,
-  // consumed by 05_hover's tooltip. Hybrid shape: an array of stat
+  // allocate-preview path. Populated by pathfind's hover handler,
+  // consumed by hover's tooltip. Hybrid shape: an array of stat
   // lines (returned from computePathAccumulation) with named fields
   // tacked on. Null when no preview is open or the hovered node is
   // unreachable.
@@ -132,7 +132,7 @@ export const state = {
   }),
   // replayActive flips true while the level slider is scrubbing the
   // build through past snapshots — guards the autosave RAF tick in
-  // 11_wizard_sync.ts from overwriting authored data with the
+  // wizard_sync.ts from overwriting authored data with the
   // derived view. Seeded false here so consumers can read it
   // unconditionally (the autosave fires on every frame, would
   // otherwise NaN-trip the equality check on undefined).
@@ -142,7 +142,7 @@ export const state = {
   // tree, gems, items — time-travels together.
   replayCapIdx: -1,
   // Transient allocation-mode override set by Ctrl/Shift in
-  // 07_sidebar. Null when no modifier is held; effectiveActiveSet
+  // sidebar. Null when no modifier is held; effectiveActiveSet
   // reads through this to layer over state.activeSet. Null at boot
   // so the initial render uses activeSet directly.
   modOverride: null as null | 'main' | 'set1' | 'set2',
@@ -271,9 +271,9 @@ export function isLocked(id: string | number): boolean {
   return false;
 }
 // LOCK_TRIGGER_IDS / currentLockMask / maybeRebuildStaticForLocks live in
-// 02b_lock_rebuild.ts — they pull in buildStaticGeometry (04d) and
-// computeDeallocResult (06_pathfind), which would create a cyclic ESM
-// import with 02_state otherwise.
+// lock_rebuild.ts — they pull in buildStaticGeometry (04d) and
+// computeDeallocResult (pathfind), which would create a cyclic ESM
+// import with state otherwise.
 
 // The picked option for an MC parent is derivable: walk state.selected
 // looking for any id whose MULTI_CHOICE_PARENT equals the parent.

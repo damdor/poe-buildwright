@@ -6,16 +6,16 @@
 // never traverses through one — option nodes don't exist in the
 // visual tree, only as picker entries on their parent's popout.
 
-import { ASC_EFFECTS, MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, MULTI_CHOICE, MULTI_CHOICE_PARENT, countSelected, gl, isLocked, isMcOption, isMcParent, state } from "./02_state.ts";
-import { maybeRebuildStaticForLocks } from "./02b_lock_rebuild.ts";
-import { clientToTree } from "./03_viewport.ts";
-import { STRIDE_FLOATS, makeVAO } from "./04a_webgl_setup.ts";
-import { Tint, pushArcD, pushLineSegD } from "./04b_vertex_helpers.ts";
-import { tessellateEdgesTexturedFromList } from "./04e_overlay.ts";
-import { POPOUT_FRAME_SIZE, popoutOptionCenter, popoutOptionsFor, requestRender } from "./04f_render.ts";
-import { computePathAccumulation, findHoverNode, refreshTooltip } from "./05_hover.ts";
-import { effectiveActiveSet, updateSelectionUI } from "./07_sidebar.ts";
-import { currentCharacterLevel } from "./12_captures_bar.ts";
+import { ASC_EFFECTS, MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, MULTI_CHOICE, MULTI_CHOICE_PARENT, countSelected, gl, isLocked, isMcOption, isMcParent, state } from "./state.ts";
+import { maybeRebuildStaticForLocks } from "./lock_rebuild.ts";
+import { clientToTree } from "./viewport.ts";
+import { STRIDE_FLOATS, makeVAO } from "./webgl_setup.ts";
+import { Tint, pushArcD, pushLineSegD } from "./vertex_helpers.ts";
+import { tessellateEdgesTexturedFromList } from "./overlay.ts";
+import { POPOUT_FRAME_SIZE, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
+import { computePathAccumulation, findHoverNode, refreshTooltip } from "./hover.ts";
+import { effectiveActiveSet, updateSelectionUI } from "./sidebar.ts";
+import { currentCharacterLevel } from "./captures_bar.ts";
 import type { TreeNode } from "../../../../types/poe2.d.ts";
 
 export const adj: Map<string, Set<string>> = new Map();
@@ -33,7 +33,7 @@ for (const [a, b] of TREE.edges_for_sel) {
 // — see `buildwright masteries`. That mapping is structural (a mastery's
 // cluster = its group ∪ its connection-graph neighbours), so it replaced
 // the old visual-group + nearest-orphan proximity heuristic that used to
-// live here and over-lit masteries you were merely near. 04e_overlay
+// live here and over-lit masteries you were merely near. overlay
 // consumes `n.lm` directly; no precomputed group→pattern map is needed.
 
 // Quick lookup from an unordered (a, b) pair to the edges_meta entry
@@ -488,7 +488,7 @@ export function tessellatePreviewEdges(edgePairs: EdgePair[], tint: Tint, outArr
 // either the path that would be allocated (gold dashes) on hover of
 // an unselected node, or the set that would be deallocated (red
 // dashes) on hover of an allocated one.
-// Type-narrowed declarations so cross-file consumers (04f_render)
+// Type-narrowed declarations so cross-file consumers (render)
 // get the right shape — the implicit-null inference these would
 // have without annotations isn't useful past file boundaries.
 export let previewBuf: WebGLBuffer | null = null;
@@ -586,7 +586,7 @@ export function updatePreview(): void {
           for (const [, child] of paths.primary) state.previewAdd.add(String(child));
           // computePathAccumulation returns a string[] of stat lines;
           // we tack on the named fields the tooltip reads. Cast widens
-          // the hybrid shape declared in 02_state.previewAccumulated.
+          // the hybrid shape declared in state.previewAccumulated.
           const accum = computePathAccumulation(paths.primary, state.hoverId) as
             string[] & { cost?: number; altCount?: number; mainAdd?: number;
                          setAdd?: number; ascAdd?: number; setMode?: boolean;
@@ -763,7 +763,7 @@ export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; al
   // this, the auto-switch-to-working below would fire on EVERY
   // mouseup — including clicks on UI overlays that sit inside
   // #viewport (the slider chip rail, snapshot button, etc.) because
-  // the pan/click detector in 03_viewport.js listens at the
+  // the pan/click detector in viewport.js listens at the
   // viewport level. A chip's own click handler would correctly
   // setActive(clicked idx), then handleClick's auto-switch would
   // immediately overwrite that with working — making chip-to-chip

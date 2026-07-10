@@ -2,13 +2,13 @@
 // Render
 // ---------------------------------------------------------------------
 
-import { texCache } from "./01_image_preload.ts";
-import { ASC_EFFECTS, MULTI_CHOICE, canvas, gl, isMcOption, pickedMcOption, state , ascNodeOverride} from "./02_state.ts";
-import { STRIDE_FLOATS, getTex, uClip, uDashMode, uDashPeriod, uDashSolid, uOffsetScale, uPulse, uTranslate, uView, whiteTex } from "./04a_webgl_setup.ts";
-import { Tint, pushSprite, pushSpriteRot, pushSpriteUV } from "./04b_vertex_helpers.ts";
-import { ascStatic, mainConnectorBatches, mainEdgeBatch, staticBatches, staticVAO } from "./04d_static_geom.ts";
-import { buildClusterGlow, clusterGlowBatches, clusterGlowVAO, rebuildSearchGlow, rebuildSelEdges, searchGlowCount, searchGlowTex, searchGlowVAO, selConnectorAscBatches, selConnectorBatches, selEdgeAscCount, selEdgeMainCount, selEdgeProcAscStart, selEdgeProcMainStart, selEdgeVAO, uploadDyn } from "./04e_overlay.ts";
-import { findClassStartHub, previewAscCount, previewConnectorAscBatches, previewConnectorBatches, previewMainCount, previewProcAscStart, previewProcMainStart, previewVAO } from "./06_pathfind.ts";
+import { texCache } from "./image_preload.ts";
+import { ASC_EFFECTS, MULTI_CHOICE, canvas, gl, isMcOption, pickedMcOption, state , ascNodeOverride} from "./state.ts";
+import { STRIDE_FLOATS, getTex, uClip, uDashMode, uDashPeriod, uDashSolid, uOffsetScale, uPulse, uTranslate, uView, whiteTex } from "./webgl_setup.ts";
+import { Tint, pushSprite, pushSpriteRot, pushSpriteUV } from "./vertex_helpers.ts";
+import { ascStatic, mainConnectorBatches, mainEdgeBatch, staticBatches, staticVAO } from "./static_geom.ts";
+import { buildClusterGlow, clusterGlowBatches, clusterGlowVAO, rebuildSearchGlow, rebuildSelEdges, searchGlowCount, searchGlowTex, searchGlowVAO, selConnectorAscBatches, selConnectorBatches, selEdgeAscCount, selEdgeMainCount, selEdgeProcAscStart, selEdgeProcMainStart, selEdgeVAO, uploadDyn } from "./overlay.ts";
+import { findClassStartHub, previewAscCount, previewConnectorAscBatches, previewConnectorBatches, previewMainCount, previewProcAscStart, previewProcMainStart, previewVAO } from "./pathfind.ts";
 import type { TreeNode } from "../../../../types/poe2.d.ts";
 
 export function requestRender(): void {

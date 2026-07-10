@@ -3,7 +3,7 @@
 // ============================================================================
 // The heavy per-class sprites (portrait, ascendancy panel backgrounds,
 // asc node icons — the bulk of the sprite payload) are NOT part of the
-// boot preload; only the default class's art is (01_image_preload
+// boot preload; only the default class's art is (image_preload
 // tags ownership). This module fetches the rest:
 //
 //  * on demand, the moment a class is selected (refreshAscOptions),
@@ -16,11 +16,11 @@
 // bakes the new textures in — the same rebuild that lock toggles
 // already trigger on every click, so the cost is interactive-speed.
 
-import { imgCache, lazyClassUrls, preload } from "./01_image_preload.ts";
-import { state } from "./02_state.ts";
-import { uploadOne } from "./04a_webgl_setup.ts";
-import { buildStaticGeometry } from "./04d_static_geom.ts";
-import { requestRender } from "./04f_render.ts";
+import { imgCache, lazyClassUrls, preload } from "./image_preload.ts";
+import { state } from "./state.ts";
+import { uploadOne } from "./webgl_setup.ts";
+import { buildStaticGeometry } from "./static_geom.ts";
+import { requestRender } from "./render.ts";
 
 // Classes whose art is resident (the default class is added on first
 // ensure — lazyClassUrls has no entry for it, its art came with boot).

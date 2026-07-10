@@ -5,16 +5,16 @@
 // this file LAST so every dependency module has already evaluated by
 // the time `resize()` and friends fire.
 
-import { collectSpriteTiers, preload } from "./01_image_preload.ts";
-import { loadingEl, state } from "./02_state.ts";
-import { fitToView, resize } from "./03_viewport.ts";
-import { uploadAllTextures } from "./04a_webgl_setup.ts";
-import { buildStaticGeometry } from "./04d_static_geom.ts";
-import { initSearchGlowTexture } from "./04e_overlay.ts";
-import { requestRender } from "./04f_render.ts";
-import { ensureClassArt, prefetchRemainingClasses, streamSprites } from "./04g_lazy_art.ts";
-import { initDefaultClass } from "./07_sidebar.ts";
-import { syncFromWizardStore } from "./11_wizard_sync.ts";
+import { collectSpriteTiers, preload } from "./image_preload.ts";
+import { loadingEl, state } from "./state.ts";
+import { fitToView, resize } from "./viewport.ts";
+import { uploadAllTextures } from "./webgl_setup.ts";
+import { buildStaticGeometry } from "./static_geom.ts";
+import { initSearchGlowTexture } from "./overlay.ts";
+import { requestRender } from "./render.ts";
+import { ensureClassArt, prefetchRemainingClasses, streamSprites } from "./lazy_art.ts";
+import { initDefaultClass } from "./sidebar.ts";
+import { syncFromWizardStore } from "./wizard_sync.ts";
 
 resize();
 initDefaultClass();
@@ -46,7 +46,7 @@ preload(tiers.blocking).then(() => {
   // from /Builds → planner, even when the loaded build is at lvl 40
   // with multiple snapshots — the "filled" portion of the bar would
   // be empty while the tree shows a full build. The handler in
-  // 13_level_slider.ts routes to currentCharacterLevel (working
+  // level_slider.ts routes to currentCharacterLevel (working
   // capture) or active.levelRange[1] (frozen snapshot).
   window.dispatchEvent(new CustomEvent("poe2-capture-change", { detail: { reason: "boot" } }));
   // The wizard restore above may have switched to a class whose art

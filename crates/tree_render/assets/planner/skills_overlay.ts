@@ -8,7 +8,7 @@
 // Writes go through window.PoE2Plan.data.commit(skills, 'skills'),
 // so the snapshot timeline + .build run-collapse export Just Work.
 // ============================================================================
-import { state } from "./02_state.ts";
+import { state } from "./state.ts";
 import type { Skill } from "../../../../types/poe2.d.ts";
 
 {
@@ -101,7 +101,7 @@ import type { Skill } from "../../../../types/poe2.d.ts";
         supportGems = data.gems.filter(g => g.gem_type === 'Support')
           .sort((a, b) => a.name.localeCompare(b.name));
         gemById = new Map(data.gems.map(g => [g.id, g] as const));
-        // POE2_GEMS_BY_ID is consumed by 13_level_slider; the runtime
+        // POE2_GEMS_BY_ID is consumed by level_slider; the runtime
         // shape IS Map<string, Gem> but the global type slot was
         // declared loose — cast at the seam.
         (window as unknown as { POE2_GEMS_BY_ID: Map<string, Gem> }).POE2_GEMS_BY_ID = gemById;
@@ -892,7 +892,7 @@ import type { Skill } from "../../../../types/poe2.d.ts";
   });
 
   // N on a hovered skill row opens the popover focused on the Notes
-  // textarea. Mirror of the passive-side N hotkey in 14_note_overlay.js.
+  // textarea. Mirror of the passive-side N hotkey in note_overlay.js.
   let hoveredSkillIdx = -1;
   listEl.addEventListener('mouseover', (e) => {
     const row = (e.target as HTMLElement | null)?.closest<HTMLElement>('.ss-row');
@@ -918,7 +918,7 @@ import type { Skill } from "../../../../types/poe2.d.ts";
       openPopover(-1);
       return;
     }
-    // I → open the gear-slot editor (16_gear_overlay owns the popover;
+    // I → open the gear-slot editor (gear_overlay owns the popover;
     // triggering its +Set gear button keeps a single open-path).
     if (e.key === 'i' || e.key === 'I') {
       const gearPop = document.getElementById('gear-popover');

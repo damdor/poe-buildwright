@@ -54,7 +54,7 @@ const fixture: TreeData = {
 
 // Import AFTER the global is installed (module reads TREE at call
 // time, but keep the ordering hygienic for future refactors).
-const { collectSpriteTiers, lazyClassUrls, defaultClassName } = await import("./01_image_preload.ts");
+const { collectSpriteTiers, lazyClassUrls, defaultClassName } = await import("./image_preload.ts");
 
 Deno.test("default class is the alphabetical first", () => {
   if (defaultClassName() !== "Alpha") throw new Error(`got ${defaultClassName()}`);

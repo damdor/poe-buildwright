@@ -25,8 +25,8 @@
 //     lives in the same static VBO as sprites.
 
 
-import { imgCache, texCache } from "./01_image_preload.ts";
-import { gl } from "./02_state.ts";
+import { imgCache, texCache } from "./image_preload.ts";
+import { gl } from "./state.ts";
 
 export const VS_SRC = `#version 300 es
 precision highp float;
@@ -162,8 +162,8 @@ export function setupAttribPointers() {
   gl.vertexAttribPointer(4, 2, gl.FLOAT, false, STRIDE_BYTES, 40);
 }
 
-// VAOs are owned by the file that creates them (04d_static_geom for
-// staticVAO; 04e_overlay for dynVAO + selEdgeVAO) so the let-binding
+// VAOs are owned by the file that creates them (static_geom for
+// staticVAO; overlay for dynVAO + selEdgeVAO) so the let-binding
 // and its reassignment live in one module — required because ES
 // module imports are readonly.
 export function makeVAO(buf: WebGLBuffer): WebGLVertexArrayObject {

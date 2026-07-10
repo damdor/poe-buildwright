@@ -118,5 +118,7 @@ Gotchas the diary learned the hard way:
 - Rust: match the existing handler style; datasets get provenance +
   a manifest entry; loud errors over silent partial output.
 - TypeScript: strict (deno check); no frameworks, no deps — plain DOM
-  and small modules with numeric prefixes for reading order.
+  and small modules named for what they do. Module evaluation order
+  is defined by ONE place: the import list in the planner's
+  `_main.ts` (its header documents the ordering constraints).
 - Comments explain constraints the code can't show, not narration.

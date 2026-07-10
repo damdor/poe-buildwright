@@ -21,13 +21,13 @@
 // active capture mid-slide).
 
 
-import { ASC_EFFECTS, ascSel, state , resolveAscName} from "./02_state.ts";
-import { requestRender } from "./04f_render.ts";
-import { esc } from "./05_hover.ts";
-import { adj, updatePreview } from "./06_pathfind.ts";
-import { applyAsc, updateSelectionUI } from "./07_sidebar.ts";
-import { flushPersistNow, syncFromWizardStore } from "./11_wizard_sync.ts";
-import { currentCharacterLevel } from "./12_captures_bar.ts";
+import { ASC_EFFECTS, ascSel, state , resolveAscName} from "./state.ts";
+import { requestRender } from "./render.ts";
+import { esc } from "./hover.ts";
+import { adj, updatePreview } from "./pathfind.ts";
+import { applyAsc, updateSelectionUI } from "./sidebar.ts";
+import { flushPersistNow, syncFromWizardStore } from "./wizard_sync.ts";
+import { currentCharacterLevel } from "./captures_bar.ts";
 import type { Capture, Skill } from "../../../../types/poe2.d.ts";
 
 const lsEl       = document.getElementById('level-slider') as HTMLElement | null;
@@ -42,7 +42,7 @@ const lsModeEditBtn   = document.getElementById('ls-mode-edit')   as HTMLElement
 const lsModeReplayBtn = document.getElementById('ls-mode-replay') as HTMLElement | null;
 
 // Replay mode flag. CRITICAL: must also live on `state` so the
-// autosave RAF tick in 11_wizard_sync.ts can gate itself off —
+// autosave RAF tick in wizard_sync.ts can gate itself off —
 // otherwise sliding the level slider would constantly mutate
 // state.selected and the autosave would faithfully PERSIST that
 // mutation into the active capture, destroying authored data.
@@ -922,7 +922,7 @@ window.addEventListener('resize', () => {
 });
 
 // Click a capture chip → switch the active capture. Mirrors the
-// captures-bar chip handler (12_captures_bar.js): exit replay first,
+// captures-bar chip handler (captures_bar.js): exit replay first,
 // flush pending edits into the OLD active, then setActive.
 // Delete (×) button intercepts before the chip's click → confirm →
 // captures.remove(idx). normalizeCapturesRanges in the chrome

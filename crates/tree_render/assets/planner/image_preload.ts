@@ -11,7 +11,7 @@ export const texCache: Map<string, WebGLTexture> = new Map();
 // initDefaultClass applies to the sidebar select). Its ascendancy art
 // rides the eager preload below so the class a first-time visitor
 // lands on is complete at first paint; every other class's art is
-// deferred and fetched by 04g_lazy_art.ts. Single source of truth:
+// deferred and fetched by lazy_art.ts. Single source of truth:
 // if the default-class rule ever changes, the eager set follows.
 export function defaultClassName(): string | null {
   const sorted = [...TREE.classes].sort((a, b) => a.name.localeCompare(b.name));
@@ -108,7 +108,7 @@ function collectOwnedUrls(): Map<string, { owner: string | null; tier: SpriteTie
 
 // The boot-owned sprites (main tree, shared chrome, default class's
 // art) split by loading tier. Boot blocks first paint on `blocking`
-// only; `icons` then `flavor` stream in behind it (see 10_boot).
+// only; `icons` then `flavor` stream in behind it (see boot).
 export function collectSpriteTiers(): { blocking: string[]; icons: string[]; flavor: string[] } {
   const def = defaultClassName();
   const tiers = { blocking: [] as string[], icons: [] as string[], flavor: [] as string[] };
@@ -120,7 +120,7 @@ export function collectSpriteTiers(): { blocking: string[]; icons: string[]; fla
 }
 
 // Deferred art grouped by owning class (the default class is excluded
-// — its art rides the boot tiers above). Consumed by 04g_lazy_art.ts.
+// — its art rides the boot tiers above). Consumed by lazy_art.ts.
 export function lazyClassUrls(): Map<string, string[]> {
   const def = defaultClassName();
   const map = new Map<string, string[]>();

@@ -5,7 +5,7 @@
 //! cross-section). The renderer, however, samples a per-orbit *arc*
 //! sprite whose curvature is baked into the pixel alpha (the WebGL
 //! kite-quad maps the texture onto a corner; the alpha carves the arc —
-//! see `tree_render/assets/planner/04c_edge_tessellate.ts`). GGG doesn't
+//! see `tree_render/assets/planner/edge_tessellate.ts`). GGG doesn't
 //! ship those arcs, so we generate them first-party: bend the line's
 //! cross-section into a quarter circle of the orbit's radius, centred at
 //! the sprite's bottom-right corner (which the kite maps to the orbit

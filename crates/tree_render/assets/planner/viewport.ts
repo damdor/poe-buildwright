@@ -15,10 +15,10 @@
 // schedule the pixel-buffer realloc for after the resize storm settles
 // (80ms of quiet = transition done, do the proper resize).
 
-import { canvas, state, viewport, zoomfitBtn } from "./02_state.ts";
-import { requestRender } from "./04f_render.ts";
-import { handleHover } from "./05_hover.ts";
-import { handleClick, handleRightClick } from "./06_pathfind.ts";
+import { canvas, state, viewport, zoomfitBtn } from "./state.ts";
+import { requestRender } from "./render.ts";
+import { handleHover } from "./hover.ts";
+import { handleClick, handleRightClick } from "./pathfind.ts";
 import type { Capture } from "../../../../types/poe2.d.ts";
 
 let bufRealloc: ReturnType<typeof setTimeout> | null = null;

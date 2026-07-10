@@ -1,17 +1,17 @@
 // ============================================================================
 // === Sidebar collapse / expand with hover-peek ============================
 // ============================================================================
-// (Numbered 11b deliberately: the initial open/collapsed decision
-// reads state.selected AFTER 11_wizard_sync's plan hydration — this
-// logic historically lived in 14_note_overlay for that timing reason,
-// where nobody could find it.)
+// (Placed AFTER wizard_sync in _main.ts deliberately: the initial
+// open/collapsed decision reads state.selected as hydrated from the
+// stored plan — this logic historically lived in note_overlay for
+// that timing reason, where nobody could find it.)
 //
 //   * Toggle button (chevron) pins the state for the session.
 //   * When collapsed: a 22 px sliver remains, mouse-over re-expands
 //     to full width temporarily (".hover-peek"), mouse-leave folds
 //     back unless the user has pinned it open.
 
-import { state } from "./02_state.ts";
+import { state } from "./state.ts";
 
 {
   const panel = document.getElementById('panel');
@@ -40,7 +40,7 @@ import { state } from "./02_state.ts";
     // every reload start with the canvas obscured.
     //
     // EXCEPTION — first run: an EMPTY build (zero allocations after
-    // plan hydration, which ran in 11_wizard_sync before this module)
+    // plan hydration, which ran in wizard_sync before this module)
     // starts with the sidebar OPEN. A new user's first job is naming
     // the build and picking a class — both live here, and the old
     // behaviour hid them behind an unlabeled 10px chevron while the

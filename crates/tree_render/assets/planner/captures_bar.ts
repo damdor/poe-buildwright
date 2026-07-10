@@ -20,8 +20,8 @@
 // Tree state and chip rail both re-render on 'poe2-capture-change'.
 
 
-import { countSelected, state } from "./02_state.ts";
-import { flushPersistNow, syncFromWizardStore } from "./11_wizard_sync.ts";
+import { countSelected, state } from "./state.ts";
+import { flushPersistNow, syncFromWizardStore } from "./wizard_sync.ts";
 
 const capListEl      = document.getElementById('cap-list')      as HTMLElement | null;
 const capCountEl     = document.getElementById('cap-count')     as HTMLElement | null;
@@ -221,7 +221,7 @@ export function deleteCapture(idx: number): void {
 }
 
 // Declare persistToWizardStore for the snapshotHere typeof check. The
-// function lives in 11_wizard_sync.ts which doesn't export it on the
+// function lives in wizard_sync.ts which doesn't export it on the
 // global; the planner_globals.d.ts surfaces it for cross-file calls.
 declare function persistToWizardStore(): void;
 

@@ -4,7 +4,7 @@
 // The GGG .build field mapping lives HERE and nowhere else. Both sides
 // of the interop boundary derive from these tables:
 //
-//   * import: validateGGGBuild (08_build_io) runs the walker in
+//   * import: validateGGGBuild (build_io) runs the walker in
 //     'import' mode — lenient on unknown fields (GGG may add some),
 //     strict on the types of fields we know.
 //   * export: planToGGGBuild runs the walker in 'export' mode over its

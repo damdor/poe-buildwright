@@ -11,14 +11,14 @@
 // the list of sprites we want stamped from it (with the texture
 // resolved up-front so render can skip the cache lookup).
 
-import { texCache } from "./01_image_preload.ts";
-import { gl, state } from "./02_state.ts";
-import { maybeRebuildStaticForLocks } from "./02b_lock_rebuild.ts";
-import { STRIDE_FLOATS, getTex, makeVAO } from "./04a_webgl_setup.ts";
-import { Tint, pushSprite } from "./04b_vertex_helpers.ts";
-import { connectorUrl, edgeFamily, isAllocOrRoot, pushConnectorArc, pushConnectorLine, tessellateSelEdges } from "./04c_edge_tessellate.ts";
-import { render } from "./04f_render.ts";
-import { getEdgeMeta } from "./06_pathfind.ts";
+import { texCache } from "./image_preload.ts";
+import { gl, state } from "./state.ts";
+import { maybeRebuildStaticForLocks } from "./lock_rebuild.ts";
+import { STRIDE_FLOATS, getTex, makeVAO } from "./webgl_setup.ts";
+import { Tint, pushSprite } from "./vertex_helpers.ts";
+import { connectorUrl, edgeFamily, isAllocOrRoot, pushConnectorArc, pushConnectorLine, tessellateSelEdges } from "./edge_tessellate.ts";
+import { render } from "./render.ts";
+import { getEdgeMeta } from "./pathfind.ts";
 import type { Allocation } from "../../../../types/poe2.d.ts";
 
 export interface TexBucket { tex: WebGLTexture | undefined; items: Array<(arr: number[]) => void>; }
@@ -79,7 +79,7 @@ export function makeSearchGlowTexture(): WebGLTexture {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-// Boot orchestrator (10_boot.ts) calls this once after the texture
+// Boot orchestrator (boot.ts) calls this once after the texture
 // preload + upload finishes. Setter rather than direct assignment so
 // the searchGlowTex binding stays inside 04e — required for ES module
 // exports (consumers can't reassign an imported binding).
