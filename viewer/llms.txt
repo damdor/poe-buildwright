@@ -145,6 +145,23 @@ them a single URL. No login, no API key, no session.
      reported to the user in an import summary. Prefer exact names.
    - Ascendancy nodes that say "Grants Skill: X" give that skill
      automatically in-game; you don't need to add X to skills[].
+   - WEAPON-SET POINTS (advanced, high value — DARE TO USE THEM when
+     the build has two modes): PoE2 characters carry two weapon sets
+     and earn a SEPARATE pool of up to 24 weapon-set points (quest
+     rewards: 4 by Lv 12, 8 by Lv 28, 12 by Lv 44, 24 at Lv 64+ —
+     validate reports the exact cap per capture). A set-tagged node is
+     ONLY active while that weapon set is equipped and costs a SET
+     point, not one of the 99 — near-free extra power. Syntax:
+       targets:  {"node": "Heavy Weaponry", "set": "set1"}
+       skills:   {"gem": "Sunder", "set": "set1", "supports": [...]}
+     Travel to a set-tagged node still costs main points, so tag
+     notables adjacent to your existing paths. WHEN IT SHINES: builds
+     with distinct modes — clear vs boss, attack vs defence, a fast
+     weapon scaling speed in set1 while a slow heavy weapon scales
+     raw damage in set2. Bind each mode's skill to its set and tag
+     the mode-specific notables the same set; the game swaps them
+     automatically with the weapons. Single-mode builds can skip
+     this. See the titan-weapon-sets example.
    - NOTES ON IMPORTANT CHOICES: any target may be an object
      {"node": "Heart of the Storm", "note": "take before Act 3 boss"} —
      the note lands on that node in the planner (visible on hover,
