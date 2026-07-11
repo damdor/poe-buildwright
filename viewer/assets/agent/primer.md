@@ -25,10 +25,27 @@ class's side of the tree.
   Weapon Master reads "100 Passive Skill Points become Weapon Set Skill
   Points": it raises the weapon-set point cap by 100, meaning
   effectively ALL of your regular passive points can also be mirrored
-  into per-set allocations. Use weapon-set points for swap-styles (a
-  defensive mace set vs an offensive spear set); a target may be tagged
-  {"node": ..., "set": "set1"|"set2"} to allocate it in one set only.
-  Skip the mechanic unless the build concept actually swaps weapons.
+  into per-set allocations. A target may be tagged
+  {"node": ..., "set": "set1"|"set2"} to allocate it in one set only,
+  and a skill may be bound with {"gem": ..., "set": "set1"|"set2"}.
+
+  THE DECISION RULE — use weapon-set points when the build has two
+  MODES; skip them when it has one. The test: would any node be dead
+  weight half the time? Then it belongs to a set. Worked patterns:
+  - Slow heavy weapon in one set (scale raw damage — speed is wasted
+    on it), fast weapon in the other (scale attack/cast speed).
+  - Clear mode vs boss mode: projectile/chain notables in set1 for
+    mapping, single-target/mark notables in set2 for bosses.
+  - Attack set vs defence set: damage notables swap out for
+    block/shield notables while "Raise Shield"-style skills are up.
+  The craft: bind each mode's SKILL to its set, tag that mode's
+  notables the same set, and keep set-tagged nodes ADJACENT to paths
+  you already walk (travel still costs main points — the set point
+  only pays for the destination). Each set point is nearly free
+  power for its mode: a two-mode build that ignores them leaves up
+  to 24 points on the table. Validate reports per-capture
+  weapon_set_points {set1, set2, used, cap} so leveling captures
+  can't overspend points not yet earned.
 
 ## The tree's geography (matters for cost)
 

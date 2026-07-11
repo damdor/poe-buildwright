@@ -1,0 +1,51 @@
+{
+  "format": "poe2-agent-plan",
+  "version": 1,
+  "name": "Example: Spirit Walker Whirling Slash / Twister — two weapon sets, two jobs",
+  "class": "Huntress",
+  "ascendancy": "Spirit Walker",
+  "notes": "The classic community weapon-set pattern. Weapon set 1 carries a FAST spear (Winged Spear, 1.7 aps) for Whirling Slash — the gem stays low level because it's the generator/mobility button; its set-tagged nodes buy ATTACK SPEED, which the fast spear multiplies. Weapon set 2 carries a SLOW, high-damage crit spear (Runemastered Ironhead) with a high-level Twister; its set-tagged nodes buy DAMAGE and CRIT — speed would be wasted on a 1.25 aps weapon. The game swaps tree and skill together with the weapons: each mode is fully specialized without paying twice from the 99 main points.",
+  "captures": [
+    {
+      "level": 45,
+      "name": "Acts: modes forming",
+      "notes": "12 weapon-set points are earned by 44; this capture spends 4.",
+      "targets": [
+        "Honed Instincts",
+        "Consistent Intake",
+        { "node": "Agile Succession", "set": "set1", "note": "set 1 only: attack speed for the fast Whirling Slash spear" },
+        { "node": "Imbibed Power", "set": "set1" },
+        { "node": "Sitting Duck", "set": "set2", "note": "set 2 only: crit setup for Twister bombs" },
+        { "node": "Preemptive Strike", "set": "set2" }
+      ],
+      "skills": [
+        { "gem": "Whirling Slash", "level": 6, "set": "set1", "supports": ["Ancestral Call I"], "note": "stays LOW level on purpose — it's the fast generator, not the payoff" },
+        { "gem": "Twister", "level": 12, "set": "set2", "supports": ["Ambush"], "note": "the payoff skill — level this aggressively" }
+      ],
+      "gear": [
+        { "slot": "weapon1", "base": "Winged Spear", "rarity": "rare", "mods": ["#% increased Attack Speed"], "note": "1.7 attacks/sec — the whole point of set 1" },
+        { "slot": "weapon2", "base": "Broad Spear", "rarity": "rare", "mods": ["#% increased Physical Damage", "+#% to Critical Hit Chance"], "note": "the slowest spear available at this level — Twister only cares about the hit, not the swing speed" }
+      ]
+    },
+    {
+      "level": 70,
+      "name": "Maps: both modes deep",
+      "notes": "All 24 set points earned by 64 — deepen each mode; the main-point budget never notices.",
+      "gear": [
+        { "slot": "weapon1", "base": "Winged Spear", "rarity": "rare", "mods": ["#% increased Attack Speed"] },
+        { "slot": "weapon2", "base": "Runemastered Ironhead Spear", "rarity": "rare", "mods": ["#% increased Physical Damage", "+#% to Critical Hit Chance"], "note": "the endgame upgrade: 1.25 aps, 94-127 damage — pure payload" }
+      ],
+      "targets": [
+        { "node": "Precision Salvo", "set": "set1" },
+        { "node": "Dispatch Foes", "set": "set2" },
+        { "node": "Pin their Motivation", "set": "set2", "note": "set 2 only: more damage the moment the slow spear comes out" },
+        { "node": "The Mórrigan's Guidance", "note": "ascendancy — always active, asc points are their own pool" },
+        "Sacred Unity"
+      ],
+      "skills": [
+        { "gem": "Whirling Slash", "level": 9, "set": "set1", "supports": ["Ancestral Call I"], "note": "still barely leveled — it just needs to spin" },
+        { "gem": "Twister", "level": 18, "set": "set2", "supports": ["Ambush", "Armour Break I"] }
+      ]
+    }
+  ]
+}

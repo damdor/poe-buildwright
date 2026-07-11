@@ -20,7 +20,7 @@ import { adj } from "./pathfind.ts";
 import { loadPlanData } from "./build_io.ts";
 import type { Allocation, Capture, Item, Plan, Skill, TreeNode } from "../../../../types/poe2.d.ts";
 
-interface AgentSkill { gem?: string; level?: number; supports?: string[] }
+interface AgentSkill { gem?: string; level?: number; supports?: string[]; note?: string; set?: "set1" | "set2" }
 /** Gear entry. Either a `name` (a unique from item_catalogue, or
  *  freetext), or a grounded rare/magic spec: `base` from
  *  /assets/agent/bases.json + `rarity` + the few `mods` that matter.
@@ -348,8 +348,10 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
         id: active?.id ?? s.gem,
         level: typeof s.level === "number" ? s.level : 1,
         quality: 0,
-        set: "main",
-        note: "",
+        // Weapon-set binding: the skill is used while that weapon set
+        // is equipped; set-tagged tree nodes swap in alongside it.
+        set: s.set === "set1" || s.set === "set2" ? s.set : "main",
+        note: s.note ?? "",
         supports,
       } as unknown as Skill);
     }

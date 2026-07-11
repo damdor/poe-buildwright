@@ -71,11 +71,14 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
     const c = capsIn[i]!;
     const hi = typeof c.level === "number" ? c.level : 100;
     const detail = result.capDetails[i]!;
-    const noteByNode = new Map<string, string>();
+    // Cumulative snapshots from the validator: a set tag or note from
+    // an earlier capture stays on the node in every later capture.
+    const noteByNode = new Map<string, string>(detail.notes);
+    const setForNode = new Map<string, "set1" | "set2">(detail.sets);
     for (const t of detail.targetCosts) {
       if (t.note) {
         targetNotesIn++;
-        if (t.nodeId) { noteByNode.set(t.nodeId, t.note); targetNotesPreserved++; }
+        if (t.nodeId) targetNotesPreserved++;
       }
     }
     captures.push({
@@ -86,7 +89,8 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
       ascendancy: result.asc,
       passives: detail.allocated.map(id => {
         const note = noteByNode.get(id);
-        return note ? { id, set: "main" as const, note } : { id, set: "main" as const };
+        const set = setForNode.get(id) ?? ("main" as const);
+        return note ? { id, set, note } : { id, set };
       }),
       // Skill groups without a resolvable active gem are dropped —
       // validate tolerates them (grounding may be degraded) but a
@@ -97,7 +101,10 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
           id: gemId(sk.gem)!,
           level: typeof sk.level === "number" ? sk.level : 1,
           quality: 0,
-          set: "main" as const,
+          // Skill weapon-set binding: the skill is used while that
+          // weapon set is equipped (the tree's set-tagged nodes swap
+          // in with it).
+          set: sk.set === "set1" || sk.set === "set2" ? sk.set : ("main" as const),
           ...(sk.note ? { note: sk.note } : {}),
           supports: (sk.supports ?? []).map(sup => ({
             id: gemId(sup) ?? sup, level: 1, quality: 0,
