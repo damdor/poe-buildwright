@@ -3908,6 +3908,11 @@ const TS_ENTRIES: &[&str] = &[
     "viewer/assets/share_codec.ts",
     "viewer/assets/index_page.ts",
     "viewer/assets/share_page.ts",
+    // Cloudflare Pages Functions — the agent surface. Checked with the
+    // same strictness; _lib.ts is pulled in transitively.
+    "viewer/functions/agent/validate.ts",
+    "viewer/functions/agent/build.ts",
+    "viewer/functions/live/[token].ts",
 ];
 
 /// Prefer the pinned deno that tools/setup.sh installs; fall back to
