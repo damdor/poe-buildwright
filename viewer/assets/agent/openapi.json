@@ -2,7 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "poe-buildwright agent API",
-    "description": "Headless build creation for Path of Exile 2: validate an agent plan, or turn one into shareable build URLs in a single POST. Grounding data (nodes, graph, gems, bases, support compatibility) is served as static JSON — see /assets/agent/capabilities.json for the map, /llms.txt for the authoring contract, and /assets/agent/examples/index.json for known-good plans.",
+    "description": "Headless build creation for Path of Exile 2: validate an agent plan, or turn one into shareable build URLs in a single POST. Grounding data (nodes, graph, gems, bases, support compatibility) is served as static JSON — see /assets/agent/capabilities.json for the map, /llms.txt for the authoring contract, and /assets/agent/examples/index.json for known-good plans. Site code is PolyForm-Noncommercial; the game data served here is (c) Grinding Gear Games and not covered by that license.",
+    "license": { "name": "PolyForm Noncommercial 1.0.0", "url": "https://polyformproject.org/licenses/noncommercial/1.0.0" },
     "version": "1"
   },
   "servers": [{ "url": "/" }],
