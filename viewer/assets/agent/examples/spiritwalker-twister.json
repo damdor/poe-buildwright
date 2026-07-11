@@ -44,7 +44,8 @@
       ],
       "skills": [
         { "gem": "Whirling Slash", "level": 9, "set": "set1", "supports": ["Ancestral Call I"], "note": "still barely leveled — it just needs to spin" },
-        { "gem": "Twister", "level": 18, "set": "set2", "supports": ["Ambush", "Armour Break I"] }
+        { "gem": "Twister", "level": 18, "set": "set2", "supports": ["Ambush", "Armour Break I"] },
+        { "gem": "Herald of Blood", "level": 10, "note": "spirit skill — reserves 30 of the 100 base spirit; every real build runs 1-3 of these persistent buffs" }
       ]
     }
   ]
