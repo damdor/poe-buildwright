@@ -116,13 +116,12 @@ cluster, recovery via leech".
   live and die on it. Validate reports spirit.{reserved,
   base_available, gear_bonus} per capture and warns (not errors) on
   overspend beyond base+gear.
-- ITEM-GRANTED SKILLS: uniques (~90) and base items — sceptres are
-  the famous case ("this sceptre grants its aura skill") — grant
-  skills while equipped (/assets/agent/granted_skills.json, `uniques`
-  + `bases`; base entries list what the data currently confirms —
-  their exact Spirit — so trust the file over memory for grant
-  names). Free: no gem slot, and supports socket into them at no gem
-  cost (2 sockets at granted level 1, 3 at 10, 4 at 15, 5 at 20 —
+- ITEM-GRANTED SKILLS: uniques and base items grant skills while
+  equipped (/assets/agent/granted_skills.json, `uniques` + `bases`).
+  Sceptres are the famous case — each grants its aura/minion skill
+  AND exactly 100 Spirit; wands and staves grant their attack spell.
+  Free: no gem slot, and supports socket into them at no gem cost
+  (2 sockets at granted level 1, 3 at 10, 4 at 15, 5 at 20 —
   spirit.json granted_skill_sockets). If your gear names one, build
   around it instead of re-adding it to skills[].
 - Supports must be type-compatible (the require/exclude data) AND

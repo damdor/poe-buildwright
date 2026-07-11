@@ -178,16 +178,16 @@ them a single URL. No login, no API key, no session.
      granted_skills.json `bases`), unique +Spirit counts at its low
      roll — overspend beyond base+gear is a WARNING; if you rely on
      gear spirit, spec that gear.
-   - ITEM-GRANTED SKILLS: uniques (~90) AND base items grant skills
-     while equipped — /assets/agent/granted_skills.json (`uniques` +
-     `bases` sections; a `bases` entry currently carries the base's
-     exact Spirit — sceptres grant their skill in-game too, but skill
-     names for bases ship only when present in the data, so trust the
-     file over memory). Granted skills need NO gem slot and socket
-     supports for free (how many depends on granted level —
-     spirit.json granted_skill_sockets: 2 at L1, 3 at L10, 4 at L15,
-     5 at L20). When your gear[] names one, validate lists it per
-     capture; DON'T re-add it to skills[] — build around it.
+   - ITEM-GRANTED SKILLS: uniques AND base items grant skills while
+     equipped — /assets/agent/granted_skills.json (`uniques` +
+     `bases`). Sceptres are the famous case: each base grants its
+     skill AND exactly 100 Spirit ("Shrine Sceptre" grants a Purity
+     aura); wands/staves grant their attack spell. Granted skills
+     need NO gem slot and socket supports for free (how many depends
+     on granted level — spirit.json granted_skill_sockets: 2 at L1,
+     3 at L10, 4 at L15, 5 at L20). When your gear[] names one,
+     validate lists it per capture; DON'T re-add it to skills[] —
+     build around it.
    - NOTES ON IMPORTANT CHOICES: any target may be an object
      {"node": "Heart of the Storm", "note": "take before Act 3 boss"} —
      the note lands on that node in the planner (visible on hover,
