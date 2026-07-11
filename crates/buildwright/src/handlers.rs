@@ -439,6 +439,10 @@ const DEFAULT_TABLES: &[&str] = &[
     "GrantedEffectsPerLevel",
     "ActiveSkills",
     "SkillGems",
+    // Item-granted skills + the spirit economy (docs/next-data-targets.md).
+    "ItemSpirit",
+    "ModGrantedSkills",
+    "GrantedSkillSocketNumbers",
 ];
 
 /// Systematically export a set of GGG tables to first-party TSVs — the
@@ -483,23 +487,9 @@ pub fn mine(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let client = CdnClient::connect().map_err(|e| e.to_string())?;
     let index = load_index(&client)?;
 
-    // Resolve every .datc64 path once → base filename → shortest (base,
-    // non-localized) path. Avoids re-walking 4M paths per table.
-    let mut paths: BTreeMap<String, String> = BTreeMap::new();
-    for (path, _) in index.resolve_paths().map_err(|e| e.to_string())? {
-        let lp = path.to_ascii_lowercase();
-        if !lp.ends_with(".datc64") {
-            continue;
-        }
-        if let Some(base) = lp.rsplit('/').next() {
-            let fewer = paths
-                .get(base)
-                .is_none_or(|e| path.matches('/').count() < e.matches('/').count());
-            if fewer {
-                paths.insert(base.to_string(), path);
-            }
-        }
-    }
+    // Resolve every .datc64 path once → base filename → ranked
+    // candidates. Avoids re-walking 4M paths per table.
+    let paths = resolve_table_paths(&index)?;
 
     let out_dir = match out_override {
         Some(o) => ctx.root.join(o),
@@ -526,25 +516,28 @@ pub fn mine(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     // Decompress each needed table once (export set ∪ referenced), keyed
     // by name, so a table that's both exported and referenced loads once.
-    let mut bytes_cache: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    let load = |name: &str| -> Option<Vec<u8>> {
-        let base = format!("{}.datc64", name.to_ascii_lowercase());
-        let vpath = paths.get(&base)?;
-        extract_by_path(&client, &index, vpath).ok()
-    };
+    // Values carry the schema that autofit settled on for the copy that
+    // parsed — later decode MUST reuse it, not the raw schema.
+    let mut bytes_cache: BTreeMap<String, (Vec<u8>, data_miner::dat::TableSchema)> =
+        BTreeMap::new();
     for name in table_list.iter().chain(referenced.iter()) {
-        if bytes_cache.contains_key(name) || set.table(name).is_none() {
+        if bytes_cache.contains_key(name) {
             continue;
         }
-        if let Some(b) = load(name) {
-            bytes_cache.insert(name.clone(), b);
+        let Some(schema) = set.table(name) else {
+            continue;
+        };
+        let base = format!("{}.datc64", name.to_ascii_lowercase());
+        let cands = paths.get(&base).map(Vec::as_slice).unwrap_or(&[]);
+        if let Ok(pair) = extract_parseable(&client, &index, name, cands, schema) {
+            bytes_cache.insert(name.clone(), pair);
         }
     }
 
     // Build the RefMap: target table → Id per row index.
     let mut refs: mine::RefMap = mine::RefMap::new();
     for name in &referenced {
-        if let (Some(schema), Some(b)) = (set.table(name), bytes_cache.get(name))
+        if let Some((b, schema)) = bytes_cache.get(name)
             && let Ok(dat) = Dat::parse(b, schema)
         {
             refs.insert(name.clone(), mine::id_column(&dat, schema));
@@ -553,13 +546,16 @@ pub fn mine(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     let (mut done, mut skipped) = (0usize, 0usize);
     for name in &table_list {
-        let Some(schema) = set.table(name) else {
+        if set.table(name).is_none() {
             ui::warn(ctx.style, &format!("{name}: not in dat-schema — skipped"));
             skipped += 1;
             continue;
-        };
-        let Some(dat_bytes) = bytes_cache.get(name) else {
-            ui::warn(ctx.style, &format!("{name}: not found in index — skipped"));
+        }
+        let Some((dat_bytes, schema)) = bytes_cache.get(name) else {
+            ui::warn(
+                ctx.style,
+                &format!("{name}: no decodable copy in the index — skipped"),
+            );
             skipped += 1;
             continue;
         };
@@ -602,25 +598,63 @@ pub fn mine(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Map lowercased `<name>.datc64` → its base (fewest-segment,
-/// non-localized) resolved path, in one walk of the index.
-fn resolve_table_paths(index: &Index) -> Result<BTreeMap<String, String>, String> {
-    let mut paths: BTreeMap<String, String> = BTreeMap::new();
+/// Map lowercased `<name>.datc64` → ALL its resolved index paths,
+/// best [`table_path_rank`] first, in one walk of the index. Callers
+/// try candidates in order because a single "best" path is not always
+/// usable: at transitional patches the newest copy (`data/balance/`)
+/// can be a format ahead of the community dat-schema while the
+/// lingering pre-move copy (`data/`) still parses.
+fn resolve_table_paths(index: &Index) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let mut paths: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (path, _) in index.resolve_paths().map_err(|e| e.to_string())? {
         let lp = path.to_ascii_lowercase();
         if !lp.ends_with(".datc64") {
             continue;
         }
         if let Some(base) = lp.rsplit('/').next() {
-            let fewer = paths
-                .get(base)
-                .is_none_or(|e: &String| path.matches('/').count() < e.matches('/').count());
-            if fewer {
-                paths.insert(base.to_string(), path);
-            }
+            paths.entry(base.to_string()).or_default().push(path);
         }
     }
+    for cands in paths.values_mut() {
+        cands.sort_by_key(|p| table_path_rank(p));
+    }
     Ok(paths)
+}
+
+/// Extract the newest copy of a table that actually PARSES: try each
+/// candidate path in rank order, autofit the schema against its bytes,
+/// and return the first `(bytes, fitted_schema)` that `Dat::parse`
+/// accepts — logging when a newer-but-undecodable copy was skipped.
+fn extract_parseable(
+    client: &CdnClient,
+    index: &Index,
+    name: &str,
+    candidates: &[String],
+    schema: &data_miner::dat::TableSchema,
+) -> Result<(Vec<u8>, data_miner::dat::TableSchema), String> {
+    let mut last_err = format!("{name}: no candidate paths in index");
+    for (i, vpath) in candidates.iter().enumerate() {
+        let bytes = match extract_by_path(client, index, vpath) {
+            Ok(b) => b,
+            Err(e) => {
+                last_err = format!("{name}: {vpath}: {e}");
+                continue;
+            }
+        };
+        let fitted = data_miner::dat::autofit(&bytes, schema).unwrap_or_else(|| schema.clone());
+        match Dat::parse(&bytes, &fitted) {
+            Ok(_) => {
+                if i > 0 {
+                    eprintln!(
+                        "note: {name}: newest copy undecodable with current dat-schema — using older {vpath}"
+                    );
+                }
+                return Ok((bytes, fitted));
+            }
+            Err(e) => last_err = format!("{name}: {vpath}: {e}"),
+        }
+    }
+    Err(last_err)
 }
 
 /// Shape raw GGG tables into one of the site's datasets (first-party).
@@ -689,13 +723,10 @@ fn shape_tree_psg(ctx: &Ctx, patch: &str) -> Result<(), String> {
             continue;
         };
         let base = format!("{}.datc64", name.to_ascii_lowercase());
-        let Some(vpath) = paths.get(&base) else {
-            ui::warn(ctx.style, &format!("{name}: no {base} in index — skipped"));
-            continue;
-        };
-        match extract_by_path(&client, &index, vpath) {
-            Ok(bytes) => ts.insert(name, bytes, schema.clone()),
-            Err(e) => ui::warn(ctx.style, &format!("{name}: {e} — skipped")),
+        let cands = paths.get(&base).map(Vec::as_slice).unwrap_or(&[]);
+        match extract_parseable(&client, &index, name, cands, schema) {
+            Ok((bytes, fitted)) => ts.insert(name, bytes, fitted),
+            Err(e) => ui::warn(ctx.style, &format!("{e} — skipped")),
         }
     }
 
@@ -797,9 +828,8 @@ fn emit_asc_overrides(ctx: &Ctx, dir: &Path) -> Result<(), String> {
     for name in ["AscendancyPassiveSkillOverrides", "PassiveSkills", "Ascendancy", "Characters", "Stats"] {
         let schema = set.table(name).ok_or_else(|| format!("{name}: not in schema"))?;
         let base = format!("{}.datc64", name.to_ascii_lowercase());
-        let vpath = paths.get(&base).ok_or_else(|| format!("{name}: not in index"))?;
-        let bytes = extract_by_path(&client, &index, vpath)?;
-        let schema = data_miner::dat::autofit(&bytes, schema).unwrap_or_else(|| schema.clone());
+        let cands = paths.get(&base).map(Vec::as_slice).unwrap_or(&[]);
+        let (bytes, schema) = extract_parseable(&client, &index, name, cands, schema)?;
         ts.insert(name, bytes, schema);
     }
     let mut sd = data_miner::csd::StatDescriptions::new();
@@ -898,6 +928,7 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // Which source tables + shaper + output path, per dataset.
     let (tables, out_rel): (&[&str], &str) = match dataset.as_str() {
         "bases" => (data_miner::shape::BASES_TABLES, "items/bases.tsv"),
+        "grants" => (data_miner::shape::GRANTS_TABLES, "items/grants.tsv"),
         "gems" => (data_miner::shape::GEMS_TABLES, "skills/gems.tsv"),
         "active_skills" => (
             data_miner::shape::ACTIVE_SKILLS_TABLES,
@@ -968,37 +999,27 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             continue;
         };
         let base = format!("{}.datc64", name.to_ascii_lowercase());
-        let Some(vpath) = paths.get(&base) else {
-            ui::warn(ctx.style, &format!("{name}: no {base} in index — skipped"));
-            continue;
-        };
-        match extract_by_path(&client, &index, vpath) {
-            Ok(bytes) => {
-                // Tolerate community-schema lag (a game update appended a
-                // column): fit trailing padding so the table still parses.
-                let schema = match data_miner::dat::autofit(&bytes, schema) {
-                    Some(s) => {
-                        if s.row_width() != schema.row_width() {
-                            ui::note(
-                                ctx.style,
-                                &format!(
-                                    "{name}: schema drift +{}B — auto-fit",
-                                    s.row_width() - schema.row_width()
-                                ),
-                            );
-                        }
-                        s
-                    }
-                    None => schema.clone(),
-                };
-                ts.insert(name, bytes, schema);
+        let cands = paths.get(&base).map(Vec::as_slice).unwrap_or(&[]);
+        match extract_parseable(&client, &index, name, cands, schema) {
+            Ok((bytes, fitted)) => {
+                if fitted.row_width() != schema.row_width() {
+                    ui::note(
+                        ctx.style,
+                        &format!(
+                            "{name}: schema drift {:+}B — auto-fit",
+                            fitted.row_width() as i64 - schema.row_width() as i64
+                        ),
+                    );
+                }
+                ts.insert(name, bytes, fitted);
             }
-            Err(e) => ui::warn(ctx.style, &format!("{name}: {e} — skipped")),
+            Err(e) => ui::warn(ctx.style, &format!("{e} — skipped")),
         }
     }
 
     let tsv = match dataset.as_str() {
         "bases" => data_miner::shape::shape_bases(&ts).map_err(|e| e.to_string())?,
+        "grants" => data_miner::shape::shape_item_grants(&ts).map_err(|e| e.to_string())?,
         "gems" => data_miner::shape::shape_gems(&ts).map_err(|e| e.to_string())?,
         "active_skills" => {
             data_miner::shape::shape_active_skills(&ts).map_err(|e| e.to_string())?
@@ -1038,18 +1059,36 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Rank candidate index paths for a table file — lower wins. GGG's
+/// current home for tables is `data/balance/`, but STALE pre-move
+/// copies linger at `data/` with outdated bytes (observed at 4.5.4.3:
+/// `data/passiveskills.datc64` is an old, smaller table whose tail
+/// rows are filler), and localized copies live a folder deeper
+/// (`data/balance/thai/…`).
+fn table_path_rank(path: &str) -> usize {
+    let lp = path.to_ascii_lowercase();
+    let segs = lp.matches('/').count();
+    if lp.starts_with("data/balance/") && segs == 2 {
+        0
+    } else if lp.starts_with("data/") && segs == 1 {
+        1
+    } else {
+        2 + segs
+    }
+}
+
 /// Find the base (non-localized) `.datc64` for a table name: the
-/// resolved path ending in `/<lower>.datc64` with the fewest segments
-/// (localized copies live one folder deeper, e.g. `.../thai/...`).
+/// resolved path ending in `/<lower>.datc64` with the best
+/// [`table_path_rank`].
 fn locate_table(index: &Index, table: &str) -> Result<String, String> {
     let suffix = format!("/{}.datc64", table.to_ascii_lowercase());
     let mut best: Option<String> = None;
     for (path, _) in index.resolve_paths().map_err(|e| e.to_string())? {
         if path.to_ascii_lowercase().ends_with(&suffix) {
-            let fewer = best
+            let better = best
                 .as_ref()
-                .is_none_or(|b| path.matches('/').count() < b.matches('/').count());
-            if fewer {
+                .is_none_or(|b| table_path_rank(&path) < table_path_rank(b));
+            if better {
                 best = Some(path);
             }
         }
@@ -1980,13 +2019,13 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         "GrantedEffectStatSetsPerLevel",
         "GrantedEffectsPerLevel",
         "GrantedEffectLabels",
+        "GrantedSkillSocketNumbers",
         "Stats",
     ] {
         let schema = set.table(name).ok_or_else(|| format!("{name}: not in dat-schema"))?;
         let base = format!("{}.datc64", name.to_ascii_lowercase());
-        let vpath = paths.get(&base).ok_or_else(|| format!("{name}: not indexed"))?;
-        let bytes = extract_by_path(&client, &index, vpath).map_err(|e| format!("{name}: {e}"))?;
-        let schema = data_miner::dat::autofit(&bytes, schema).unwrap_or_else(|| schema.clone());
+        let cands = paths.get(&base).map(Vec::as_slice).unwrap_or(&[]);
+        let (bytes, schema) = extract_parseable(&client, &index, name, cands, schema)?;
         ts.insert(name, bytes, schema);
     }
     let mut sd = data_miner::csd::StatDescriptions::new();
@@ -2032,6 +2071,9 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let g_cost = col(gepl_s, "CostAmounts")?;
     let g_resv = col(gepl_s, "Reservation")?;
     let g_cd = col(gepl_s, "Cooldown")?;
+    // Support gems: percent multiplier applied to the supported
+    // skill's cost INCLUDING spirit reservation (100 = ×1.0).
+    let g_costmult = col(gepl_s, "CostMultiplier")?;
 
     // Raw array readers (element layouts: foreignrow 16B, i32 4B).
     let rows_of = |dat: &data_miner::dat::Dat<'_>, row: usize, c: usize| -> Vec<usize> {
@@ -2135,7 +2177,7 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
 
     // Cost / reservation / cooldown ladders.
-    let mut costs: std::collections::BTreeMap<String, std::collections::BTreeMap<i64, (i64, i64, i64)>> =
+    let mut costs: std::collections::BTreeMap<String, std::collections::BTreeMap<i64, (i64, i64, i64, i64)>> =
         std::collections::BTreeMap::new();
     for row in 0..gepl.row_count() {
         let lvl = gepl.i32(row, g_lvl).unwrap_or(0);
@@ -2150,7 +2192,8 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         let cost = i32s_of(&gepl, row, g_cost).first().copied().unwrap_or(0);
         let resv = gepl.i32(row, g_resv).unwrap_or(0) as i64;
         let cd = gepl.i32(row, g_cd).unwrap_or(0) as i64;
-        costs.entry(eid.clone()).or_default().insert(lvl as i64, (cost, resv, cd));
+        let mult = gepl.i32(row, g_costmult).unwrap_or(100) as i64;
+        costs.entry(eid.clone()).or_default().insert(lvl as i64, (cost, resv, cd, mult));
     }
 
     // Emit.
@@ -2196,7 +2239,8 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             let mut cm = json::Map::new();
             let mut rm = json::Map::new();
             let mut dm = json::Map::new();
-            for (lvl, (cost, resv, cd)) in ladder {
+            let mut mm = json::Map::new();
+            for (lvl, (cost, resv, cd, mult)) in ladder {
                 if *cost > 0 {
                     cm.insert(lvl.to_string(), json::Value::Integer(*cost));
                 }
@@ -2205,6 +2249,9 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 }
                 if *cd > 0 {
                     dm.insert(lvl.to_string(), json::Value::Integer(*cd));
+                }
+                if *mult != 100 && *mult != 0 {
+                    mm.insert(lvl.to_string(), json::Value::Integer(*mult));
                 }
             }
             if !cm.is_empty() {
@@ -2216,8 +2263,28 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             if !dm.is_empty() {
                 e.insert("cooldown_ms".into(), json::Value::Object(dm));
             }
+            if !mm.is_empty() {
+                // Support gems: % multiplier on the supported skill's
+                // cost/reservation (product across supports, ÷100 each).
+                e.insert("cost_multiplier".into(), json::Value::Object(mm));
+            }
         }
         eff_map.insert(eid.clone(), json::Value::Object(e));
+    }
+    // Granted-skill support sockets: item-granted skills socket
+    // supports for free; how many depends on the granted level.
+    if let (Some(gssn), Some(gssn_s)) = (ts.dat("GrantedSkillSocketNumbers"), ts.schema("GrantedSkillSocketNumbers")) {
+        if let (Some(c_l), Some(c_n)) = (gssn_s.column("Level"), gssn_s.column("Sockets")) {
+            let mut sm = json::Map::new();
+            for row in 0..gssn.row_count() {
+                let l = gssn.i32(row, c_l).unwrap_or(0);
+                let n = gssn.i32(row, c_n).unwrap_or(0);
+                if l > 0 { sm.insert(l.to_string(), json::Value::Integer(n as i64)); }
+            }
+            if !sm.is_empty() {
+                out.insert("granted_skill_sockets".into(), json::Value::Object(sm));
+            }
+        }
     }
     out.insert("count".into(), json::Value::Integer(eff_map.len() as i64));
     out.insert("effects".into(), json::Value::Object(eff_map));
@@ -3407,6 +3474,27 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // its slot, attribute requirements and defence numbers so a plan can
     // say {base:"Expert Hexer's Robe", rarity:"rare", mods:[...]}.
     let mut base_count = 0usize;
+    // Grants sidecar (items/grants.tsv, `shape grants`): base name →
+    // (spirit granted, item-granted skill names). Absent = fields
+    // simply don't appear (older datasets).
+    let mut grants_by_name: std::collections::HashMap<String, (i64, Vec<String>)> =
+        std::collections::HashMap::new();
+    if let Ok((gh, grows)) = read_tsv(&parsed.join("items/grants.tsv")) {
+        let gcol = |n: &str| idx(&gh, n);
+        if let (Some(g_name), Some(g_sp), Some(g_gr)) = (gcol("name"), gcol("spirit"), gcol("grants")) {
+            for r in &grows {
+                let name = r.get(g_name).cloned().unwrap_or_default();
+                let sp: i64 = r.get(g_sp).and_then(|s| s.parse().ok()).unwrap_or(0);
+                let gr: Vec<String> = r
+                    .get(g_gr)
+                    .map(|s| s.split('|').filter(|x| !x.is_empty()).map(str::to_string).collect())
+                    .unwrap_or_default();
+                if !name.is_empty() {
+                    grants_by_name.insert(name, (sp, gr));
+                }
+            }
+        }
+    }
     if let Ok((bh, brows)) = read_tsv(&parsed.join("items/bases.tsv")) {
         let bcol = |n: &str| idx(&bh, n);
         if let (Some(b_name), Some(b_class), Some(b_lvl)) =
@@ -3508,6 +3596,20 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     let crit = num(r, b_crit);
                     if crit > 0 {
                         m.insert("crit".into(), json::Value::Float(crit as f64 / 100.0));
+                    }
+                }
+                // Grants while equipped (items/grants.tsv): base spirit
+                // (sceptres carry 100) and item-granted skills — the
+                // "Shrine Sceptre grants Purity of Fire" chain, mined
+                // from ItemSpirit + ModGrantedSkills.
+                if let Some((sp, gr)) = grants_by_name.get(&g2(r, Some(b_name))) {
+                    if *sp > 0 {
+                        m.insert("spirit".into(), json::Value::Integer(*sp));
+                    }
+                    if !gr.is_empty() {
+                        m.insert("grants".into(), json::Value::Array(
+                            gr.iter().map(|s| json::Value::Str(s.clone())).collect(),
+                        ));
                     }
                 }
                 arr.push(json::Value::Object(m));
@@ -4005,6 +4107,7 @@ pub fn update_native(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     };
     for dataset in [
         "bases",
+        "grants",
         "mods",
         "gems",
         "active_skills",

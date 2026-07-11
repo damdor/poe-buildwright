@@ -107,15 +107,24 @@ cluster, recovery via leech".
   schedule and every gem's reservation cost from
   /assets/agent/spirit.json. A typical real build reserves 60-100
   spirit on 1-3 persistent buffs — if your plan reserves zero, ask
-  yourself why. Gear extends the pool (+Spirit mods, sceptres);
-  minion builds live and die on it. Validate reports
-  spirit.{reserved, base_available} per capture and warns (not
-  errors) on overspend, since gear can cover the gap — spec that
-  gear if you rely on it.
-- ITEM-GRANTED SKILLS: ~90 uniques grant a skill while equipped
-  (/assets/agent/granted_skills.json) — free, no gem slot, supports
-  attach in-game. If your gear names one, build around it instead of
-  re-adding it to skills[].
+  yourself why. SUPPORTS MULTIPLY RESERVATIONS: each support's
+  cost_multiplier/100 compounds (spirit.json
+  support_cost_multipliers), so a heavily-supported herald can cost
+  half again its base — a classic overspend trap. Gear extends the
+  pool: sceptres carry exact base Spirit (granted_skills.json
+  `bases`), +Spirit uniques count at their low roll; minion builds
+  live and die on it. Validate reports spirit.{reserved,
+  base_available, gear_bonus} per capture and warns (not errors) on
+  overspend beyond base+gear.
+- ITEM-GRANTED SKILLS: uniques (~90) and base items — sceptres are
+  the famous case ("this sceptre grants its aura skill") — grant
+  skills while equipped (/assets/agent/granted_skills.json, `uniques`
+  + `bases`; base entries list what the data currently confirms —
+  their exact Spirit — so trust the file over memory for grant
+  names). Free: no gem slot, and supports socket into them at no gem
+  cost (2 sockets at granted level 1, 3 at 10, 4 at 15, 5 at 20 —
+  spirit.json granted_skill_sockets). If your gear names one, build
+  around it instead of re-adding it to skills[].
 - Supports must be type-compatible (the require/exclude data) AND
   thematically sensible: more-damage supports on the main skill,
   duration/area/utility on utility skills. Each support once per build.

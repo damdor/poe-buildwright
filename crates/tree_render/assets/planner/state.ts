@@ -197,6 +197,25 @@ export function weaponSetCapAt(level: number): number {
   return cap;
 }
 
+// Base Spirit is quest-earned: +30 (Act 1, King in the Mists), +30
+// (Act 3, Ignagduk), +40 (post-Act-4 interlude, Lythara) = 100. The
+// level mapping is DELIBERATELY CONSERVATIVE (latest plausible level
+// per boss) so the UI never promises spirit the player might not
+// have. KEEP IN SYNC with scripts/gen_agent_meta.mjs SPIRIT_REWARDS.
+export const SPIRIT_REWARDS = [
+  { lvl: 18, pts: 30 },
+  { lvl: 36, pts: 30 },
+  { lvl: 50, pts: 40 },
+];
+export function spiritCapAt(level: number): number {
+  let cap = 0;
+  for (const r of SPIRIT_REWARDS) {
+    if (r.lvl <= level) cap += r.pts;
+    else break;
+  }
+  return cap;
+}
+
 // Each entry MAY carry grantsPoints, weaponSetGrant, or altStartClass —
 // any combination, or none (in which case the entry would simply not
 // exist in this table). Typed with all-optional fields so the indexed

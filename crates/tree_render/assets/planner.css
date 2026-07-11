@@ -2264,3 +2264,32 @@ main#viewport canvas { display: block; width: 100%; height: 100%; }
 .skill-popover .sp-remove:hover { background: rgba(255, 107, 107, 0.20); }
 .skill-popover .sp-remove[hidden] { display: none; }
 
+
+/* Spirit budget chip (skills strip header): reserved vs quest-earned
+   base pool at the current level. Over-base is a WARNING look, not an
+   error — +Spirit gear (sceptres, some uniques) legitimately extends
+   the pool beyond the conservative base schedule. */
+#ss-spirit {
+  font: 600 10px ui-monospace, monospace;
+  color: #9fd0ff;
+  border: 1px solid rgba(88, 166, 255, 0.35);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin-right: 6px;
+}
+#ss-spirit.over {
+  color: #ffb35c;
+  border-color: rgba(255, 179, 92, 0.5);
+}
+
+/* Granted-while-equipped badge on gear rows (base spirit / item-
+   granted skills, mined from ItemSpirit + ModGrantedSkills). */
+.gs-grant {
+  font: 600 9.5px ui-monospace, monospace;
+  color: #b7e29a;
+  border: 1px solid rgba(140, 200, 110, 0.35);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
