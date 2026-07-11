@@ -8,9 +8,9 @@
 //! Status:
 //! * `bundle` — header parsing works on all 60,051 bundles in the
 //!   0.5 install (zero errors).
-//! * `oodle` — decompression via the vendored ooz backend
-//!   (`crates/ooz_sys`); covers all four compressor families used by
-//!   0.5 bundles. A pure-Rust port is in flight behind the
+//! * `oodle` — decompression via RAD/Epic's official decoder,
+//!   dlopen'd at mine time (`crates/oodle_official`); covers all four
+//!   compressor families. A pure-Rust port is in flight behind the
 //!   `oodle-port` feature (see `docs/native-data-miner.md`).
 //! * `bundle_decode` — block-level orchestration on top of the above.
 

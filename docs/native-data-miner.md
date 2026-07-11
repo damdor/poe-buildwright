@@ -162,35 +162,39 @@ Every block except the last decompresses to exactly `granularity`
 bytes; the last decompresses to whatever remainder makes the total
 match `uncompressed_size`.
 
-## Oodle decompression — RESOLVED (2026-07-02)
+## Oodle decompression — RE-RESOLVED (2026-07-11)
 
-GGG **does not ship `oo2core_*.dll`** in PoE2's install. Oodle is
-statically linked into `PathOfExile_x64Steam.exe`. We cannot
-`libloading::Library::new("oo2core_*.dll")` against the user's install
-the way PoE1 tools did.
+GGG **does not ship `oo2core_*.dll`** in PoE2's install (Oodle is
+statically linked into the game binary), so the original decision
+(2026-07-02) was the reverse-engineered **zao/ooz** decoder, vendored
+in a `ooz_sys` crate with GPL handling via fetch-at-build.
 
-**Decision: vendored `zao/ooz` in `crates/ooz_sys/`.** The
-community-maintained fork (Linux/CMake + simde portability; commit
-pinned in `crates/ooz_sys/VENDOR.md`), compiled decode-only via
-`-DOOZ_BUILD_DLL=1` with the `cc` crate. Its `Ooz_Decompress` entry
-point self-dispatches between Kraken/Mermaid/Hydra/Leviathan, so one
-FFI call covers every 0.5 bundle. Validated: Kraken, Mermaid, and
-Leviathan decode the ooz test corpus to byte-identical output.
+**That decision was retired at CDN patch 4.5.4.3**: GGG upgraded
+their Oodle compressor version and ooz silently MIS-decoded the new
+streams — success status, wrong bytes (~11% of a bundle, in dense
+~128K-quantum bands), plus some blocks failing outright. Silent
+corruption is a correctness class we cannot detect from inside, so
+the reverse-engineered decoder is disqualified as the primary
+backend regardless of future fixes.
 
-**License correction:** earlier drafts of this doc called ooz
-"public domain" — it is **GPL-3.0-or-later** (and two files are
-formally unlicensed). The sources are therefore not committed to the
-repo at all: `ooz_sys`'s build.rs fetches them from zao/ooz at a
-pinned, SHA-256-verified commit, so each user obtains them directly
-from upstream and neither sources nor binaries are ever distributed
-by us. Details in `crates/ooz_sys/VENDOR.md`.
+**Current decision: RAD/Epic's OFFICIAL decoder, dlopen'd at mine
+time (`crates/oodle_official`).** Epic distributes the Oodle SDK
+binaries free with Unreal Engine; we fetch the per-platform decoder
+library on first use (pinned mirror commit of Epic's public SDK
+artifacts, SHA-256 verified) into the user's cache and `dlopen` it —
+hand-rolled `dlopen`/`dlsym` FFI, no crates.io loader, no build-time
+linkage, nothing committed or redistributed. Validated on 4.5.4.3:
+every previously-corrupt bundle decodes byte-perfectly (0 `[?]`
+cells across all tables; all 1,232 live tree node names present; all
+110 reservation ladders exactly matching the last good bake). Bonus:
+the GPL/unlicensed-source constraint is gone — the workspace license
+story is uniform again and every compiled line is first-party.
 
 The hand-written pure-Rust port (BitReader + per-compressor stubs)
 stays in-tree behind the off-by-default `oodle-port` feature of
-`data_miner`. It graduates by passing differential tests against ooz
-on real bundles; until then dispatch always goes through `ooz_sys`.
-If it ever completes, `ooz_sys` (and the GPL constraint) can be
-dropped.
+`data_miner`. It graduates by passing differential tests against the
+official decoder on real bundles; if it ever completes, even the
+runtime-loaded binary can be dropped.
 
 ## Existing reference implementations
 
@@ -247,11 +251,9 @@ For art:
 
 ```
 crates/
-├── ooz_sys/                       # NEW — Oodle decompressor (option 1 above)
+├── oodle_official/                # Oodle decompressor (see section above)
 │   ├── Cargo.toml                 #   per-crate lint override to allow unsafe
-│   ├── build.rs                   #   cc-builds vendored ooz.c
-│   ├── src/lib.rs                 #   safe Rust wrapper around extern "C"
-│   └── vendor/                    #   powzix/ooz public-domain sources
+│   └── src/lib.rs                 #   dlopen FFI + fetch/verify of Epic's lib
 ├── data_miner/
 │   ├── Cargo.toml
 │   ├── src/
