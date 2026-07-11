@@ -373,6 +373,12 @@ impl<'a> Dat<'a> {
                 .try_into()
                 .unwrap(),
         ) as usize;
+        // A real array's elements live inside the var section; a count
+        // that can't fit is schema drift reading garbage bytes — reject
+        // it rather than letting callers iterate a trillion elements.
+        if offset > self.var.len() || count > self.var.len() - offset {
+            return Err(DatError::OutOfRange);
+        }
         Ok((count, offset))
     }
 

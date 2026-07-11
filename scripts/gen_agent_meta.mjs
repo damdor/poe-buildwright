@@ -123,24 +123,40 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
 // have yet. Gear (+Spirit mods, sceptres) extends the pool beyond
 // this — the validator warns rather than errors for that reason.
 const stats = JSON.parse(readFileSync("viewer/assets/skill_stats.json", "utf-8"));
+// Per-value-validated spirit data mined separately while the full bake
+// is blocked (see scripts/extract_spirit_extras.mjs). The baked
+// skill_stats.json wins whenever it carries these fields itself.
+let extras = {};
+try {
+  extras = JSON.parse(readFileSync("data/curated/spirit_extras.json", "utf-8"));
+} catch { /* optional */ }
 const SPIRIT_REWARDS = [
   { lvl: 18, pts: 30, source: "Act 1: King in the Mists" },
   { lvl: 36, pts: 30, source: "Act 3: Ignagduk, the Bog Witch" },
   { lvl: 50, pts: 40, source: "Interlude: Lythara, the Wayward Spear" },
 ];
 const reservations = {};
+const supportMultipliers = { ...(extras.support_cost_multipliers ?? {}) };
 for (const g of gems) {
   const eff = stats.effects?.[g.granted_effect_id];
   if (eff && eff.reservation) reservations[g.name] = eff.reservation;
+  if (eff && eff.cost_multiplier && g.gem_type === "Support") {
+    supportMultipliers[g.name] = eff.cost_multiplier;
+  }
 }
+const grantedSkillSockets = Object.keys(stats.granted_skill_sockets ?? {}).length
+  ? stats.granted_skill_sockets
+  : (extras.granted_skill_sockets ?? {});
 writeFileSync("viewer/assets/agent/spirit.json", JSON.stringify({
   format: "poe2-agent-spirit",
-  version: 1,
+  version: 2,
   patch,
-  note: "Base spirit is quest-earned (conservative level estimates). reservations = gem name -> {gem level: spirit cost}; a build's persistent buffs/auras reserve from the pool. Gear can extend the base.",
+  note: "Base spirit is quest-earned (conservative level estimates). reservations = gem name -> {gem level: spirit cost}. EACH SUPPORT multiplies its skill's reservation: effective = base * product(support_cost_multipliers[support][level] / 100). granted_skill_sockets = free support sockets on item-granted skills by granted level. Gear can extend the base pool.",
   base_schedule: SPIRIT_REWARDS,
   base_total: 100,
   reservations,
+  support_cost_multipliers: supportMultipliers,
+  granted_skill_sockets: grantedSkillSockets,
 }));
 
 // agent/granted_skills.json: uniques whose stats grant a skill while
@@ -161,12 +177,31 @@ for (const u of itemCat.uniques ?? []) {
     };
   }
 }
+// Base-item grants (mined ItemSpirit + ModGrantedSkills, merged into
+// bases.json by the pipeline): sceptres granting skills + spirit etc.
+// While the full pipeline is blocked, base spirit comes from the
+// validated extras (per item class); granted-SKILL names for bases are
+// deliberately absent until SkillGems decodes again — do not guess them.
+const basesData = JSON.parse(readFileSync("viewer/assets/agent/bases.json", "utf-8"));
+const classSpirit = extras.base_spirit_by_class ?? {};
+const grantedByBase = {};
+for (const b of basesData.bases ?? []) {
+  const spirit = b.spirit ?? classSpirit[b.class];
+  if (b.grants?.length || spirit) {
+    grantedByBase[b.name] = {
+      slot: b.slot,
+      ...(b.grants?.length ? { grants: b.grants } : {}),
+      ...(spirit ? { spirit } : {}),
+    };
+  }
+}
 writeFileSync("viewer/assets/agent/granted_skills.json", JSON.stringify({
   format: "poe2-agent-granted-skills",
-  version: 1,
+  version: 2,
   patch,
-  note: "Equipping these uniques grants the listed skills for free (no gem slot; supports attach in-game) and/or bonus Spirit. Base-item grants (e.g. sceptre implicits) are not yet in the mined dataset.",
+  note: "Equipping these grants the listed skills for free (no gem slot; supports attach in-game — see spirit.json granted_skill_sockets for how many) and/or Spirit. `uniques` keys are unique item names; `bases` keys are base-item names (e.g. sceptres).",
   uniques: grantedByUnique,
+  bases: grantedByBase,
 }));
 console.log(`spirit: ${Object.keys(reservations).length} reservation ladders; granted skills/spirit: ${Object.keys(grantedByUnique).length} uniques`);
 

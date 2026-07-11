@@ -22,6 +22,15 @@ export type Target = string | number | { node: string | number; note?: string; s
 export interface AgentGearIn { slot?: string; name?: string; base?: string; rarity?: string; mods?: string[]; note?: string }
 export interface AgentCapture { level?: number; name?: string; notes?: string; respec?: boolean; remove?: Target[]; targets?: Target[]; skills?: AgentSkillIn[]; gear?: AgentGearIn[] }
 export interface AgentSkillIn { gem?: string; level?: number; supports?: string[]; note?: string; set?: WeaponSet }
+
+/// The contract says supports are gem-name strings, but agents that
+/// mirror the skills[] shape send {gem, level} objects — accept the
+/// name from either rather than crashing (never 500 on plan shape).
+export function supportNames(sk: AgentSkillIn): string[] {
+  return (sk.supports ?? [])
+    .map(s => typeof s === "string" ? s : (s && typeof (s as { gem?: unknown }).gem === "string" ? (s as { gem: string }).gem : ""))
+    .filter(Boolean);
+}
 export interface AgentPlanIn {
   format?: string; name?: string; notes?: string; description?: string; class?: string; ascendancy?: string;
   targets?: Target[]; skills?: AgentSkillIn[]; gear?: AgentGearIn[]; captures?: AgentCapture[];
@@ -104,7 +113,7 @@ export interface CapReport {
    *  which is why overspend is a WARNING, not an error).
    *  unknown_reservations = HasReservation gems the dataset carries
    *  no ladder for — their cost is real but unquantified. */
-  spirit: { reserved: number; base_available: number; unknown_reservations: string[] };
+  spirit: { reserved: number; base_available: number; gear_bonus: number; unknown_reservations: string[] };
   /** Skills granted for free by equipped uniques in this capture's
    *  gear — available to the build without a gem slot. */
   granted_skills: string[];
@@ -191,24 +200,32 @@ export async function runValidation(
   // Spirit economy + unique-granted skills — small deploy-generated
   // extracts (gen_agent_meta.mjs); both degrade to "not checked" when
   // absent.
-  let spiritData: { base_schedule?: { lvl: number; pts: number }[]; reservations?: Record<string, Record<string, number>> } = {};
+  let spiritData: {
+    base_schedule?: { lvl: number; pts: number }[];
+    reservations?: Record<string, Record<string, number>>;
+    support_cost_multipliers?: Record<string, Record<string, number>>;
+  } = {};
   let grantedByUnique: Record<string, { grants?: string[]; spirit_bonus?: string }> = {};
+  let grantedByBase: Record<string, { grants?: string[]; spirit?: number }> = {};
   try {
     const sRes = await assets.fetch(origin + "/assets/agent/spirit.json");
     if (sRes.ok) spiritData = await sRes.json() as typeof spiritData;
   } catch { /* spirit checks degrade */ }
   try {
     const gRes2 = await assets.fetch(origin + "/assets/agent/granted_skills.json");
-    if (gRes2.ok) grantedByUnique = ((await gRes2.json()) as { uniques?: typeof grantedByUnique }).uniques ?? {};
+    if (gRes2.ok) {
+      const gd = await gRes2.json() as { uniques?: typeof grantedByUnique; bases?: typeof grantedByBase };
+      grantedByUnique = gd.uniques ?? {};
+      grantedByBase = gd.bases ?? {};
+    }
   } catch { /* granted-skill info degrades */ }
   const spiritCapAt = (level: number): number => {
     let cap = 0;
     for (const r of spiritData.base_schedule ?? []) if (r.lvl <= level) cap += r.pts;
     return cap;
   };
-  // Reservation at a gem level: the ladder's highest key <= level.
-  const reservationAt = (gemName: string, level: number): number | null => {
-    const ladder = spiritData.reservations?.[gemName];
+  // Ladder value at a level: the highest key <= level.
+  const ladderAt = (ladder: Record<string, number> | undefined, level: number): number | null => {
     if (!ladder) return null;
     let best: number | null = null, bestK = -1;
     for (const k in ladder) {
@@ -217,6 +234,8 @@ export async function runValidation(
     }
     return best;
   };
+  const reservationAt = (gemName: string, level: number): number | null =>
+    ladderAt(spiritData.reservations?.[gemName], level);
 
   const problems: string[] = [];
 
@@ -277,7 +296,7 @@ export async function runValidation(
   // ---- Captures (same cumulative/respec semantics as the importer) ----
   const capsIn: AgentCapture[] = plan.captures?.length
     ? plan.captures
-    : [{ targets: plan.targets, skills: plan.skills }];
+    : [{ targets: plan.targets, skills: plan.skills, gear: plan.gear }];
   const roots = (): Set<string> => {
     const s = new Set<string>([hub]);
     if (ascStart) s.add(ascStart);
@@ -422,15 +441,34 @@ export async function runValidation(
       if (!sk.gem) continue;
       const gemLvl = typeof sk.level === "number" ? sk.level : 1;
       const r = reservationAt(sk.gem, gemLvl);
-      if (r !== null) spiritReserved += r;
-      else if ((catByName.get(sk.gem.toLowerCase())?.tag_string ?? "").includes("HasReservation")) {
+      if (r !== null) {
+        // Each support multiplies its skill's reservation by
+        // cost_multiplier/100 (product across supports).
+        let mult = 1;
+        for (const supName of supportNames(sk)) {
+          const m = ladderAt(spiritData.support_cost_multipliers?.[supName], 1);
+          if (m && m !== 100) mult *= m / 100;
+        }
+        spiritReserved += Math.round(r * mult);
+      } else if ((catByName.get(sk.gem.toLowerCase())?.tag_string ?? "").includes("HasReservation")) {
         unknownResv.push(sk.gem);
       }
     }
+    // Grants + spirit from gear: uniques by name, bases by base —
+    // base spirit (sceptres) is exact mined data and extends the
+    // available pool; unique +Spirit ranges use their LOW end.
     const grantedSkills: string[] = [];
+    let gearSpirit = 0;
     for (const g of effGear) {
-      const gr = g.name ? grantedByUnique[g.name] : undefined;
-      for (const s of gr?.grants ?? []) grantedSkills.push(s + " (from " + g.name + ")");
+      const gu = g.name ? grantedByUnique[g.name] : undefined;
+      for (const s of gu?.grants ?? []) grantedSkills.push(s + " (from " + g.name + ")");
+      if (gu?.spirit_bonus) {
+        const lo = parseInt(gu.spirit_bonus, 10);
+        if (!isNaN(lo)) gearSpirit += lo;
+      }
+      const gb = g.base ? grantedByBase[g.base] : undefined;
+      for (const s of gb?.grants ?? []) grantedSkills.push(s + " (from " + g.base + ")");
+      if (gb?.spirit) gearSpirit += gb.spirit;
     }
     capReports.push({
       points, asc_points: ascPoints, resolved: goals.length, unresolved,
@@ -438,7 +476,12 @@ export async function runValidation(
       target_costs: targetCosts.map(t => ({ target: t.target, added_points: t.points })),
       asc_allocated: ascAllocated,
       weapon_set_points: { set1, set2, used: set1 + set2, cap: setCap, max: MAX_SET_POINTS },
-      spirit: { reserved: spiritReserved, base_available: spiritCapAt(capLevel), unknown_reservations: unknownResv },
+      spirit: {
+        reserved: spiritReserved,
+        base_available: spiritCapAt(capLevel),
+        gear_bonus: gearSpirit,
+        unknown_reservations: unknownResv,
+      },
       granted_skills: grantedSkills,
     });
     if (set1 + set2 > setCap) {
@@ -470,9 +513,9 @@ export async function runValidation(
     const lvl = typeof c.level === "number" ? c.level : 100;
     const tag = "capture " + (ci + 1) + " (level " + lvl + ")";
     for (const sk of c.skills ?? []) {
-      const names = [sk.gem, ...(sk.supports ?? [])];
+      const names = [sk.gem, ...supportNames(sk)];
       for (const nm of names) {
-        if (!nm) continue;
+        if (!nm || typeof nm !== "string") continue;
         const g = byNameL.get(nm.toLowerCase());
         if (g?.req_level && g.req_level > lvl) {
           levelingProblems.push(tag + ": '" + nm + "' requires level " + g.req_level);
@@ -502,7 +545,7 @@ export async function runValidation(
     const active = byId.get(s.gem) ?? byName.get(s.gem.toLowerCase());
     if (cat.length && !active) { gemProblems.push("gem '" + s.gem + "' not found"); continue; }
     const types = new Set(active?.skill_types ?? []);
-    for (const supName of s.supports ?? []) {
+    for (const supName of supportNames(s)) {
       const sup = byId.get(supName) ?? byName.get(supName.toLowerCase());
       if (cat.length && !sup) { gemProblems.push("support '" + supName + "' not found"); continue; }
       if (sup && types.size > 0) {  // empty types = compat unknown, allow
@@ -612,7 +655,7 @@ export async function runValidation(
     // it. The agent should either lower reservations or spec gear
     // that covers the gap (and say so in a note).
     const sp = capReports[i]!.spirit;
-    if (sp.reserved > sp.base_available) {
+    if (sp.reserved > sp.base_available + sp.gear_bonus) {
       diagnostics.push({
         code: "spirit.over_base", severity: "warning",
         message: "capture " + (i + 1) + ": " + sp.reserved + " spirit reserved vs " + sp.base_available +

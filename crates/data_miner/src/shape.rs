@@ -1925,3 +1925,117 @@ fn push_row(out: &mut String, fields: &[String]) {
     }
     out.push('\n');
 }
+
+/// Foreignrow-array cell → referenced row indices (the row-id twin of
+/// `array_ids`).
+fn array_rows(dat: &Dat<'_>, row: usize, col: usize) -> Vec<usize> {
+    let Ok((count, offset)) = dat.array_ref(row, col) else {
+        return Vec::new();
+    };
+    let var = dat.var();
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        let eo = offset + i * 16; // foreignrow element = u64 rowid + u64 pad
+        if let Some(b) = var.get(eo..eo + 8) {
+            out.push(u64::from_le_bytes(b.try_into().unwrap()) as usize);
+        }
+    }
+    out
+}
+
+/// `items/grants.tsv` — base items that GRANT things while equipped:
+/// Spirit (ItemSpirit) and/or skills (Implicit_Mods → ModGrantedSkills
+/// → SkillGems → gem display name). Downstream, the agent bases.json
+/// merges these fields so "Shrine Sceptre grants Purity of Fire and
+/// carries 100 Spirit" is data, not string folklore.
+pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
+    let bit = ts
+        .dat("BaseItemTypes")
+        .ok_or(ShapeError::MissingTable("BaseItemTypes"))?;
+    let bs = ts
+        .schema("BaseItemTypes")
+        .ok_or(ShapeError::MissingTable("BaseItemTypes"))?;
+    let col = |n: &'static str| {
+        bs.column(n)
+            .ok_or(ShapeError::MissingColumn("BaseItemTypes", n))
+    };
+    let c_id = col("Id")?;
+    let c_name = col("Name")?;
+    let c_impl = col("Implicit_Mods")?;
+
+    // ItemSpirit: BaseItemType row → SpiritGranted.
+    let mut spirit: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
+    if let (Some(isd), Some(iss)) = (ts.dat("ItemSpirit"), ts.schema("ItemSpirit")) {
+        if let (Some(c_b), Some(c_s)) = (iss.column("BaseItemType"), iss.column("SpiritGranted")) {
+            for row in 0..isd.row_count() {
+                if let Ok(Some(bit_row)) = isd.foreign(row, c_b) {
+                    let sp = isd.i32(row, c_s).unwrap_or(0);
+                    if sp > 0 {
+                        spirit.insert(bit_row as usize, sp);
+                    }
+                }
+            }
+        }
+    }
+
+    // ModGrantedSkills: Mod row → granted gem's display name
+    // (SkillGems row → its BaseItemType → Name).
+    let mut mod_grants: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
+    if let (Some(mgd), Some(mgs), Some(sgd), Some(sgs)) = (
+        ts.dat("ModGrantedSkills"),
+        ts.schema("ModGrantedSkills"),
+        ts.dat("SkillGems"),
+        ts.schema("SkillGems"),
+    ) {
+        if let (Some(c_mod), Some(c_skill), Some(c_sbit)) = (
+            mgs.column("Mod"),
+            mgs.column("Skill"),
+            sgs.column("BaseItemType"),
+        ) {
+            for row in 0..mgd.row_count() {
+                let (Ok(Some(mod_row)), Ok(Some(sg_row))) =
+                    (mgd.foreign(row, c_mod), mgd.foreign(row, c_skill))
+                else {
+                    continue;
+                };
+                if let Ok(Some(gbit)) = sgd.foreign(sg_row as usize, c_sbit) {
+                    if let Ok(name) = bit.string(gbit as usize, c_name) {
+                        if !name.is_empty() {
+                            mod_grants.insert(mod_row as usize, name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut out = String::with_capacity(4096);
+    out.push_str("base_id\tname\tspirit\tgrants\n");
+    for row in 0..bit.row_count() {
+        let sp = spirit.get(&row).copied().unwrap_or(0);
+        let grants: Vec<String> = array_rows(&bit, row, c_impl)
+            .into_iter()
+            .filter_map(|m| mod_grants.get(&m).cloned())
+            .collect();
+        if sp == 0 && grants.is_empty() {
+            continue;
+        }
+        let fields = [
+            bit.string(row, c_id).unwrap_or_default(),
+            bit.string(row, c_name).unwrap_or_default(),
+            if sp > 0 { sp.to_string() } else { String::new() },
+            grants.join("|"),
+        ];
+        push_row(&mut out, &fields);
+    }
+    Ok(out)
+}
+
+/// Tables `shape_item_grants` needs.
+pub const GRANTS_TABLES: &[&str] = &[
+    "BaseItemTypes",
+    "Mods",
+    "ItemSpirit",
+    "ModGrantedSkills",
+    "SkillGems",
+];

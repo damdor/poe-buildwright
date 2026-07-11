@@ -8,7 +8,8 @@
 // Writes go through window.PoE2Plan.data.commit(skills, 'skills'),
 // so the snapshot timeline + .build run-collapse export Just Work.
 // ============================================================================
-import { state } from "./state.ts";
+import { spiritCapAt, state } from "./state.ts";
+import { currentCharacterLevel } from "./captures_bar.ts";
 import type { Skill } from "../../../../types/poe2.d.ts";
 
 {
@@ -35,6 +36,9 @@ import type { Skill } from "../../../../types/poe2.d.ts";
     cost?: Record<string, number>;
     reservation?: Record<string, number>;
     cooldown_ms?: Record<string, number>;
+    /** Support gems: % multiplier on the supported skill's cost AND
+     *  spirit reservation (product across supports, ÷100 each). */
+    cost_multiplier?: Record<string, number>;
   }
   interface Catalogue { gems: Gem[]; }
   interface SupportDraft { id: string; level: number; quality: number; note: string; }
@@ -151,6 +155,11 @@ import type { Skill } from "../../../../types/poe2.d.ts";
   // first tooltip; ~800 KB, browser-cached.
   let skillStats: Record<string, EffectStats> | null = null;
   let skillStatsLoading = false;
+  // Support cost multipliers by GEM NAME (spirit.json, deploy-generated).
+  // The baked skill_stats.json predates cost_multiplier, so the agent
+  // surface's validated extraction is the source of truth for both
+  // surfaces; absent (e.g. bare local render) → multipliers of 1.
+  let spiritMultipliers: Record<string, Record<string, number>> = {};
   function loadSkillStats(): void {
     if (skillStats || skillStatsLoading) return;
     skillStatsLoading = true;
@@ -158,8 +167,48 @@ import type { Skill } from "../../../../types/poe2.d.ts";
       .then(r => (r.ok ? r.json() : null))
       .then((d: { effects?: Record<string, EffectStats> } | null) => {
         skillStats = d?.effects ?? {};
+        // The spirit chip needs these ladders — repaint once loaded.
+        renderStrip();
       })
       .catch(() => { skillStats = {}; });
+    fetch('/assets/agent/spirit.json')
+      .then(r => (r.ok ? r.json() : null))
+      .then((d: { support_cost_multipliers?: Record<string, Record<string, number>> } | null) => {
+        spiritMultipliers = d?.support_cost_multipliers ?? {};
+        renderStrip();
+      })
+      .catch(() => { /* optional */ });
+  }
+
+  // ---------------------------------------------------------------
+  // Spirit budget chip. Persistent buffs (HasReservation) reserve
+  // Spirit; the base pool is quest-earned (spiritCapAt — deliberately
+  // conservative) and each support multiplies its skill's reservation
+  // by cost_multiplier/100. Rendered next to the snapshot label so a
+  // build's reservation habit is visible at a glance; +Spirit gear
+  // can extend the pool, so overspend styles as a warning, not an
+  // error.
+  // ---------------------------------------------------------------
+  function spiritReservedFor(skills: Skill[]): number {
+    if (!skillStats) return 0;
+    let total = 0;
+    for (const s of skills) {
+      if (!s || !s.id) continue;
+      const g = gemById.get(s.id);
+      const st = g?.granted_effect_id ? skillStats[g.granted_effect_id] : undefined;
+      const base = st ? ladderAt(st.reservation, s.level || 1) : null;
+      if (!base) continue;
+      let mult = 1;
+      for (const sup of s.supports || []) {
+        const sg = sup && sup.id ? gemById.get(sup.id) : undefined;
+        const sst = sg?.granted_effect_id ? skillStats[sg.granted_effect_id] : undefined;
+        const m = (sst ? ladderAt(sst.cost_multiplier, sup.level || 1) : null)
+          ?? (sg?.name ? ladderAt(spiritMultipliers[sg.name], sup.level || 1) : null);
+        if (m && m !== 100) mult *= m / 100;
+      }
+      total += Math.round(base * mult);
+    }
+    return total;
   }
   // Lines at gem level L: exact level if present, else the highest
   // authored level below it (short support ladders top out early).
@@ -387,6 +436,30 @@ import type { Skill } from "../../../../types/poe2.d.ts";
     capLabel.textContent = list.length > 1
       ? (replaying ? 'replay · ' : '') + 'snap ' + (idx + 1) + '/' + list.length
       : '';
+    // Spirit budget chip (see spiritReservedFor). Level source: the
+    // same live/replay-aware character level the sidebar shows.
+    loadSkillStats();
+    {
+      let chip = document.getElementById('ss-spirit');
+      if (!chip) {
+        chip = document.createElement('span');
+        chip.id = 'ss-spirit';
+        capLabel.parentElement?.insertBefore(chip, capLabel);
+      }
+      const reserved = spiritReservedFor(skills as Skill[]);
+      if (reserved > 0) {
+        const lvl = typeof currentCharacterLevel === 'function' ? currentCharacterLevel() : 100;
+        const avail = spiritCapAt(lvl);
+        chip.textContent = 'spirit ' + reserved + '/' + avail;
+        chip.className = reserved > avail ? 'over' : '';
+        chip.title = reserved > avail
+          ? 'Reserves more than the quest-earned base pool at this level — needs +Spirit gear (sceptres, some uniques) to work.'
+          : 'Spirit reserved by persistent buffs / available from quest rewards at this level (gear can add more).';
+        (chip as HTMLElement).style.display = '';
+      } else {
+        (chip as HTMLElement).style.display = 'none';
+      }
+    }
     listEl.innerHTML = '';
     if (skills.length === 0) {
       const li = document.createElement('li');

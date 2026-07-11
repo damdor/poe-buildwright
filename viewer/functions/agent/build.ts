@@ -22,7 +22,7 @@
 // (including budget repair hints) and NO URLs, so an agent can repair
 // and retry instead of shipping a broken build.
 
-import { CORS, b64urlEncode, out, readPlan, runValidation } from "./_lib.ts";
+import { CORS, b64urlEncode, out, readPlan, runValidation, supportNames } from "./_lib.ts";
 import type { AgentCapture, AgentPlanIn, CatGem, PagesCtx } from "./_lib.ts";
 
 export async function onRequestOptions(): Promise<Response> {
@@ -106,7 +106,7 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
           // in with it).
           set: sk.set === "set1" || sk.set === "set2" ? sk.set : ("main" as const),
           ...(sk.note ? { note: sk.note } : {}),
-          supports: (sk.supports ?? []).map(sup => ({
+          supports: supportNames(sk).map(sup => ({
             id: gemId(sup) ?? sup, level: 1, quality: 0,
           })),
         })),
