@@ -107,7 +107,7 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
 // public origin (the sitemap spec requires absolute URLs).
 const origin = (process.env.POE2_SITE_ORIGIN ?? "").replace(/\/+$/, "");
 const pages = [
-  "/", "/planner.html", "/share.html", "/agents.html", "/llms.txt",
+  "/", "/planner", "/share", "/agents", "/llms.txt",
   "/assets/agent/capabilities.json", "/assets/agent/openapi.json",
   "/assets/agent/examples/index.json",
 ];
