@@ -82,6 +82,12 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
   examples_index: "/assets/agent/examples/index.json",
   openapi: "/assets/agent/openapi.json",
   human_page: "/agents.html",
+  source: "https://github.com/damdor/poe-buildwright",
+  license: {
+    code: "PolyForm-Noncommercial-1.0.0",
+    url: "https://polyformproject.org/licenses/noncommercial/1.0.0",
+    note: "Site code + original content: free for noncommercial use; Grinding Gear Games may use anything, any purpose. The GAME DATA these endpoints serve (nodes, gems, bases, art) is (c) Grinding Gear Games and is NOT covered by this license.",
+  },
   // gear[].slot vocabulary: bases.json slot values are canonical
   // singles ("ring1"); the plan schema accepts every alias here.
   slots: {
