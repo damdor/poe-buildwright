@@ -88,6 +88,41 @@ pub fn decompress_full_from<R: Read + Seek>(f: &mut R) -> Result<Vec<u8>, Decode
     Ok(out)
 }
 
+/// As [`decompress_full_from`] but TOLERANT: a block the decoder
+/// rejects is zero-filled instead of failing the whole bundle, and
+/// its uncompressed byte range is reported to the caller.
+///
+/// Exists for the index's inner path bundle: patch 4.5.4.3 ships one
+/// block (418 of 475 — streaming-art path territory) that ooz cannot
+/// decode (status -1 in every mode: strict, fuzz-safe, and windowed;
+/// upstream ooz HEAD as of 2025-10). Losing ~256 KiB of art paths
+/// must not brick the data pipeline — the caller drops path entries
+/// that overlap dead ranges and errors only if a path it actually
+/// needs is affected.
+pub fn decompress_full_tolerant<R: Read + Seek>(
+    f: &mut R,
+) -> Result<(Vec<u8>, Vec<std::ops::Range<usize>>), DecodeError> {
+    let header = bundle::read_header_from(f)?;
+    f.seek(SeekFrom::Start(header.block_payload_offset))?;
+
+    let mut out = Vec::with_capacity(header.uncompressed_size as usize);
+    let mut dead: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut block_src = Vec::new();
+    for (i, &compressed_size) in header.block_sizes.iter().enumerate() {
+        block_src.resize(compressed_size as usize, 0);
+        f.read_exact(&mut block_src)?;
+        let expected = header.block_uncompressed_size(i) as usize;
+        let prev_len = out.len();
+        out.resize(prev_len + expected, 0);
+        let dst = &mut out[prev_len..];
+        if oodle::decompress_block_into(header.compressor, &block_src, dst).is_err() {
+            // Leave the range zeroed and remember it.
+            dead.push(prev_len..prev_len + expected);
+        }
+    }
+    Ok((out, dead))
+}
+
 /// Decompress one block of a bundle in-place. Same as
 /// [`decompress_full`] but stops after `block_index`.
 pub fn decompress_block_at<P: AsRef<Path>>(
