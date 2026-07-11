@@ -54,19 +54,40 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
     return (byId.get(nm) ?? byName.get(nm.toLowerCase()))?.id ?? null;
   };
 
+  // NOTES SURVIVE THE CONVERSION. The first version of this endpoint
+  // dropped every annotation on the floor (build notes, capture
+  // notes, target {node, note}) — the audit agent's second run
+  // caught its share links arriving bare. Mapping:
+  //   plan.notes            → plan description
+  //   capture.name/notes    → capture name/description
+  //   target {node, note}   → Allocation.note on the RESOLVED node
+  //                           (capDetails carries the picked copy)
+  //   gear.note             → item note
+  let targetNotesIn = 0;
+  let targetNotesPreserved = 0;
   const captures = [];
   let lo = 1;
   for (let i = 0; i < capsIn.length; i++) {
     const c = capsIn[i]!;
     const hi = typeof c.level === "number" ? c.level : 100;
     const detail = result.capDetails[i]!;
+    const noteByNode = new Map<string, string>();
+    for (const t of detail.targetCosts) {
+      if (t.note) {
+        targetNotesIn++;
+        if (t.nodeId) { noteByNode.set(t.nodeId, t.note); targetNotesPreserved++; }
+      }
+    }
     captures.push({
       id: "agent-cap-" + (i + 1),
       levelRange: [Math.min(lo, hi), hi] as [number, number],
-      name: null,
-      description: "",
+      name: c.name || null,
+      description: c.notes || "",
       ascendancy: result.asc,
-      passives: detail.allocated.map(id => ({ id, set: "main" as const })),
+      passives: detail.allocated.map(id => {
+        const note = noteByNode.get(id);
+        return note ? { id, set: "main" as const, note } : { id, set: "main" as const };
+      }),
       // Skill groups without a resolvable active gem are dropped —
       // validate tolerates them (grounding may be degraded) but a
       // Plan skill with an empty id would render as a broken slot.
@@ -77,6 +98,7 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
           level: typeof sk.level === "number" ? sk.level : 1,
           quality: 0,
           set: "main" as const,
+          ...(sk.note ? { note: sk.note } : {}),
           supports: (sk.supports ?? []).map(sup => ({
             id: gemId(sup) ?? sup, level: 1, quality: 0,
           })),
@@ -84,6 +106,7 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
       items: (c.gear ?? []).map(g => ({
         slot: g.slot, base: g.base, name: g.name, rarity: g.rarity,
         mods: g.mods,
+        ...(g.note ? { note: g.note } : {}),
       })),
     });
     lo = hi + 1;
@@ -92,7 +115,7 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
     format: "poe2-planner-plan",
     version: 2,
     name: plan.name || "Agent build",
-    description: plan.description || "",
+    description: plan.notes || plan.description || "",
     class: result.klass,
     activeSet: "main",
     captures,
@@ -110,10 +133,21 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
   const code = btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
   const agentUrl = origin + "/planner.html#agent=" + b64urlEncode(JSON.stringify(plan));
-  const warnings: string[] = [];
+  // Structured warnings: agents branch on `code`, humans read `message`.
+  const warnings: { code: string; severity: "warning"; message: string }[] = [];
   const budget = (result.report as { budget?: { main?: number } }).budget;
   if (budget?.main !== undefined && budget.main > 90) {
-    warnings.push("main points " + budget.main + "/99 — very close to the cap");
+    warnings.push({
+      code: "budget.near_cap", severity: "warning",
+      message: "main points " + budget.main + "/99 — very close to the cap",
+    });
+  }
+  const captureNotes = capsIn.filter(c => c.notes).length;
+  if (targetNotesIn > targetNotesPreserved) {
+    warnings.push({
+      code: "notes.partially_preserved", severity: "warning",
+      message: (targetNotesIn - targetNotesPreserved) + " target note(s) could not be attached (target unresolved)",
+    });
   }
 
   return out(200, {
@@ -123,6 +157,13 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
     points: {
       main: result.capReports[result.capReports.length - 1]?.points ?? 0,
       asc: result.capReports[result.capReports.length - 1]?.asc_points ?? 0,
+    },
+    // Annotation accounting — "6/6 target notes preserved" at a glance.
+    note_counts: {
+      build_note: Boolean(plan.notes || plan.description),
+      capture_notes: captureNotes,
+      target_notes_in: targetNotesIn,
+      target_notes_preserved: targetNotesPreserved,
     },
     warnings,
     validation: result.report,
