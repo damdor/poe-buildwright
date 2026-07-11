@@ -127,6 +127,9 @@ pub struct Index {
     pub path_reps: Vec<PathRepRecord>,
     /// Decompressed path-spec blob that `path_reps` offsets index into.
     pub path_blob: Vec<u8>,
+    /// Byte ranges of `path_blob` that could not be decompressed
+    /// (zero-filled). Path reps overlapping these are skipped.
+    pub dead_ranges: Vec<std::ops::Range<usize>>,
     pub hash: PathHash,
     by_hash: HashMap<u64, u32>,
 }
@@ -141,8 +144,14 @@ impl Index {
         for _ in 0..bundle_count {
             let name_len = r.u32("bundle name_len")?;
             let name = r.bytes(name_len as usize, "bundle name")?;
-            let name = String::from_utf8(name.to_vec())
-                .map_err(|_| IndexError::BadString { at: "bundle name" })?;
+            // Lossy, not strict: patch 4.5.4.3 ships a bundle whose
+            // NAME contains a raw 0xCC byte (an art bundle,
+            // ".../bloodbathers/bloodbathe\xCC.f..." — a typo'd
+            // filename on GGG's side). One bad art-bundle name must
+            // not brick the whole index; the replacement char only
+            // breaks fetching THAT bundle, which the data pipeline
+            // never requests.
+            let name = String::from_utf8_lossy(name).into_owned();
             let uncompressed_size = r.u32("bundle uncompressed_size")?;
             bundles.push(BundleRecord {
                 name,
@@ -181,8 +190,19 @@ impl Index {
         }
 
         // Everything left is a nested bundle holding the path specs.
+        // Decoded TOLERANTLY: patch 4.5.4.3 has one block ooz can't
+        // decode (streaming-art path territory). Path reps that
+        // overlap a dead (zero-filled) range are dropped in
+        // resolve_paths with a stderr note — losing some art paths
+        // must not brick the data pipeline.
         let mut cursor = Cursor::new(r.0);
-        let path_blob = bundle_decode::decompress_full_from(&mut cursor)?;
+        let (path_blob, dead_ranges) = bundle_decode::decompress_full_tolerant(&mut cursor)?;
+        if !dead_ranges.is_empty() {
+            eprintln!(
+                "index: {} path-blob block(s) undecodable (ooz); affected path entries will be skipped",
+                dead_ranges.len()
+            );
+        }
 
         let hash = detect_hash(&path_reps, &path_blob)?;
 
@@ -191,6 +211,7 @@ impl Index {
             files,
             path_reps,
             path_blob,
+            dead_ranges,
             hash,
             by_hash,
         })
@@ -219,17 +240,33 @@ impl Index {
     /// skipped (directories hash into `path_reps`, not `files`).
     pub fn resolve_paths(&self) -> Result<Vec<(String, u32)>, IndexError> {
         let mut out = Vec::with_capacity(self.files.len());
+        let mut skipped = 0usize;
         for rep in &self.path_reps {
             let start = rep.offset as usize;
             let end = start + rep.size as usize;
+            // Path specs whose bytes fell in an undecodable block are
+            // zero-filled garbage — skip them rather than parse junk.
+            if self.dead_ranges.iter().any(|r| start < r.end && end > r.start) {
+                skipped += 1;
+                continue;
+            }
             let spec = self.path_blob.get(start..end).ok_or(IndexError::Corrupt {
                 what: "path_rep range outside path blob",
             })?;
-            for path in generate_paths(spec)? {
+            // A malformed spec (e.g. adjacent to zero-filled damage)
+            // skips that directory, not the whole index.
+            let Ok(paths) = generate_paths(spec) else {
+                skipped += 1;
+                continue;
+            };
+            for path in paths {
                 if let Some(&file_idx) = self.by_hash.get(&self.hash_file_path(&path)) {
                     out.push((path, file_idx));
                 }
             }
+        }
+        if skipped > 0 {
+            eprintln!("index: skipped {skipped} path spec(s) in/near undecodable blocks");
         }
         Ok(out)
     }
