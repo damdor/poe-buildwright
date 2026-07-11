@@ -3,7 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PoE2 build planner</title>
+<title>PoE2 build planner — passive tree, leveling snapshots, agent-first</title>
+<meta name="description" content="Free, unofficial Path of Exile 2 build planner: the full passive tree in WebGL, leveling snapshots on a scrubable timeline, skills, gear, and exportable .build files. AI agents can create and share builds through documented JSON endpoints. Nothing stored — your builds stay in your browser.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="PoE2 build planner — poe-buildwright">
+<meta property="og:description" content="Plan Path of Exile 2 builds on the real passive tree with a scrubable leveling timeline. Agent-first: any AI assistant can build and share through the JSON API. Free, no accounts, no tracking.">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "poe-buildwright",
+  "alternateName": "PoE2 build planner",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Web",
+  "description": "Unofficial, fan-made build planner for Path of Exile 2: WebGL passive tree, leveling snapshots on a scrubable timeline, skills and gear planning, game-readable .build export, and a documented JSON API that lets AI agents create, validate, and share builds.",
+  "featureList": [
+    "PoE2 passive tree planner (WebGL, full game art)",
+    "Leveling snapshots on a scrubable timeline with respecs",
+    "Skill gem and support compatibility validation",
+    "Grounded gear planning from real base items and affixes",
+    "Game-readable .build export",
+    "Shareable build links (nothing stored server-side)",
+    "Agent build API: create, validate, and share builds via JSON"
+  ],
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "sameAs": ["https://github.com/damdor/poe-buildwright"]
+}
+</script>
 <style>
   :root { --bg:#12100d; --fg:#d8d2c5; --muted:#9a917e; --accent:#f0c75c; --link:#58a6ff; --panel:#181511; --border:#2b2418; }
   * { box-sizing: border-box; }
@@ -145,8 +172,9 @@
     <div class="agent-grid">
       <div class="agent-card">
         <b>Have an agent make you a build</b>
-        <span>Any LLM that can browse. No login, no API key — it reads <code>/llms.txt</code> and hands back a planner link you just click:</span>
-        <div class="quote">&ldquo;Read https://&lt;this-site&gt;/llms.txt and make me a Sorceress cold-crit build with leveling snapshots. Give me the planner link.&rdquo;</div>
+        <span>Any LLM that can browse. No login, no API key — it reads <a href="/llms.txt"><code>/llms.txt</code></a> and hands back a share link you just click:</span>
+        <div class="quote">&ldquo;Read https://&lt;this-site&gt;/llms.txt and make me a Sorceress cold-crit build with leveling snapshots. Give me the share link.&rdquo;</div>
+        <span>The details — endpoints, <a href="/assets/agent/capabilities.json">capabilities</a>, <a href="/assets/agent/openapi.json">OpenAPI</a>, <a href="/assets/agent/examples/index.json">worked examples</a> — live on <a href="/agents.html">the agents page</a>.</span>
       </div>
       <div class="agent-card">
         <b>Have an agent write your guide</b>

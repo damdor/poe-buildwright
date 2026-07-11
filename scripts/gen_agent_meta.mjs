@@ -1,10 +1,14 @@
-// Deploy-time generator for the agent metadata files:
+// Deploy-time generator for the agent metadata + crawler files:
 //
 //   viewer/assets/agent/capabilities.json   — feature discovery, so
 //     agents don't have to probe endpoints to learn what works here
 //   viewer/assets/agent/support_compat.json — precomputed active-gem →
 //     compatible-support lists, so agents don't re-derive the RPN
 //     type algebra (and burn tokens) for every pairing
+//   viewer/robots.txt + viewer/sitemap.xml  — generated (not
+//     committed) because they need ABSOLUTE urls: the repo stays
+//     domain-neutral and every fork gets correct SEO for its own
+//     domain by setting POE2_SITE_ORIGIN in .cloudflare.env.
 //
 // Run by scripts/deploy.sh before upload (node, no dependencies).
 // Compatibility semantics MUST mirror functions/agent/_lib.ts
@@ -76,6 +80,8 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
   // Directory listings don't exist on this host — the manifest IS the
   // examples index (ids, tags, points, direct urls).
   examples_index: "/assets/agent/examples/index.json",
+  openapi: "/assets/agent/openapi.json",
+  human_page: "/agents.html",
   // gear[].slot vocabulary: bases.json slot values are canonical
   // singles ("ring1"); the plan schema accepts every alias here.
   slots: {
@@ -96,4 +102,27 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
   },
 }, null, 1));
 
-console.log(`agent meta: ${Object.keys(compat).length} actives x ${supports.length} supports -> support_compat.json + capabilities.json (patch ${patch})`);
+// ---- crawler files ---------------------------------------------------------
+// robots.txt always; sitemap.xml only when the deploy knows its
+// public origin (the sitemap spec requires absolute URLs).
+const origin = (process.env.POE2_SITE_ORIGIN ?? "").replace(/\/+$/, "");
+const pages = [
+  "/", "/planner.html", "/share.html", "/agents.html", "/llms.txt",
+  "/assets/agent/capabilities.json", "/assets/agent/openapi.json",
+  "/assets/agent/examples/index.json",
+];
+let robots = "User-agent: *\nAllow: /\n";
+if (origin) {
+  robots += "\nSitemap: " + origin + "/sitemap.xml\n";
+  const now = new Date().toISOString().slice(0, 10);
+  writeFileSync("viewer/sitemap.xml",
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    pages.map(p => "  <url><loc>" + origin + p + "</loc><lastmod>" + now + "</lastmod></url>").join("\n") +
+    "\n</urlset>\n");
+} else {
+  console.log("POE2_SITE_ORIGIN unset — robots.txt written without a Sitemap line, sitemap.xml skipped");
+}
+writeFileSync("viewer/robots.txt", robots);
+
+console.log(`agent meta: ${Object.keys(compat).length} actives x ${supports.length} supports -> support_compat.json + capabilities.json (patch ${patch})` + (origin ? `; robots.txt + sitemap.xml for ${origin}` : ""));

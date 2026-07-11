@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI agents — PoE2 build planner (poe-buildwright)</title>
+<meta name="description" content="poe-buildwright lets AI agents create, validate, and share Path of Exile 2 builds — passive trees, skills, gear, leveling snapshots, and notes — through documented JSON endpoints. One POST returns a shareable build link.">
+<style>
+  :root { --bg:#12100d; --fg:#d8d2c5; --muted:#9a917e; --accent:#f0c75c; --link:#58a6ff; --panel:#181511; --border:#2b2418; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font: 14px/1.6 ui-monospace, monospace; }
+  main { max-width: 880px; margin: 0 auto; padding: 32px 24px; }
+  h1 { font-size: 24px; margin: 0 0 4px; color: var(--accent); }
+  h2 { font-size: 16px; color: var(--accent); margin: 28px 0 8px; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); font-size: 13.5px; max-width: 680px; }
+  a { color: var(--link); }
+  code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+  pre { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { color: var(--accent); }
+  footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Build with an AI agent</h1>
+  <p class="sub">poe-buildwright is an <a href="/">unofficial, fan-made Path of Exile 2 build
+  planner</a> designed to be driven by AI agents as first-class users: an agent can
+  create, validate, and share a complete build — passive tree targets, leveling
+  snapshots with respecs, skills with supports, grounded gear, and annotated
+  picks — without a login, an API key, or a browser.</p>
+
+  <h2>The whole loop, for humans in a hurry</h2>
+  <p>Paste this to any assistant that can browse:</p>
+  <pre>Read https://&lt;this-site&gt;/llms.txt and make me a Warrior earthquake build
+with leveling snapshots. Give me the share link.</pre>
+  <p>The agent reads the contract, grounds every name in the game's own data,
+  and hands back a link. What you open is yours to edit — nothing is stored
+  server-side.</p>
+
+  <h2>The machine surface</h2>
+  <table>
+    <tr><th>Resource</th><th>What it is</th></tr>
+    <tr><td><a href="/llms.txt">/llms.txt</a></td><td>The authoring contract: plan format, grounding rules, snapshots/respecs, the finish line</td></tr>
+    <tr><td><a href="/assets/agent/capabilities.json">capabilities.json</a></td><td>Endpoint discovery — what this deployment supports, patch, schema version, slot aliases</td></tr>
+    <tr><td><a href="/assets/agent/openapi.json">openapi.json</a></td><td>OpenAPI 3.1 spec for the endpoints below</td></tr>
+    <tr><td><a href="/assets/agent/schema.json">schema.json</a></td><td>JSON Schema for the <code>poe2-agent-plan</code> format</td></tr>
+    <tr><td><a href="/assets/agent/primer.md">primer.md</a></td><td>PoE2 fundamentals for agents: budgets, defence layers, archetypes, known mistakes</td></tr>
+    <tr><td><a href="/assets/agent/examples/index.json">examples/index.json</a></td><td>Known-good plans, toy to full-size (one authored end-to-end by an agent, 99/99 points)</td></tr>
+    <tr><td><code>POST /agent/build</code></td><td>The one-shot finish: plan in → validated <code>share_url</code> + <code>agent_url</code> + points + note accounting out</td></tr>
+    <tr><td><code>POST /agent/validate</code></td><td>The same validation report without minting URLs — for repair loops (coded diagnostics, per-target costs, budget hints)</td></tr>
+    <tr><td><code>PUT /live/&lt;token&gt;</code></td><td>Live collaboration: a human watches the agent's revisions appear on their tree in real time</td></tr>
+  </table>
+
+  <h2>Grounding data</h2>
+  <p>Agents never guess names. The site serves the game's own data as JSON:
+  <a href="/assets/agent/nodes.json">passive notables with per-class path costs</a>,
+  the <a href="/assets/agent/graph.json">full connectivity graph</a>,
+  <a href="/assets/skill_catalogue.json">every skill gem with type algebra</a>
+  (plus <a href="/assets/agent/support_compat.json">precomputed support compatibility</a>),
+  <a href="/assets/agent/bases.json">equipment bases</a> and
+  <a href="/assets/agent/mods.json">the real affix vocabulary</a> — all mined
+  first-party from the game's CDN, refreshed per patch.</p>
+
+  <h2>Why it works</h2>
+  <ul>
+    <li><b>Targets, not travel nodes</b> — agents name the notables they want; a deterministic pathfinder does the graph search.</li>
+    <li><b>Validation before delivery</b> — point budgets, reachability, gem/support compatibility, gear grounding, leveling realism; failures come back as machine-branchable diagnostics with repair hints.</li>
+    <li><b>Annotations survive</b> — build notes, snapshot notes, and per-pick notes flow into the planner's guide timeline and the share link.</li>
+    <li><b>Nothing stored</b> — share links carry the whole build in the URL; what a user opens lives in their browser.</li>
+  </ul>
+
+  <footer>
+    <a href="/">Home</a> · <a href="/planner.html">Planner</a> ·
+    <a href="/llms.txt">llms.txt</a> ·
+    <a href="https://github.com/damdor/poe-buildwright">Source (noncommercial)</a>
+    <br><br>
+    This product isn't affiliated with or endorsed by Grinding Gear Games in any way.
+    All Path of Exile 2 game content, images, and materials are trademarks and
+    copyrights of Grinding Gear Games.
+  </footer>
+</main>
+</body>
+</html>
