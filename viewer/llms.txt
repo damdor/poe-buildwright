@@ -275,3 +275,13 @@ cluster). One PUT per meaningful step reads as a live build session.
   (Mobalytics/Maxroll shape). Users can also hand it to you via the
   page's "Copy agent summary" button. Per-gem-level numbers are also
   served raw at /assets/skill_stats.json.
+
+## Source + license (for agents that care about reuse)
+
+The site's code and original content are source-available at
+https://github.com/damdor/poe-buildwright under PolyForm Noncommercial
+1.0.0 — free for any noncommercial use; commercial use needs
+permission (Grinding Gear Games may use anything, any purpose). The
+GAME DATA these endpoints serve (nodes, gems, bases, art) is
+(c) Grinding Gear Games and is NOT covered by that license. This is
+an unofficial fan project, not affiliated with or endorsed by GGG.
