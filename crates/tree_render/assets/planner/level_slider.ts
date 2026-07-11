@@ -534,31 +534,41 @@ export function renderTicks(): void {
   };
 
   // Agent-authored builds carry MANY notes; vertical stacking towers
-  // read as clutter. Instead, notes within one pill-width of each
-  // other collapse into a single CLUSTER pill showing the count —
-  // hover lists every note inside (number, level, anchor, text),
+  // read as clutter. Instead, notes near each other collapse into a
+  // single CLUSTER pill showing the count — hover lists every note
+  // inside (number, level, anchor, text) ordered by reveal level,
   // click scrubs to the cluster's first level. Solo notes keep their
   // sequence-number pill. Gold = passive, purple = skill, split =
   // mixed cluster.
-  const trackWpx = lsInput.offsetWidth || 600;
+  //
+  // Clustering is GAP-chained: a note joins the cluster when it is
+  // within CLUSTER_PX of the cluster's LAST member. The previous
+  // first-member anchor let a train of pills — each ~26 px from its
+  // neighbor, visually touching — render as separate overlapping
+  // solos (the exact clutter a dense 5-snapshot agent build showed).
+  const trackWpx = lsInput.getBoundingClientRect().width || lsInput.offsetWidth || 600;
   const pxOf = (L: number): number => (pctOf(L) / 100) * trackWpx;
-  const CLUSTER_PX = 22;
+  const CLUSTER_PX = 28; // pill is 18 px wide; neighbors closer than this read as one blob
   interface ClusterItem { num: number; e: NoteEntry }
   const clusters: ClusterItem[][] = [];
   for (let n = 0; n < notes.length; n++) {
     const e = notes[n];
     if (!e) continue;
     const cur = clusters[clusters.length - 1];
-    if (cur && pxOf(e.L) - pxOf(cur[0]!.e.L) < CLUSTER_PX) cur.push({ num: n + 1, e });
+    if (cur && pxOf(e.L) - pxOf(cur[cur.length - 1]!.e.L) < CLUSTER_PX) cur.push({ num: n + 1, e });
     else clusters.push([{ num: n + 1, e }]);
   }
   for (const cl of clusters) {
     const first = cl[0]!;
+    const last = cl[cl.length - 1]!;
     const multi = cl.length > 1;
     const types = new Set(cl.map(x => x.e.noteType || 'passive'));
     const t = document.createElement('div');
     t.className = 'ls-tick note' + (multi ? ' cluster' : '');
-    t.style.left = pctOf(first.e.L) + '%';
+    // A cluster pill sits at the visual midpoint of its span; the
+    // click-scrub level stays at the FIRST member so scrubbing lands
+    // where the earliest note reveals.
+    t.style.left = ((pctOf(first.e.L) + pctOf(last.e.L)) / 2) + '%';
     t.dataset.kind = 'note';
     t.dataset.noteType = types.size > 1 ? 'mixed' : (first.e.noteType || 'passive');
     t.dataset.level = String(first.e.L);
@@ -590,10 +600,13 @@ export function showTickTooltip(tickEl: HTMLElement | null): void {
   if (kind === 'note' && tickEl.dataset.cluster) {
     // Cluster pill → a notes index: every note inside, with its
     // sequence number (color-coded passive/skill), reveal level,
-    // anchor name, and the note text.
+    // anchor name, and the note text. Rows are ordered by reveal
+    // level (the timeline's own axis), earliest at the top — the
+    // order the author placed them, not DOM/insertion accidents.
     interface Ci { num: number; level: number; name: string; text: string; type: string }
     let items: Ci[] = [];
     try { items = JSON.parse(tickEl.dataset.cluster) as Ci[]; } catch { /* leave empty */ }
+    items.sort((a, b) => a.level - b.level || a.num - b.num);
     html = '<div class="ls-tt-head">' + items.length + ' notes</div>' +
       items.map(it =>
         '<div class="ls-tt-row">' +
