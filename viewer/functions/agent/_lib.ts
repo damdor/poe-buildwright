@@ -205,7 +205,7 @@ export async function runValidation(
     reservations?: Record<string, Record<string, number>>;
     support_cost_multipliers?: Record<string, Record<string, number>>;
   } = {};
-  let grantedByUnique: Record<string, { grants?: string[]; spirit_bonus?: string }> = {};
+  let grantedByUnique: Record<string, { grants?: string[]; spirit_bonus?: string; spirit_base?: number }> = {};
   let grantedByBase: Record<string, { grants?: string[]; spirit?: number }> = {};
   try {
     const sRes = await assets.fetch(origin + "/assets/agent/spirit.json");
@@ -466,6 +466,9 @@ export async function runValidation(
         const lo = parseInt(gu.spirit_bonus, 10);
         if (!isNaN(lo)) gearSpirit += lo;
       }
+      // Exact Spirit carried by the unique's BASE (unique sceptres
+      // still grant the sceptre's 100) — distinct from rolled bonuses.
+      if (gu?.spirit_base) gearSpirit += gu.spirit_base;
       const gb = g.base ? grantedByBase[g.base] : undefined;
       for (const s of gb?.grants ?? []) grantedSkills.push(s + " (from " + g.base + ")");
       if (gb?.spirit) gearSpirit += gb.spirit;
