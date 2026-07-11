@@ -123,20 +123,13 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
 // have yet. Gear (+Spirit mods, sceptres) extends the pool beyond
 // this — the validator warns rather than errors for that reason.
 const stats = JSON.parse(readFileSync("viewer/assets/skill_stats.json", "utf-8"));
-// Per-value-validated spirit data mined separately while the full bake
-// is blocked (see scripts/extract_spirit_extras.mjs). The baked
-// skill_stats.json wins whenever it carries these fields itself.
-let extras = {};
-try {
-  extras = JSON.parse(readFileSync("data/curated/spirit_extras.json", "utf-8"));
-} catch { /* optional */ }
 const SPIRIT_REWARDS = [
   { lvl: 18, pts: 30, source: "Act 1: King in the Mists" },
   { lvl: 36, pts: 30, source: "Act 3: Ignagduk, the Bog Witch" },
   { lvl: 50, pts: 40, source: "Interlude: Lythara, the Wayward Spear" },
 ];
 const reservations = {};
-const supportMultipliers = { ...(extras.support_cost_multipliers ?? {}) };
+const supportMultipliers = {};
 for (const g of gems) {
   const eff = stats.effects?.[g.granted_effect_id];
   if (eff && eff.reservation) reservations[g.name] = eff.reservation;
@@ -144,9 +137,7 @@ for (const g of gems) {
     supportMultipliers[g.name] = eff.cost_multiplier;
   }
 }
-const grantedSkillSockets = Object.keys(stats.granted_skill_sockets ?? {}).length
-  ? stats.granted_skill_sockets
-  : (extras.granted_skill_sockets ?? {});
+const grantedSkillSockets = stats.granted_skill_sockets ?? {};
 writeFileSync("viewer/assets/agent/spirit.json", JSON.stringify({
   format: "poe2-agent-spirit",
   version: 2,
@@ -163,11 +154,19 @@ writeFileSync("viewer/assets/agent/spirit.json", JSON.stringify({
 // equipped — the skill is available to the build for free (no gem
 // slot), and supports can be socketed into it in-game.
 const itemCat = JSON.parse(readFileSync("viewer/assets/item_catalogue.json", "utf-8"));
+// Two grant phrasings in GGG stat text as of 4.5.4.3:
+//   "Grants Skill: Level (1-20) Purity of Fire"   (always-available)
+//   "Trigger Lightning Bolt Skill on Critical Hit" (condition-fired —
+//    still item-granted: no gem slot, supports socket into it)
 const grantPat = /Grants? Skill: (?:Level \(?[\d\-]+\)? )?([A-Z][A-Za-z '\-]+?)(?= ·|$)/g;
+const triggerPat = /Trigger ([A-Z][A-Za-z '\-]+?) Skill (?=on|when)/g;
 const grantedByUnique = {};
 for (const u of itemCat.uniques ?? []) {
   const s = u.latest_stats || "";
-  const skills = [...s.matchAll(grantPat)].map(m => m[1].trim());
+  const skills = [
+    ...[...s.matchAll(grantPat)].map(m => m[1].trim()),
+    ...[...s.matchAll(triggerPat)].map(m => m[1].trim()),
+  ];
   const spiritM = s.match(/\+\(?([\d\-]+)\)? to Spirit/);
   if (skills.length || spiritM) {
     grantedByUnique[u.name] = {
@@ -177,29 +176,41 @@ for (const u of itemCat.uniques ?? []) {
     };
   }
 }
-// Base-item grants (mined ItemSpirit + ModGrantedSkills, merged into
-// bases.json by the pipeline): sceptres granting skills + spirit etc.
-// While the full pipeline is blocked, base spirit comes from the
-// validated extras (per item class); granted-SKILL names for bases are
-// deliberately absent until SkillGems decodes again — do not guess them.
+// Base-item grants (mined ItemSpirit + ItemInherentSkills, merged
+// into bases.json by the pipeline): sceptres/wands/staves granting
+// their skill, sceptres granting spirit.
 const basesData = JSON.parse(readFileSync("viewer/assets/agent/bases.json", "utf-8"));
-const classSpirit = extras.base_spirit_by_class ?? {};
 const grantedByBase = {};
 for (const b of basesData.bases ?? []) {
-  const spirit = b.spirit ?? classSpirit[b.class];
-  if (b.grants?.length || spirit) {
+  if (b.grants?.length || b.spirit) {
     grantedByBase[b.name] = {
       slot: b.slot,
       ...(b.grants?.length ? { grants: b.grants } : {}),
-      ...(spirit ? { spirit } : {}),
+      ...(b.spirit ? { spirit: b.spirit } : {}),
     };
   }
+}
+// A unique IS its base: it grants the base's inherent skill and base
+// Spirit too (an Alkem Eira is a shield → Raise Shield; a unique
+// sceptre still carries the sceptre's 100 Spirit). Fold each unique's
+// base grants into its own entry so agents that only know the unique
+// name see the full picture; `spirit_base` is the exact base amount
+// (distinct from `spirit_bonus`, a rolled "+(x-y) to Spirit" range).
+const baseByName = new Map((basesData.bases ?? []).map(b => [b.name, b]));
+for (const u of itemCat.uniques ?? []) {
+  const b = u.base ? baseByName.get(u.base) : undefined;
+  if (!b || (!b.grants?.length && !b.spirit)) continue;
+  const e = grantedByUnique[u.name] ?? (grantedByUnique[u.name] = { slot: u.slot });
+  if (b.grants?.length) {
+    e.grants = [...new Set([...(e.grants ?? []), ...b.grants])];
+  }
+  if (b.spirit) e.spirit_base = b.spirit;
 }
 writeFileSync("viewer/assets/agent/granted_skills.json", JSON.stringify({
   format: "poe2-agent-granted-skills",
   version: 2,
   patch,
-  note: "Equipping these grants the listed skills for free (no gem slot; supports attach in-game — see spirit.json granted_skill_sockets for how many) and/or Spirit. `uniques` keys are unique item names; `bases` keys are base-item names (e.g. sceptres).",
+  note: "Equipping these grants the listed skills for free (no gem slot; supports attach in-game — see spirit.json granted_skill_sockets for how many) and/or Spirit. `uniques` keys are unique item names (their base's inherent grants and exact base Spirit are folded in as `grants`/`spirit_base`); `bases` keys are base-item names (sceptres, wands, staves, shields, spears…).",
   uniques: grantedByUnique,
   bases: grantedByBase,
 }));
