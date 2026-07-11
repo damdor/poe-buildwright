@@ -1,0 +1,30 @@
+{
+  "format": "poe2-agent-plan",
+  "version": 1,
+  "name": "Example: Monk starter cluster",
+  "class": "Monk",
+  "ascendancy": "Acolyte of Chayula",
+  "targets": [
+    "Step Like Mist",
+    "Mystic Stance",
+    "Essence of the Mountain",
+    "Mindful Awareness",
+    "Flow Like Water",
+    "Life from Death",
+    "Essence of the Storm",
+    "Crashing Wave",
+    "Unravelling",
+    "Inner Turmoil"
+  ],
+  "skills": [
+    {
+      "gem": "Abyssal Apparition",
+      "level": 8,
+      "supports": [
+        "Armour Demolisher I",
+        "Armour Demolisher II"
+      ]
+    }
+  ],
+  "notes": "Known-good flat plan: one clustered notable set near the Monk start plus two ascendancy picks."
+}

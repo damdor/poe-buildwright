@@ -1,0 +1,45 @@
+{
+  "format": "poe2-agent-plan",
+  "version": 1,
+  "name": "Example: Ranger with grounded gear",
+  "class": "Ranger",
+  "ascendancy": "Pathfinder",
+  "targets": [
+    "Honed Instincts",
+    "Eagle Eye",
+    "Blur",
+    "Combat Alchemy",
+    "Vile Wounds",
+    "Clean Shot",
+    "Cautious Concoctions",
+    "Catlike Agility"
+  ],
+  "skills": [
+    {
+      "gem": "Cull The Weak",
+      "level": 10,
+      "supports": [
+        "Admixture",
+        "Ambrosia"
+      ]
+    }
+  ],
+  "gear": [
+    {
+      "slot": "weapon1",
+      "name": "Death's Harp",
+      "note": "example unique pick"
+    },
+    {
+      "slot": "body",
+      "base": "Rusted Cuirass",
+      "rarity": "rare",
+      "mods": [
+        "+# to maximum Life",
+        "+#% to Cold Resistance",
+        "+# to Dexterity"
+      ]
+    }
+  ],
+  "notes": "Known-good gear grounding: an exact unique name plus a real base with rare mods."
+}
