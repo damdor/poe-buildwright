@@ -17,10 +17,11 @@ export interface Graph {
   nodes: Record<string, { k: string; n?: string; a?: string; uc?: string }>;
   edges: [number, number][];
 }
-export type Target = string | number | { node: string | number; note?: string };
+export type WeaponSet = "set1" | "set2";
+export type Target = string | number | { node: string | number; note?: string; set?: WeaponSet };
 export interface AgentGearIn { slot?: string; name?: string; base?: string; rarity?: string; mods?: string[]; note?: string }
 export interface AgentCapture { level?: number; name?: string; notes?: string; respec?: boolean; remove?: Target[]; targets?: Target[]; skills?: AgentSkillIn[]; gear?: AgentGearIn[] }
-export interface AgentSkillIn { gem?: string; level?: number; supports?: string[]; note?: string }
+export interface AgentSkillIn { gem?: string; level?: number; supports?: string[]; note?: string; set?: WeaponSet }
 export interface AgentPlanIn {
   format?: string; name?: string; notes?: string; description?: string; class?: string; ascendancy?: string;
   targets?: Target[]; skills?: AgentSkillIn[]; gear?: AgentGearIn[]; captures?: AgentCapture[];
@@ -94,7 +95,32 @@ export interface CapReport {
   /** Every ascendancy node allocated (including auto-pathed travel
    *  nodes) — explains why asc_points can exceed the targeted count. */
   asc_allocated: string[];
+  /** Weapon-set point accounting: set-tagged nodes cost SET points
+   *  (shared 24-point pool, quest-gated by level), not main points.
+   *  Travel to them still costs main. */
+  weapon_set_points: { set1: number; set2: number; used: number; cap: number; max: number };
 }
+
+// Weapon-set passive points are quest rewards, earned gradually —
+// KEEP IN SYNC with WEAPON_SET_REWARDS in planner/state.ts (source:
+// PoB2 QuestRewards.lua aggregated by AreaLevel; +2 per quest, twin
+// quests at 51/62 collapsed; 24 total at Lv 64+).
+const WEAPON_SET_REWARDS: { lvl: number; pts: number }[] = [
+  { lvl: 10, pts: 2 }, { lvl: 12, pts: 2 },
+  { lvl: 25, pts: 2 }, { lvl: 28, pts: 2 },
+  { lvl: 34, pts: 2 }, { lvl: 44, pts: 2 },
+  { lvl: 51, pts: 4 },
+  { lvl: 61, pts: 2 }, { lvl: 62, pts: 4 }, { lvl: 64, pts: 2 },
+];
+export function weaponSetCapAt(level: number): number {
+  let cap = 0;
+  for (const r of WEAPON_SET_REWARDS) {
+    if (r.lvl <= level) cap += r.pts;
+    else break;
+  }
+  return cap;
+}
+const MAX_SET_POINTS = 24;
 
 /** One capture's machine-usable state beyond the human report:
  *  the exact allocated node ids (for Plan construction) and the
@@ -103,7 +129,13 @@ export interface CapReport {
  *  target annotations to the resolved allocation. */
 export interface CapDetail {
   allocated: string[];
-  targetCosts: { target: string; points: number; nodeId: string | null; note?: string }[];
+  targetCosts: { target: string; points: number; nodeId: string | null; note?: string; set?: WeaponSet }[];
+  /** CUMULATIVE node→set and node→note state at this capture —
+   *  captures are snapshots, so a tag placed in capture 1 must still
+   *  be on the node in capture 3 (until the node is removed). Plan
+   *  construction reads these, NOT per-capture targetCosts. */
+  sets: [string, WeaponSet][];
+  notes: [string, string][];
 }
 
 /** Machine-readable diagnostic mirroring an entry-level failure —
@@ -214,10 +246,15 @@ export async function runValidation(
     return s;
   };
   let carry = roots();
+  // Which allocated node is paid for with a weapon-set point, and
+  // which carries a target note (both persist across cumulative
+  // captures; pruned with their node).
+  const setByNode = new Map<string, WeaponSet>();
+  const noteByNodeCum = new Map<string, string>();
   const capReports: CapReport[] = [];
   const capDetails: CapDetail[] = [];
   for (const c of capsIn) {
-    if (c.respec) carry = roots();
+    if (c.respec) { carry = roots(); setByNode.clear(); noteByNodeCum.clear(); }
     else if (c.remove?.length) {
       // Partial respec: deallocate + orphan-prune (mirror the importer).
       for (const raw2 of c.remove) {
@@ -238,22 +275,23 @@ export async function runValidation(
           if (carry.has(nb) && !keep.has(nb)) { keep.add(nb); q.push(nb); }
         }
       }
-      for (const id of [...carry]) if (!keep.has(id)) carry.delete(id);
+      for (const id of [...carry]) if (!keep.has(id)) { carry.delete(id); setByNode.delete(id); noteByNodeCum.delete(id); }
     }
     const unresolved: string[] = [];
-    const goals: { label: string; ids: Set<string>; note?: string }[] = [];
+    const goals: { label: string; ids: Set<string>; note?: string; set?: WeaponSet }[] = [];
     for (const raw2 of c.targets ?? []) {
       const isObj = typeof raw2 === "object" && raw2 !== null;
       const t = isObj ? raw2.node : raw2;
       const note = isObj ? raw2.note : undefined;
+      const set = isObj && (raw2.set === "set1" || raw2.set === "set2") ? raw2.set : undefined;
       if (typeof t === "number" || /^\d+$/.test(String(t))) {
         const id = String(t);
-        if (graph.nodes[id]) goals.push({ label: id, ids: new Set([id]), note });
+        if (graph.nodes[id]) goals.push({ label: id, ids: new Set([id]), note, set });
         else unresolved.push(String(t));
         continue;
       }
       const ids = nameIdx.get(String(t).toLowerCase().trim());
-      if (ids && ids.length) goals.push({ label: String(t), ids: new Set(ids), note });
+      if (ids && ids.length) goals.push({ label: String(t), ids: new Set(ids), note, set });
       else unresolved.push(String(t));
     }
     // Greedy nearest-target routing. The path each target gets charged
@@ -261,7 +299,7 @@ export async function runValidation(
     // the "removing this saves ~N points" number repair hints need.
     // The path's final node IS the goal copy that got picked; keep it
     // so target notes can be re-attached to the resolved allocation.
-    const targetCosts: { target: string; points: number; nodeId: string | null; note?: string }[] = [];
+    const targetCosts: { target: string; points: number; nodeId: string | null; note?: string; set?: WeaponSet }[] = [];
     const remaining = goals.slice();
     while (remaining.length) {
       // A target already swallowed by an earlier target's path is
@@ -269,7 +307,7 @@ export async function runValidation(
       for (let i = remaining.length - 1; i >= 0; i--) {
         const hit = [...remaining[i]!.ids].find(id => carry.has(id));
         if (hit) {
-          targetCosts.push({ target: remaining[i]!.label, points: 0, nodeId: hit, note: remaining[i]!.note });
+          targetCosts.push({ target: remaining[i]!.label, points: 0, nodeId: hit, note: remaining[i]!.note, set: remaining[i]!.set });
           remaining.splice(i, 1);
         }
       }
@@ -286,13 +324,24 @@ export async function runValidation(
         points: best.path.length,
         nodeId: best.path[best.path.length - 1] ?? null,
         note: remaining[best.idx]!.note,
+        set: remaining[best.idx]!.set,
       });
       remaining.splice(best.idx, 1);
     }
-    let points = 0, ascPoints = 0;
+    // Weapon-set tags and notes stick to the GOAL node (travel stays
+    // main): both survive across captures via the cumulative maps,
+    // mirroring the browser importer's semantics.
+    for (const t of targetCosts) {
+      if (t.set && t.nodeId) setByNode.set(t.nodeId, t.set);
+      if (t.note && t.nodeId) noteByNodeCum.set(t.nodeId, t.note);
+    }
+    let points = 0, ascPoints = 0, set1 = 0, set2 = 0;
     for (const id of carry) {
       if (id === hub || id === ascStart) continue;
-      if (graph.nodes[id]?.a) ascPoints++;
+      if (graph.nodes[id]?.a) { ascPoints++; continue; }
+      const st = setByNode.get(id);
+      if (st === "set1") set1++;
+      else if (st === "set2") set2++;
       else points++;
     }
     // Structured "sight": the notables/keystones the USER will actually
@@ -316,13 +365,26 @@ export async function runValidation(
       if (n?.a) ascAllocated.push(n.n ?? id);
     }
     ascAllocated.sort();
+    const capLevel = typeof c.level === "number" ? c.level : 100;
+    const setCap = weaponSetCapAt(capLevel);
     capReports.push({
       points, asc_points: ascPoints, resolved: goals.length, unresolved,
       allocated_notables: allocatedNotables,
       target_costs: targetCosts.map(t => ({ target: t.target, added_points: t.points })),
       asc_allocated: ascAllocated,
+      weapon_set_points: { set1, set2, used: set1 + set2, cap: setCap, max: MAX_SET_POINTS },
     });
-    capDetails.push({ allocated: [...carry].filter(id => id !== hub && id !== ascStart), targetCosts });
+    if (set1 + set2 > setCap) {
+      problems.push(
+        "capture " + (capReports.length) + " (level " + capLevel + "): " + (set1 + set2) +
+        " weapon-set points used but only " + setCap + " earned by that level (quest-gated; 24 total at Lv 64+)");
+    }
+    capDetails.push({
+      allocated: [...carry].filter(id => id !== hub && id !== ascStart),
+      targetCosts,
+      sets: [...setByNode],
+      notes: [...noteByNodeCum],
+    });
   }
 
   // ---- Leveling realism: per-capture gem/gear availability ----
@@ -467,6 +529,16 @@ export async function runValidation(
   for (const c of capReports) {
     for (const u of c.unresolved) {
       diagnostics.push({ code: "target.unresolved", severity: "error", message: u, target: u.replace(/ \(unreachable\)$/, "") });
+    }
+  }
+  for (let i = 0; i < capReports.length; i++) {
+    const w = capReports[i]!.weapon_set_points;
+    if (w.used > w.cap) {
+      diagnostics.push({
+        code: "weapon_set.over_cap", severity: "error",
+        message: "capture " + (i + 1) + ": " + w.used + "/" + w.cap + " weapon-set points at that level",
+        capture: i + 1, used: w.used, cap: w.cap,
+      });
     }
   }
 

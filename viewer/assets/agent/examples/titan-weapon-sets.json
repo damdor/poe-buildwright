@@ -1,0 +1,48 @@
+{
+  "format": "poe2-agent-plan",
+  "version": 1,
+  "name": "Example: Titan with two weapon-set modes",
+  "class": "Warrior",
+  "ascendancy": "Titan",
+  "notes": "Demonstrates weapon-set points — the two-mode pattern. Set 1 is the damage mode: a slow two-handed greathammer where attack speed is wasted, so its set-tagged nodes buy raw damage for Earthquake. Set 2 is the defence mode: club + tower shield with Raise Shield bound to it, and its set-tagged nodes buy block/armour that would be dead weight while swinging the two-hander. Set points are a separate quest-earned pool (24 at Lv 64+), so tagged nodes are nearly free — but they're only ACTIVE while their weapon set is equipped.",
+  "captures": [
+    {
+      "level": 40,
+      "name": "Acts: two-hander plus a panic shield",
+      "notes": "By level 40 only 10 weapon-set points are earned — this capture spends 4 (validate reports the per-level cap).",
+      "targets": [
+        "Brutal",
+        "Smash",
+        { "node": "Titan's Determination", "note": "core damage notable — always active, paid with main points" },
+        { "node": "Burning Strikes", "set": "set1", "note": "set 1 only: extra damage while the greathammer is out" },
+        { "node": "Polished Iron", "set": "set1" },
+        { "node": "Sturdy Metal", "set": "set2", "note": "set 2 only: armour while the shield is up" },
+        { "node": "Blade Catcher", "set": "set2" }
+      ],
+      "skills": [
+        { "gem": "Rolling Slam", "level": 9, "set": "set1", "supports": ["Aftershock I"], "note": "bound to weapon set 1 — the greathammer" },
+        { "gem": "Raise Shield", "level": 9, "set": "set2", "note": "bound to weapon set 2 — swap to club + tower shield to turtle" }
+      ],
+      "gear": [
+        { "slot": "weapon1", "base": "Oak Greathammer", "rarity": "rare", "mods": ["#% increased Physical Damage"], "note": "slow and heavy — set 1 scales damage, never speed" },
+        { "slot": "weapon2", "base": "Wooden Club", "rarity": "magic", "mods": ["+# to Armour"] },
+        { "slot": "offhand2", "base": "Splintered Tower Shield", "rarity": "rare", "mods": ["+# to maximum Life", "#% increased Block chance"], "note": "the set-2 identity: block while Raise Shield channels" }
+      ]
+    },
+    {
+      "level": 72,
+      "name": "Maps: both modes fully online",
+      "notes": "All 24 set points are earned by 64 — deepen each mode without touching the 99 main-point budget.",
+      "targets": [
+        { "node": "Relentless", "set": "set2", "note": "set 2 only: more block for boss turtling" },
+        { "node": "Defender's Resolve", "set": "set2" },
+        { "node": "Reverberating Impact", "set": "set1", "note": "set 1 only: stun buildup belongs to the hammer mode" },
+        "Battle-hardened"
+      ],
+      "skills": [
+        { "gem": "Earthquake", "level": 14, "set": "set1", "supports": ["Aftershock I", "Admixture"], "note": "the endgame slam — still set 1" },
+        { "gem": "Raise Shield", "level": 14, "set": "set2" }
+      ]
+    }
+  ]
+}

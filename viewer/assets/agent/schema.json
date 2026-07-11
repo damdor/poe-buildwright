@@ -1,93 +1,232 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "/assets/agent/schema.json",
-  "title": "poe2-agent-plan",
-  "description": "Goal-oriented PoE2 build plan for AI agents. Deliver as planner.html#agent=<base64url(JSON)>. See /llms.txt.",
-  "type": "object",
-  "required": ["format", "version", "class"],
-  "properties": {
-    "format": { "const": "poe2-agent-plan" },
-    "version": { "const": 1 },
-    "name": { "type": "string", "maxLength": 120 },
-    "class": { "type": "string", "description": "Exact name from /assets/agent/nodes.json .classes[].name" },
-    "ascendancy": { "type": "string", "description": "Must belong to the class (see .classes[].ascendancies)" },
-    "targets": { "$ref": "#/$defs/targets" },
-    "skills": { "$ref": "#/$defs/skills" },
-    "gear": { "$ref": "#/$defs/gear" },
-    "captures": {
-      "type": "array",
-      "maxItems": 12,
-      "description": "Leveling snapshots. Cumulative: each keeps earlier passives and paths to its ADDITIONAL targets. respec:true restarts the tree (level-as-X-then-rebuild). skills/gear: omitted = inherit previous, provided = replace. When captures is present, top-level targets/skills/gear are ignored.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "level": { "type": "integer", "minimum": 2, "maximum": 100, "description": "Character level this snapshot covers up to" },
-          "name": { "type": "string", "maxLength": 60 },
-          "notes": { "type": "string", "maxLength": 500 },
-          "remove": { "$ref": "#/$defs/targets", "description": "Partial respec: deallocate these nodes first (orphaned travel nodes are pruned automatically), then path to targets" },
-          "respec": { "type": "boolean", "description": "Full tree reset (rare) — prefer 'remove' for normal partial respecs" },
-          "targets": { "$ref": "#/$defs/targets" },
-          "skills": { "$ref": "#/$defs/skills" },
-          "gear": { "$ref": "#/$defs/gear" }
-        }
-      }
-    },
-    "notes": { "type": "string", "maxLength": 2000 }
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "/assets/agent/schema.json",
+ "title": "poe2-agent-plan",
+ "description": "Goal-oriented PoE2 build plan for AI agents. Deliver as planner.html#agent=<base64url(JSON)>. See /llms.txt.",
+ "type": "object",
+ "required": [
+  "format",
+  "version",
+  "class"
+ ],
+ "properties": {
+  "format": {
+   "const": "poe2-agent-plan"
   },
-  "$defs": {
-    "targets": {
-      "type": "array",
-      "maxItems": 40,
-      "items": {
-        "oneOf": [
-          { "type": "string", "description": "Node name from nodes.json (case-insensitive)" },
-          { "type": "integer", "description": "Node id from nodes.json" },
-          {
-            "type": "object",
-            "required": ["node"],
-            "properties": {
-              "node": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
-              "note": { "type": "string", "maxLength": 300, "description": "Shown as a planner note on the node — use for important choices" },
-              "set": { "type": "string", "enum": ["set1", "set2"], "description": "Allocate this target with weapon-set points (swap builds only)" }
-            }
-          }
-        ]
-      }
-    },
-    "skills": {
-      "type": "array",
-      "maxItems": 12,
-      "items": {
-        "type": "object",
-        "required": ["gem"],
-        "properties": {
-          "gem": { "type": "string", "description": "Active gem name from skill_catalogue (gem_type Active)" },
-          "level": { "type": "integer", "minimum": 1, "maximum": 40 },
-          "supports": {
-            "type": "array",
-            "maxItems": 5,
-            "items": { "type": "string" },
-            "description": "Support names (tiered, e.g. 'Multishot I'); each support once per character"
-          }
-        }
-      }
-    },
-    "gear": {
-      "type": "array",
-      "maxItems": 16,
-      "items": {
-        "type": "object",
-        "required": ["slot"],
-        "anyOf": [ { "required": ["name"] }, { "required": ["base"] } ],
-        "properties": {
-          "slot": { "type": "string", "description": "weapon1|offhand1|weapon2|offhand2|helmet|body|gloves|boots|amulet|ring1|ring2|belt|flask|jewel — or an item_catalogue slot name (bow, focus, ...)" },
-          "name": { "type": "string", "description": "A unique's exact name from item_catalogue, or freetext. Prefer base+rarity+mods for rares." },
-          "base": { "type": "string", "description": "Base item name from /assets/agent/bases.json — pick one whose defence type + attribute reqs match the build" },
-          "rarity": { "type": "string", "enum": ["normal", "magic", "rare"], "default": "rare" },
-          "mods": { "type": "array", "maxItems": 6, "items": { "type": "string" }, "description": "Most-important-first affixes to look for ('+# to maximum Life', '+#% to Fire Resistance')" },
-          "note": { "type": "string", "maxLength": 300 }
-        }
-      }
+  "version": {
+   "const": 1
+  },
+  "name": {
+   "type": "string",
+   "maxLength": 120
+  },
+  "class": {
+   "type": "string",
+   "description": "Exact name from /assets/agent/nodes.json .classes[].name"
+  },
+  "ascendancy": {
+   "type": "string",
+   "description": "Must belong to the class (see .classes[].ascendancies)"
+  },
+  "targets": {
+   "$ref": "#/$defs/targets"
+  },
+  "skills": {
+   "$ref": "#/$defs/skills"
+  },
+  "gear": {
+   "$ref": "#/$defs/gear"
+  },
+  "captures": {
+   "type": "array",
+   "maxItems": 12,
+   "description": "Leveling snapshots. Cumulative: each keeps earlier passives and paths to its ADDITIONAL targets. respec:true restarts the tree (level-as-X-then-rebuild). skills/gear: omitted = inherit previous, provided = replace. When captures is present, top-level targets/skills/gear are ignored.",
+   "items": {
+    "type": "object",
+    "properties": {
+     "level": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 100,
+      "description": "Character level this snapshot covers up to"
+     },
+     "name": {
+      "type": "string",
+      "maxLength": 60
+     },
+     "notes": {
+      "type": "string",
+      "maxLength": 500
+     },
+     "remove": {
+      "$ref": "#/$defs/targets",
+      "description": "Partial respec: deallocate these nodes first (orphaned travel nodes are pruned automatically), then path to targets"
+     },
+     "respec": {
+      "type": "boolean",
+      "description": "Full tree reset (rare) \u2014 prefer 'remove' for normal partial respecs"
+     },
+     "targets": {
+      "$ref": "#/$defs/targets"
+     },
+     "skills": {
+      "$ref": "#/$defs/skills"
+     },
+     "gear": {
+      "$ref": "#/$defs/gear"
+     }
     }
+   }
+  },
+  "notes": {
+   "type": "string",
+   "maxLength": 2000
   }
+ },
+ "$defs": {
+  "targets": {
+   "type": "array",
+   "maxItems": 40,
+   "items": {
+    "oneOf": [
+     {
+      "type": "string",
+      "description": "Node name from nodes.json (case-insensitive)"
+     },
+     {
+      "type": "integer",
+      "description": "Node id from nodes.json"
+     },
+     {
+      "type": "object",
+      "required": [
+       "node"
+      ],
+      "properties": {
+       "node": {
+        "oneOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         }
+        ]
+       },
+       "note": {
+        "type": "string",
+        "maxLength": 300,
+        "description": "Shown as a planner note on the node \u2014 use for important choices"
+       },
+       "set": {
+        "type": "string",
+        "enum": [
+         "set1",
+         "set2"
+        ],
+        "description": "Allocate this target with weapon-set points (swap builds only)"
+       }
+      }
+     }
+    ]
+   }
+  },
+  "skills": {
+   "type": "array",
+   "maxItems": 12,
+   "items": {
+    "type": "object",
+    "required": [
+     "gem"
+    ],
+    "properties": {
+     "gem": {
+      "type": "string",
+      "description": "Active gem name from skill_catalogue (gem_type Active)"
+     },
+     "level": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 40
+     },
+     "supports": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+       "type": "string"
+      },
+      "description": "Support names (tiered, e.g. 'Multishot I'); each support once per character"
+     },
+     "set": {
+      "enum": [
+       "set1",
+       "set2"
+      ],
+      "description": "Weapon-set binding: this skill is used while that weapon set is equipped; pair with targets tagged the same set. Omit for the always-active main setup."
+     },
+     "note": {
+      "type": "string",
+      "description": "Author note shown on this skill in the planner + guide"
+     }
+    }
+   }
+  },
+  "gear": {
+   "type": "array",
+   "maxItems": 16,
+   "items": {
+    "type": "object",
+    "required": [
+     "slot"
+    ],
+    "anyOf": [
+     {
+      "required": [
+       "name"
+      ]
+     },
+     {
+      "required": [
+       "base"
+      ]
+     }
+    ],
+    "properties": {
+     "slot": {
+      "type": "string",
+      "description": "weapon1|offhand1|weapon2|offhand2|helmet|body|gloves|boots|amulet|ring1|ring2|belt|flask|jewel \u2014 or an item_catalogue slot name (bow, focus, ...)"
+     },
+     "name": {
+      "type": "string",
+      "description": "A unique's exact name from item_catalogue, or freetext. Prefer base+rarity+mods for rares."
+     },
+     "base": {
+      "type": "string",
+      "description": "Base item name from /assets/agent/bases.json \u2014 pick one whose defence type + attribute reqs match the build"
+     },
+     "rarity": {
+      "type": "string",
+      "enum": [
+       "normal",
+       "magic",
+       "rare"
+      ],
+      "default": "rare"
+     },
+     "mods": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+       "type": "string"
+      },
+      "description": "Most-important-first affixes to look for ('+# to maximum Life', '+#% to Fire Resistance')"
+     },
+     "note": {
+      "type": "string",
+      "maxLength": 300
+     }
+    }
+   }
+  }
+ }
 }
