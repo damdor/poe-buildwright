@@ -11,6 +11,15 @@ them a single URL. No login, no API key, no session.
    mistakes real agents made. A machine-readable JSON Schema for the
    plan format is at /assets/agent/schema.json.
 
+   CAPABILITY DISCOVERY: fetch /assets/agent/capabilities.json before
+   probing anything — it says which endpoints this deployment has
+   (validate, agent_build, live), the game patch the data was mined
+   from, and where the grounding files and worked examples live.
+
+   WORKED EXAMPLES: /assets/agent/examples/ holds known-good plans
+   (with captures, respecs, supports, gear) that validate cleanly on
+   this deployment. Imitate their shape.
+
 1. GROUND YOUR NAMES. Fetch these (same origin, plain JSON). Only
    reference names that appear in them — community/wiki names often
    differ from the game data.
@@ -51,15 +60,16 @@ them a single URL. No login, no API key, no session.
      - SUPPORT NAMES ARE TIERED: "Fist of War I", "Multishot I",
        "Brutality I" — the Roman numeral is part of the name. Community
        names without the numeral will not resolve.
-     - Compatibility: a support fits an active gem when its
-       require_skill_types match and exclude_skill_types don't.
-       These are POSTFIX (RPN) boolean expressions, not flat sets:
-       plain tokens push (active.skill_types contains token); literal
-       "AND"/"OR"/"NOT" tokens are stack operators; the result is true
-       if ANY value left on the stack is true. Empty require = always
-       allowed. You do NOT have to evaluate this yourself — the import
-       validates every pairing and reports incompatibilities — but
-       evaluating it yourself yields better builds.
+     - Compatibility: PRECOMPUTED for you at
+       /assets/agent/support_compat.json — active gem name → the exact
+       list of support names that pass the type algebra. Prefer that
+       file; it saves tokens and mistakes. (The underlying rule, if
+       you need it: require_skill_types / exclude_skill_types are
+       POSTFIX (RPN) boolean expressions — plain tokens push
+       (active.skill_types contains token); literal "AND"/"OR"/"NOT"
+       are stack operators; true if ANY stack value is true. Empty
+       require = always allowed. The import validates every pairing
+       either way.)
      - Each support gem may be used ONCE per character at a time —
        i.e. unique within each snapshot's skill set; reusing a support
        in a LATER capture's replaced skill list is fine. Max 5 supports
@@ -163,27 +173,48 @@ them a single URL. No login, no API key, no session.
             "note": "no-crit keystone — core of the pivot"}]}
        ]
 
-3. EMIT THE URL. base64url-encode the UTF-8 JSON (replace + with -,
-   / with _, strip =). Then:
+3. FINISH — one POST, both URLs (PREFERRED):
 
-     https://<this-site>/planner.html#agent=<base64url-json>
+     POST /agent/build          body: your agent-plan JSON
 
-   JavaScript reference:
+   validates the plan and, when it passes, returns everything at once:
+
+     {
+       "ok": true,
+       "share_url": "https://…/share.html#code=…",
+       "agent_url": "https://…/planner.html#agent=…",
+       "points": { "main": 97, "asc": 8 },
+       "warnings": [],
+       "validation": { …the full validate report… }
+     }
+
+   share_url is the PREFERRED deliverable — a compact read-and-adopt
+   link, the same format the site's own Share button mints. agent_url
+   is the interactive import (user owns and edits the build on open).
+   Hand the user share_url; include agent_url when they'll want to
+   edit. On validation failure you get ok:false plus the full report
+   (including budget.suggest_remove repair hints) and no URLs — repair
+   and re-POST.
+
+   ITERATING? Use /agent/validate alone (GET ?plan=<b64url> or POST
+   the JSON) — the same report without minting URLs. Every response
+   from /agent/* is JSON, success or error; an HTML response means a
+   broken deployment, not a contract change.
+
+   BROWSER-DRIVING AGENTS: after an #agent= import you can mint the
+   share link in-page —
+     await window.PoE2Share.buildUrl(window.PoE2Plan.get())
+   and read the machine-readable import result from
+     <script id="poe2-agent-import-result" type="application/json">.
+
+   MANUAL FALLBACK (no Functions on this deployment): base64url-encode
+   the UTF-8 plan JSON (replace + with -, / with _, strip =):
      const b64u = btoa(unescape(encodeURIComponent(JSON.stringify(plan))))
                     .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
      const url = origin + '/planner.html#agent=' + b64u;
-
-   Give that URL to the user. Opening it materializes the build locally
-   in their browser (they own it and can edit); an import summary
-   reports the allocated point count and anything that didn't resolve.
+   Opening it materializes the build locally in the user's browser; the
+   import summary reports point counts and anything unresolved.
    Realistic plans encode to 1-4 KB; keep the URL under ~16 KB.
-
-   VALIDATE FIRST (recommended): GET /agent/validate?plan=<same b64url>
-   (or POST the raw JSON) returns the exact import result headlessly —
-   per-capture point totals, unresolved/unreachable targets, gem and
-   support-compatibility problems. Iterate until "ok": true, THEN hand
-   over the URL. (Available on deployments with Functions; a 404 means
-   validate isn't enabled — fall back to careful grounding.)
 
 ## Live collaboration (where enabled)
 

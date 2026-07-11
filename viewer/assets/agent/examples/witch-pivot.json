@@ -1,0 +1,55 @@
+{
+  "format": "poe2-agent-plan",
+  "version": 1,
+  "name": "Example: Witch leveling with a pivot",
+  "class": "Witch",
+  "ascendancy": "Blood Mage",
+  "captures": [
+    {
+      "level": 30,
+      "targets": [
+        "Pure Energy",
+        "Practiced Signs",
+        "Raw Power",
+        "Open Mind",
+        "Rapid Recharge"
+      ],
+      "skills": [
+        {
+          "gem": "Abyssal Pact",
+          "level": 8,
+          "supports": [
+            "Admixture",
+            "Ambrosia"
+          ]
+        }
+      ]
+    },
+    {
+      "level": 65,
+      "remove": [
+        "Rapid Recharge"
+      ],
+      "targets": [
+        "Dampening Shield",
+        "Elemental Force",
+        "Affliction Enforcer",
+        "Mana Blessing",
+        "Sanguimancy",
+        "Vitality Siphon"
+      ],
+      "skills": [
+        {
+          "gem": "Abyssal Pact",
+          "level": 14,
+          "supports": [
+            "Admixture",
+            "Ambrosia",
+            "Ambrosia II"
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": "Known-good snapshot plan: cumulative captures, one partial respec (remove + reroute), ascendancy in the second capture."
+}
