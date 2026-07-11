@@ -441,6 +441,7 @@ const DEFAULT_TABLES: &[&str] = &[
     "SkillGems",
     // Item-granted skills + the spirit economy (docs/next-data-targets.md).
     "ItemSpirit",
+    "ItemInherentSkills",
     "ModGrantedSkills",
     "GrantedSkillSocketNumbers",
 ];
@@ -3490,7 +3491,16 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     .map(|s| s.split('|').filter(|x| !x.is_empty()).map(str::to_string).collect())
                     .unwrap_or_default();
                 if !name.is_empty() {
-                    grants_by_name.insert(name, (sp, gr));
+                    // Same display name can cover several base variants
+                    // with DIFFERENT grants (the three Shrine Sceptres
+                    // grant Purity of Fire/Ice/Lightning) — union them.
+                    let e = grants_by_name.entry(name).or_insert((0, Vec::new()));
+                    e.0 = e.0.max(sp);
+                    for g in gr {
+                        if !e.1.contains(&g) {
+                            e.1.push(g);
+                        }
+                    }
                 }
             }
         }

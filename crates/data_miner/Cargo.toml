@@ -26,12 +26,12 @@ name = "cdn"
 path = "src/bin/cdn.rs"
 
 [dependencies]
-ooz_sys = { path = "../ooz_sys" }
+oodle_official = { path = "../oodle_official" }
 json = { path = "../json" }
 
 [features]
 # In-progress pure-Rust Oodle port (development-only; dispatch always
-# goes through ooz_sys — see src/oodle/mod.rs).
+# goes through oodle_official — see src/oodle/mod.rs).
 oodle-port = []
 
 [lints]

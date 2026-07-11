@@ -2009,14 +2009,52 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
         }
     }
 
+    // ItemInherentSkills: BaseItemType row → SkillsGranted (SkillGems
+    // row array) → each gem's display name. This is how base sceptres
+    // ("Grants Skill: Purity of Fire") and wands carry their skill —
+    // NOT via Implicit_Mods (base sceptres have none).
+    let mut inherent: std::collections::HashMap<usize, Vec<String>> =
+        std::collections::HashMap::new();
+    if let (Some(iid), Some(iis), Some(sgd), Some(sgs)) = (
+        ts.dat("ItemInherentSkills"),
+        ts.schema("ItemInherentSkills"),
+        ts.dat("SkillGems"),
+        ts.schema("SkillGems"),
+    ) {
+        if let (Some(c_b), Some(c_sk), Some(c_sbit)) = (
+            iis.column("BaseItemType"),
+            iis.column("SkillsGranted"),
+            sgs.column("BaseItemType"),
+        ) {
+            for row in 0..iid.row_count() {
+                let Ok(Some(bit_row)) = iid.foreign(row, c_b) else {
+                    continue;
+                };
+                let names: Vec<String> = array_rows(&iid, row, c_sk)
+                    .into_iter()
+                    .filter_map(|sg_row| {
+                        let gbit = sgd.foreign(sg_row, c_sbit).ok().flatten()?;
+                        let name = bit.string(gbit as usize, c_name).ok()?;
+                        (!name.is_empty()).then_some(name)
+                    })
+                    .collect();
+                if !names.is_empty() {
+                    inherent.insert(bit_row as usize, names);
+                }
+            }
+        }
+    }
+
     let mut out = String::with_capacity(4096);
     out.push_str("base_id\tname\tspirit\tgrants\n");
     for row in 0..bit.row_count() {
         let sp = spirit.get(&row).copied().unwrap_or(0);
-        let grants: Vec<String> = array_rows(&bit, row, c_impl)
-            .into_iter()
-            .filter_map(|m| mod_grants.get(&m).cloned())
-            .collect();
+        let mut grants: Vec<String> = inherent.get(&row).cloned().unwrap_or_default();
+        grants.extend(
+            array_rows(&bit, row, c_impl)
+                .into_iter()
+                .filter_map(|m| mod_grants.get(&m).cloned()),
+        );
         if sp == 0 && grants.is_empty() {
             continue;
         }
@@ -2036,6 +2074,7 @@ pub const GRANTS_TABLES: &[&str] = &[
     "BaseItemTypes",
     "Mods",
     "ItemSpirit",
+    "ItemInherentSkills",
     "ModGrantedSkills",
     "SkillGems",
 ];

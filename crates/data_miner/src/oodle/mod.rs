@@ -7,24 +7,30 @@
 //! Every byte we need from a PoE2 bundle goes through Oodle. There is
 //! no LZ4 escape hatch in this format; the entire compressed payload
 //! is one of these four variants (see `crates/data_miner/src/bundle.rs`
-//! for the per-block compressor id). GGG does not ship an `oo2core.dll`
-//! we could load — Oodle is statically linked into the game binary.
+//! for the per-block compressor id).
 //!
-//! ## Backend: vendored ooz (`ooz_sys`)
+//! ## Backend: the official decoder (`oodle_official`)
 //!
-//! Decoding is delegated to the `ooz_sys` crate, which vendors the
-//! community-standard C++ decoder (zao/ooz). Its entry point
+//! Decoding is delegated to the `oodle_official` crate, which dlopens
+//! RAD/Epic's officially-distributed oo2core library at mine time
+//! (fetched on first use, SHA-256 pinned — see that crate's docs for
+//! the provenance/licensing story). The official entry point
 //! self-dispatches between all Oodle LZ variants by reading the
 //! per-quantum header bytes, so one call covers Kraken, Mermaid,
-//! Hydra, and Leviathan alike. Note ooz is GPL-3.0 — see
-//! `crates/ooz_sys/VENDOR.md` for what that implies (in short: never
-//! distribute miner binaries).
+//! Hydra, and Leviathan alike.
+//!
+//! History: the previous backend was the reverse-engineered ooz C++
+//! decoder (vendored GPL sources). GGG's compressor upgrade at CDN
+//! patch 4.5.4.3 produced streams ooz silently MIS-decoded (~11% of
+//! bytes wrong in affected bundles, success status) — a correctness
+//! class undetectable from inside — hence the switch to the reference
+//! implementation.
 //!
 //! An in-progress pure-Rust port lives in the sibling modules behind
 //! the `oodle-port` cargo feature (off by default). It is
 //! development-only: even with the feature on, dispatch still goes
-//! through ooz — the port graduates by first passing differential
-//! tests against ooz output on real bundles.
+//! through the official backend — the port graduates by first passing
+//! differential tests against official output on real bundles.
 //!
 //! ## Block payload entry point
 //!
@@ -38,7 +44,8 @@
 #[cfg(feature = "oodle-port")]
 mod bitreader;
 // dead_code: the port's decode() entry points are unreachable from
-// dispatch by design until they pass differential tests against ooz.
+// dispatch by design until they pass differential tests against the
+// official backend.
 #[cfg(feature = "oodle-port")]
 #[allow(dead_code)]
 mod hydra;
@@ -54,8 +61,6 @@ mod mermaid;
 
 #[cfg(feature = "oodle-port")]
 pub use bitreader::BitReader;
-
-use std::cell::RefCell;
 
 use crate::bundle::Compressor;
 
@@ -81,10 +86,11 @@ pub enum OodleError {
     /// Distinguished from `UnsupportedMode` so the survey CLI can
     /// estimate coverage as we ship per-compressor decoders.
     NotYetImplemented { compressor: Compressor },
-    /// The ooz backend rejected the block.
+    /// The official-decoder backend rejected the block (or the
+    /// library itself couldn't be fetched/loaded).
     Backend {
         compressor: Compressor,
-        err: ooz_sys::OozError,
+        err: oodle_official::OodleError,
     },
 }
 
@@ -140,16 +146,10 @@ pub fn decompress_block_into(
 ) -> Result<(), OodleError> {
     match compressor {
         Compressor::Kraken | Compressor::Mermaid | Compressor::Hydra | Compressor::Leviathan => {
-            // ooz needs SAFE_SPACE slack bytes past the declared output,
-            // so we can't hand it `dst` directly. Decode into a
-            // thread-local scratch buffer (reused across the thousands
-            // of blocks in a bundle) and copy the valid prefix out.
-            SCRATCH.with_borrow_mut(|scratch| {
-                let out = ooz_sys::decompress_with_scratch(src, dst.len(), scratch)
-                    .map_err(|err| OodleError::Backend { compressor, err })?;
-                dst.copy_from_slice(out);
-                Ok(())
-            })
+            // The official decoder is fuzz-safe and writes exactly
+            // into `dst` — no slack area, no scratch copy.
+            oodle_official::decompress_into(src, dst)
+                .map_err(|err| OodleError::Backend { compressor, err })
         }
         // Selkie and the legacy LZ* compressors don't appear in any
         // PoE2 0.5 bundle in our survey (60,051 bundles, zero hits).
@@ -160,8 +160,4 @@ pub fn decompress_block_into(
             mode: 0,
         }),
     }
-}
-
-thread_local! {
-    static SCRATCH: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
