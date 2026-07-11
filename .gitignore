@@ -144,3 +144,8 @@ viewer/assets/deploy_meta.json
 # Agent metadata generated per-deploy by scripts/gen_agent_meta.mjs.
 viewer/assets/agent/capabilities.json
 viewer/assets/agent/support_compat.json
+
+# Crawler files — generated per-deploy by scripts/gen_agent_meta.mjs
+# (need absolute URLs from POE2_SITE_ORIGIN; repo stays domain-neutral).
+viewer/robots.txt
+viewer/sitemap.xml
