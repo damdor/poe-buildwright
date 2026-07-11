@@ -18,11 +18,11 @@ export interface Graph {
   edges: [number, number][];
 }
 export type Target = string | number | { node: string | number; note?: string };
-export interface AgentGearIn { slot?: string; name?: string; base?: string; rarity?: string; mods?: string[] }
-export interface AgentCapture { level?: number; respec?: boolean; remove?: Target[]; targets?: Target[]; skills?: AgentSkillIn[]; gear?: AgentGearIn[] }
-export interface AgentSkillIn { gem?: string; level?: number; supports?: string[] }
+export interface AgentGearIn { slot?: string; name?: string; base?: string; rarity?: string; mods?: string[]; note?: string }
+export interface AgentCapture { level?: number; name?: string; notes?: string; respec?: boolean; remove?: Target[]; targets?: Target[]; skills?: AgentSkillIn[]; gear?: AgentGearIn[] }
+export interface AgentSkillIn { gem?: string; level?: number; supports?: string[]; note?: string }
 export interface AgentPlanIn {
-  format?: string; name?: string; description?: string; class?: string; ascendancy?: string;
+  format?: string; name?: string; notes?: string; description?: string; class?: string; ascendancy?: string;
   targets?: Target[]; skills?: AgentSkillIn[]; gear?: AgentGearIn[]; captures?: AgentCapture[];
 }
 export interface CatGem { id: string; name: string; skill_types?: string[]; require_skill_types?: string[]; exclude_skill_types?: string[]; req_level?: number; natural_max_level?: number }
@@ -88,15 +88,31 @@ export interface CapReport {
   resolved: number;
   unresolved: string[];
   allocated_notables: string[];
+  /** Per-target marginal cost the greedy router charged — "target X
+   *  added about N points". 0 = subsumed by an earlier target's path. */
+  target_costs: { target: string; added_points: number }[];
+  /** Every ascendancy node allocated (including auto-pathed travel
+   *  nodes) — explains why asc_points can exceed the targeted count. */
+  asc_allocated: string[];
 }
 
 /** One capture's machine-usable state beyond the human report:
  *  the exact allocated node ids (for Plan construction) and the
  *  marginal path cost the greedy router charged each target (for
- *  budget repair hints). */
+ *  budget repair hints). nodeId/note let /agent/build re-attach
+ *  target annotations to the resolved allocation. */
 export interface CapDetail {
   allocated: string[];
-  targetCosts: { target: string; points: number }[];
+  targetCosts: { target: string; points: number; nodeId: string | null; note?: string }[];
+}
+
+/** Machine-readable diagnostic mirroring an entry-level failure —
+ *  agents branch on `code`, humans read `message`. */
+export interface Diagnostic {
+  code: string;
+  severity: "error" | "warning";
+  message: string;
+  [extra: string]: unknown;
 }
 
 export interface ValidationResult {
@@ -225,25 +241,39 @@ export async function runValidation(
       for (const id of [...carry]) if (!keep.has(id)) carry.delete(id);
     }
     const unresolved: string[] = [];
-    const goals: { label: string; ids: Set<string> }[] = [];
+    const goals: { label: string; ids: Set<string>; note?: string }[] = [];
     for (const raw2 of c.targets ?? []) {
-      const t = typeof raw2 === "object" && raw2 !== null ? raw2.node : raw2;
+      const isObj = typeof raw2 === "object" && raw2 !== null;
+      const t = isObj ? raw2.node : raw2;
+      const note = isObj ? raw2.note : undefined;
       if (typeof t === "number" || /^\d+$/.test(String(t))) {
         const id = String(t);
-        if (graph.nodes[id]) goals.push({ label: id, ids: new Set([id]) });
+        if (graph.nodes[id]) goals.push({ label: id, ids: new Set([id]), note });
         else unresolved.push(String(t));
         continue;
       }
       const ids = nameIdx.get(String(t).toLowerCase().trim());
-      if (ids && ids.length) goals.push({ label: String(t), ids: new Set(ids) });
+      if (ids && ids.length) goals.push({ label: String(t), ids: new Set(ids), note });
       else unresolved.push(String(t));
     }
     // Greedy nearest-target routing. The path each target gets charged
     // is its MARGINAL cost given everything routed before it — exactly
     // the "removing this saves ~N points" number repair hints need.
-    const targetCosts: { target: string; points: number }[] = [];
+    // The path's final node IS the goal copy that got picked; keep it
+    // so target notes can be re-attached to the resolved allocation.
+    const targetCosts: { target: string; points: number; nodeId: string | null; note?: string }[] = [];
     const remaining = goals.slice();
     while (remaining.length) {
+      // A target already swallowed by an earlier target's path is
+      // RESOLVED at zero marginal cost, not unreachable.
+      for (let i = remaining.length - 1; i >= 0; i--) {
+        const hit = [...remaining[i]!.ids].find(id => carry.has(id));
+        if (hit) {
+          targetCosts.push({ target: remaining[i]!.label, points: 0, nodeId: hit, note: remaining[i]!.note });
+          remaining.splice(i, 1);
+        }
+      }
+      if (!remaining.length) break;
       let best: { idx: number; path: string[] } | null = null;
       for (let i = 0; i < remaining.length; i++) {
         const path = bfsNearest(carry, remaining[i]!.ids);
@@ -251,7 +281,12 @@ export async function runValidation(
       }
       if (!best) { for (const r of remaining) unresolved.push(r.label + " (unreachable)"); break; }
       for (const id of best.path) carry.add(id);
-      targetCosts.push({ target: remaining[best.idx]!.label, points: best.path.length });
+      targetCosts.push({
+        target: remaining[best.idx]!.label,
+        points: best.path.length,
+        nodeId: best.path[best.path.length - 1] ?? null,
+        note: remaining[best.idx]!.note,
+      });
       remaining.splice(best.idx, 1);
     }
     let points = 0, ascPoints = 0;
@@ -271,7 +306,22 @@ export async function runValidation(
       }
     }
     allocatedNotables.sort();
-    capReports.push({ points, asc_points: ascPoints, resolved: goals.length, unresolved, allocated_notables: allocatedNotables });
+    // Ascendancy breakdown: every asc node the pathing allocated,
+    // including auto-pathed travel nodes — the answer to "I targeted
+    // 2 asc notables, why 6 asc points?"
+    const ascAllocated: string[] = [];
+    for (const id of carry) {
+      if (id === ascStart) continue;
+      const n = graph.nodes[id];
+      if (n?.a) ascAllocated.push(n.n ?? id);
+    }
+    ascAllocated.sort();
+    capReports.push({
+      points, asc_points: ascPoints, resolved: goals.length, unresolved,
+      allocated_notables: allocatedNotables,
+      target_costs: targetCosts.map(t => ({ target: t.target, added_points: t.points })),
+      asc_allocated: ascAllocated,
+    });
     capDetails.push({ allocated: [...carry].filter(id => id !== hub && id !== ascStart), targetCosts });
   }
 
@@ -390,6 +440,8 @@ export async function runValidation(
     cap: MAIN_CAP,
     note: "keep main ≤ " + MAIN_CAP + "; 40-70 is a typical leveling build",
   };
+  const budgetProblems: string[] = [];
+  const diagnostics: Diagnostic[] = [];
   if (over > 0 && lastDetail) {
     // Most expensive targets first: dropping these saves the most.
     // Marginal costs are order-dependent (greedy), so present them as
@@ -401,6 +453,21 @@ export async function runValidation(
       .map(t => ({ target: t.target, saves_about: t.points }));
     budget.over_by = over;
     budget.suggest_remove = costly;
+    // The failure must be visible in BOTH channels: problems[] (so
+    // ok:false never comes with an empty problems list) and a coded
+    // diagnostic (so agents branch without string-matching).
+    budgetProblems.push(
+      "main points " + mainPoints + " exceed the " + MAIN_CAP + "-point cap (over by " + over + ") — see budget.suggest_remove");
+    diagnostics.push({
+      code: "budget.main_over_cap", severity: "error",
+      message: "main points " + mainPoints + "/" + MAIN_CAP + ", over by " + over,
+      over_by: over, suggest_remove: costly,
+    });
+  }
+  for (const c of capReports) {
+    for (const u of c.unresolved) {
+      diagnostics.push({ code: "target.unresolved", severity: "error", message: u, target: u.replace(/ \(unreachable\)$/, "") });
+    }
   }
 
   const ok = problems.length === 0 && gemProblems.length === 0 && gearProblems.length === 0
@@ -416,7 +483,8 @@ export async function runValidation(
       total_points: mainPoints,
       total_asc_points: last?.asc_points ?? 0,
       budget,
-      problems: [...problems, ...gemProblems, ...gearProblems, ...levelingProblems],
+      problems: [...problems, ...gemProblems, ...gearProblems, ...levelingProblems, ...budgetProblems],
+      diagnostics,
     },
     ok,
     klass,

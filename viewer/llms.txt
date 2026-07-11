@@ -16,9 +16,11 @@ them a single URL. No login, no API key, no session.
    (validate, agent_build, live), the game patch the data was mined
    from, and where the grounding files and worked examples live.
 
-   WORKED EXAMPLES: /assets/agent/examples/ holds known-good plans
-   (with captures, respecs, supports, gear) that validate cleanly on
-   this deployment. Imitate their shape.
+   WORKED EXAMPLES: fetch /assets/agent/examples/index.json — a
+   manifest of known-good plans (id, class, shape, tags, points,
+   direct url) that validate cleanly on this deployment. Imitate
+   their shape. (There are no directory listings on this host; the
+   manifest is the index.)
 
 1. GROUND YOUR NAMES. Fetch these (same origin, plain JSON). Only
    reference names that appear in them — community/wiki names often
@@ -184,7 +186,10 @@ them a single URL. No login, no API key, no session.
        "share_url": "https://…/share.html#code=…",
        "agent_url": "https://…/planner.html#agent=…",
        "points": { "main": 97, "asc": 8 },
-       "warnings": [],
+       "note_counts": { "build_note": true, "capture_notes": 4,
+                        "target_notes_in": 6, "target_notes_preserved": 6 },
+       "warnings": [ { "code": "budget.near_cap", "severity": "warning",
+                       "message": "…" } ],
        "validation": { …the full validate report… }
      }
 
@@ -195,6 +200,19 @@ them a single URL. No login, no API key, no session.
    edit. On validation failure you get ok:false plus the full report
    (including budget.suggest_remove repair hints) and no URLs — repair
    and re-POST.
+
+   YOUR ANNOTATIONS SURVIVE: plan.notes → build description,
+   capture.name/notes → snapshot name/description, target
+   {node, note} → a note on the resolved node (numbered on the guide
+   timeline), gear.note → slot note. note_counts confirms the
+   accounting — check target_notes_preserved == target_notes_in.
+
+   THE VALIDATE REPORT is machine-branchable: `diagnostics` carries
+   {code, severity, message, …} entries (e.g. budget.main_over_cap
+   with over_by + suggest_remove; target.unresolved). Every capture
+   reports target_costs ("target X added ~N points"; 0 = subsumed by
+   an earlier path) and asc_allocated (every ascendancy node the
+   auto-pathing took — why asc_points can exceed your target count).
 
    ITERATING? Use /agent/validate alone (GET ?plan=<b64url> or POST
    the JSON) — the same report without minting URLs. Every response
