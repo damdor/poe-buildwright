@@ -49,3 +49,45 @@ regex-parsing unique stat strings.
   somewhere before this patch. `bw dat` handles it via the schema.
 - Upstream issue worth filing: the undecodable-block repro against
   zao/ooz (block 418 of the 4.5.4.3 index inner bundle).
+
+## THE BLOCKER, understood (2026-07-11): GGG upgraded Oodle at 4.5.4.3
+
+The scattered failures above are one root cause: patch 4.5.4.3 is
+compressed with a NEWER Oodle version than the reverse-engineered ooz
+decoder (vendored at upstream HEAD, 2025-10) understands. Three
+symptoms, one cause:
+
+1. **Silently wrong output** — some 128K quanta "decode successfully"
+   but contain dense byte corruption (single-byte deltas: `bb→ba`,
+   UTF-16 high bytes `00→03`, spirit `30 → 0x0100001E`). Verified by
+   diffing mined GrantedEffectsPerLevel reservation ladders against
+   the last good bake: 41 of 98 ladders corrupt, in contiguous
+   row bands ≈256KB apart. PassiveSkills has ~5 such bands (67+ live
+   tree nodes affected) — DO NOT rebake the tree from this patch.
+2. **Hard failures** — the 33 undecodable index blocks (same cause,
+   quanta using a mode ooz errors on instead of mis-decoding).
+3. **"New format" tables** — `data/balance/{baseitemtypes,skillgems}`
+   fail the 0xBB-magic check not because the format changed but
+   because corruption hit the magic bytes themselves (dense corruption
+   regions). No fallback copy exists (older `data/` copies were
+   removed at this patch for these; localized SkillGems don't exist).
+
+What still works: any value that can be independently validated.
+`scripts/extract_spirit_extras.mjs` ships exactly those (support cost
+multipliers via constant-ladder validation, granted-skill sockets,
+sceptre spirit) into `data/curated/spirit_extras.json`.
+
+Paths out (pick one in a dedicated session):
+- Reverse the Oodle delta in vendored ooz (new entropy mode(s)) —
+  upstream zao/ooz has no fix as of 2026-07-11; community readers
+  (poe-dat-viewer, LocalIdentity/poe2-datconverter) haven't caught up
+  to this patch either. Whoever fixes it first unblocks everyone.
+- Wait for upstream/community; re-run `bw update-native` when a
+  decoder handles 4.5.4.3 (the pipeline additions in this commit —
+  grants dataset, cost_multiplier + granted_skill_sockets bake — then
+  light up end-to-end, and spirit_extras.json can be retired).
+
+Detection heuristic that worked: mine → count `[?]` cells per column
+(garbage array counts now rejected by `Dat::array_ref` bounds), and
+diff re-baked ladders against the last good committed bake. Jewels
+(Session B) are blocked on the same decoder for `PassiveJewel*`.

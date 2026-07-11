@@ -168,17 +168,26 @@ them a single URL. No login, no API key, no session.
      on permanently and RESERVE Spirit instead of costing mana.
      Spirit is a separate quest-earned pool: ~30 by Lv 18, 60 by 36,
      100 by 50 (conservative estimates — validate reports
-     spirit.{reserved, base_available} per capture). Costs per gem
-     level: /assets/agent/spirit.json. Gear can extend the pool
-     (+Spirit mods; 14 uniques carry them — see granted_skills.json),
-     so overspend is a WARNING, not an error — but if you rely on
-     gear spirit, spec that gear and say so in a note.
-   - ITEM-GRANTED SKILLS: ~90 uniques grant a skill while equipped
-     (free — no gem slot; supports attach in-game) or bonus Spirit —
-     /assets/agent/granted_skills.json. When your gear[] names one,
-     validate lists the granted skill per capture; DON'T also add it
-     to skills[], build around it. (Base-item grants — e.g. sceptre
-     implicits — aren't in the dataset yet; don't guess them.)
+     spirit.{reserved, base_available, gear_bonus} per capture).
+     Costs per gem level: /assets/agent/spirit.json. SUPPORTS
+     MULTIPLY THE RESERVATION: effective = base × product of each
+     support's cost_multiplier/100 (ladders in spirit.json
+     support_cost_multipliers — a 130% support turns a 30-spirit
+     herald into 39). Budget supports on reserving skills carefully.
+     Gear extends the pool: sceptre bases carry exact Spirit (see
+     granted_skills.json `bases`), unique +Spirit counts at its low
+     roll — overspend beyond base+gear is a WARNING; if you rely on
+     gear spirit, spec that gear.
+   - ITEM-GRANTED SKILLS: uniques (~90) AND base items grant skills
+     while equipped — /assets/agent/granted_skills.json (`uniques` +
+     `bases` sections; a `bases` entry currently carries the base's
+     exact Spirit — sceptres grant their skill in-game too, but skill
+     names for bases ship only when present in the data, so trust the
+     file over memory). Granted skills need NO gem slot and socket
+     supports for free (how many depends on granted level —
+     spirit.json granted_skill_sockets: 2 at L1, 3 at L10, 4 at L15,
+     5 at L20). When your gear[] names one, validate lists it per
+     capture; DON'T re-add it to skills[] — build around it.
    - NOTES ON IMPORTANT CHOICES: any target may be an object
      {"node": "Heart of the Storm", "note": "take before Act 3 boss"} —
      the note lands on that node in the planner (visible on hover,

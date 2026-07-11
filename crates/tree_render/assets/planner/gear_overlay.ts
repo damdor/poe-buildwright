@@ -23,6 +23,10 @@ import type { Item } from "../../../../types/poe2.d.ts";
     ar?: number; ev?: number; es?: number; ward?: number; block?: number;
     dmg?: [number, number]; aps?: number; crit?: number;
     tags?: string[];
+    /** Granted while equipped (mined ItemSpirit / ModGrantedSkills):
+     *  base Spirit (sceptres carry 100) and item-granted skills. */
+    spirit?: number;
+    grants?: string[];
   }
   interface ModFamily { type: string; kind: string; slots: string[]; text?: string; gates?: [string, number][][]; }
 
@@ -102,6 +106,25 @@ import type { Item } from "../../../../types/poe2.d.ts";
         if (b.icon && !baseIconByName.has(k)) baseIconByName.set(k, b.icon);
       }
       if (bases.length) renderStrip();
+      // Granted-while-equipped data lives in the deploy-generated
+      // agent file (bases.json won't carry spirit/grants until the
+      // full bake pipeline decodes the current patch again) — merged
+      // after the base map exists; absent locally → no badges.
+      return fetch("/assets/agent/granted_skills.json")
+        .then(r => (r.ok ? r.json() : null))
+        .then((g: { bases?: Record<string, { grants?: string[]; spirit?: number }> } | null) => {
+          const gb = g?.bases ?? {};
+          let hit = false;
+          for (const name in gb) {
+            const be = baseByName.get(name.toLowerCase());
+            const entry = gb[name];
+            if (!be || !entry) continue;
+            if (entry.grants?.length && !be.grants) be.grants = entry.grants;
+            if (entry.spirit && !be.spirit) be.spirit = entry.spirit;
+            hit = true;
+          }
+          if (hit) renderStrip();
+        });
     })
     .catch(() => { /* text-only rows */ });
 
@@ -318,11 +341,24 @@ import type { Item } from "../../../../types/poe2.d.ts";
       const art = rv.icon
         ? '<img class="gs-item-ic" src="' + esc(rv.icon) + '" alt="" loading="lazy">'
         : '<span class="gs-item-ic gs-ic-blank r-' + esc(rv.rarity) + '"></span>';
+      // Granted-while-equipped badge: base spirit and/or item-granted
+      // skills (from the mined grants data on bases.json). The skill
+      // is free — no gem slot; supports attach in-game.
+      const be = it.base ? baseByName.get(it.base.toLowerCase()) : undefined;
+      let grantHtml = "";
+      if (be && (be.spirit || (be.grants && be.grants.length))) {
+        const bits: string[] = [];
+        if (be.grants && be.grants.length) bits.push("grants " + be.grants.join(", "));
+        if (be.spirit) bits.push("+" + be.spirit + " spirit");
+        grantHtml = '<span class="gs-grant" title="Granted while this item is equipped — the skill needs no gem slot; supports attach in-game.">' +
+          esc(bits.join(" · ")) + "</span>";
+      }
       li.innerHTML =
         art +
         '<span class="gs-slot-label">' + esc(s.label) + "</span>" +
         '<span class="gs-item-name r-' + esc(rv.rarity) + '">' +
           esc(it.name || it.uniqueName || "—") + "</span>" +
+        grantHtml +
         (it.note ? '<span class="ss-note-dot" title="has note">✎</span>' : "");
       listEl.appendChild(li);
     }
