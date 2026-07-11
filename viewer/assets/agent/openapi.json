@@ -1,0 +1,105 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "poe-buildwright agent API",
+    "description": "Headless build creation for Path of Exile 2: validate an agent plan, or turn one into shareable build URLs in a single POST. Grounding data (nodes, graph, gems, bases, support compatibility) is served as static JSON — see /assets/agent/capabilities.json for the map, /llms.txt for the authoring contract, and /assets/agent/examples/index.json for known-good plans.",
+    "version": "1"
+  },
+  "servers": [{ "url": "/" }],
+  "paths": {
+    "/agent/validate": {
+      "get": {
+        "summary": "Validate an agent plan (query form)",
+        "parameters": [{
+          "name": "plan", "in": "query", "required": true,
+          "description": "base64url-encoded UTF-8 JSON of a poe2-agent-plan",
+          "schema": { "type": "string" }
+        }],
+        "responses": { "200": { "$ref": "#/components/responses/ValidationReport" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      },
+      "post": {
+        "summary": "Validate an agent plan",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AgentPlan" } } } },
+        "responses": { "200": { "$ref": "#/components/responses/ValidationReport" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/agent/build": {
+      "post": {
+        "summary": "Validate a plan and mint both build URLs (the preferred finish)",
+        "description": "On ok:true returns share_url (compact read-and-adopt link — the preferred deliverable), agent_url (interactive import), point totals, and note_counts confirming every annotation survived the conversion. On validation failure returns ok:false with the full report (including budget repair hints) and no URLs.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AgentPlan" } } } },
+        "responses": {
+          "200": {
+            "description": "Build result (ok) or validation failure (ok:false) — always JSON",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuildResult" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/live/{token}": {
+      "put": {
+        "summary": "Publish a plan revision to a live-watch channel",
+        "parameters": [{ "name": "token", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,64}$" }, "description": "Random secret — knowing the URL is the permission" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["rev", "plan"], "properties": { "rev": { "type": "integer", "description": "monotonically increasing" }, "plan": { "$ref": "#/components/schemas/AgentPlan" }, "focus": { "type": "string", "description": "node name/id — the watcher's camera pans there" } } } } } },
+        "responses": { "200": { "description": "Stored" }, "503": { "description": "Live channel not enabled on this deployment" } }
+      },
+      "get": {
+        "summary": "Fetch the latest revision on a channel",
+        "parameters": [{ "name": "token", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Latest body; ETag = rev" }, "404": { "description": "No revision yet" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentPlan": {
+        "type": "object",
+        "description": "The poe2-agent-plan format. Authoritative JSON Schema: /assets/agent/schema.json; authoring contract: /llms.txt; known-good examples: /assets/agent/examples/index.json.",
+        "required": ["format", "class"],
+        "properties": {
+          "format": { "const": "poe2-agent-plan" },
+          "version": { "type": "integer" },
+          "name": { "type": "string" },
+          "class": { "type": "string" },
+          "ascendancy": { "type": "string" },
+          "notes": { "type": "string" },
+          "targets": { "type": "array" },
+          "skills": { "type": "array" },
+          "gear": { "type": "array" },
+          "captures": { "type": "array" }
+        }
+      },
+      "BuildResult": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "share_url": { "type": "string" },
+          "agent_url": { "type": "string" },
+          "points": { "type": "object", "properties": { "main": { "type": "integer" }, "asc": { "type": "integer" } } },
+          "note_counts": { "type": "object", "properties": { "build_note": { "type": "boolean" }, "capture_notes": { "type": "integer" }, "target_notes_in": { "type": "integer" }, "target_notes_preserved": { "type": "integer" } } },
+          "warnings": { "type": "array", "items": { "$ref": "#/components/schemas/Diagnostic" } },
+          "validation": { "type": "object" }
+        }
+      },
+      "Diagnostic": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string", "description": "machine-branchable, e.g. budget.main_over_cap, target.unresolved, budget.near_cap, notes.partially_preserved" },
+          "severity": { "enum": ["error", "warning"] },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "responses": {
+      "ValidationReport": {
+        "description": "Resolution + pathing + grounding report: per-capture points, target_costs, asc_allocated, allocated_notables, budget (with suggest_remove when over cap), problems[] (human strings) and diagnostics[] (coded) — always JSON",
+        "content": { "application/json": { "schema": { "type": "object" } } }
+      },
+      "BadRequest": {
+        "description": "Malformed input — still JSON, never HTML",
+        "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "const": false }, "error": { "type": "string" } } } } }
+      }
+    }
+  }
+}

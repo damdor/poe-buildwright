@@ -1,15 +1,22 @@
 {
   "format": "poe2-agent-examples",
   "version": 1,
-  "note": "Known-good agent plans that validate ok on this deployment. Fetch by url; imitate the shape. Directory listings don't exist on this host — this manifest is the index.",
+  "note": "Known-good agent plans that validate ok on this deployment. Fetch by url; imitate the shape. Directory listings don't exist on this host \u2014 this manifest is the index.",
   "examples": [
     {
       "id": "monk-starter",
       "url": "/assets/agent/examples/monk-starter.json",
       "class": "Monk",
       "shape": "flat",
-      "tags": ["targets", "ascendancy", "supports"],
-      "points": { "main": 19, "asc": 4 },
+      "tags": [
+        "targets",
+        "ascendancy",
+        "supports"
+      ],
+      "points": {
+        "main": 19,
+        "asc": 4
+      },
       "shows": "Simplest valid plan: one clustered notable set near the class start, two ascendancy picks, one skill with RPN-compatible supports."
     },
     {
@@ -17,8 +24,16 @@
       "url": "/assets/agent/examples/witch-pivot.json",
       "class": "Witch",
       "shape": "captures",
-      "tags": ["captures", "respec", "remove", "leveling"],
-      "points": { "main": 21, "asc": 3 },
+      "tags": [
+        "captures",
+        "respec",
+        "remove",
+        "leveling"
+      ],
+      "points": {
+        "main": 21,
+        "asc": 3
+      },
       "shows": "Cumulative leveling snapshots with a partial respec: capture 2 removes a node (orphan-pruned) and reroutes, plus ascendancy targets mid-journey."
     },
     {
@@ -26,9 +41,35 @@
       "url": "/assets/agent/examples/ranger-gear.json",
       "class": "Ranger",
       "shape": "flat+gear",
-      "tags": ["gear", "unique", "base", "mods"],
-      "points": { "main": 19, "asc": 0 },
-      "shows": "Grounded gear: an exact unique name plus a real base with rare-appropriate mods — the shapes the gear validator checks."
+      "tags": [
+        "gear",
+        "unique",
+        "base",
+        "mods"
+      ],
+      "points": {
+        "main": 19,
+        "asc": 0
+      },
+      "shows": "Grounded gear: an exact unique name plus a real base with rare-appropriate mods \u2014 the shapes the gear validator checks."
+    },
+    {
+      "id": "anvilquake-titan",
+      "url": "/assets/agent/examples/anvilquake-titan.json",
+      "class": "Warrior",
+      "shape": "captures+gear",
+      "tags": [
+        "captures",
+        "respec",
+        "gear",
+        "notes",
+        "full-size"
+      ],
+      "points": {
+        "main": 99,
+        "asc": 8
+      },
+      "shows": "A full-size build authored end-to-end by an AI agent (4 leveling captures, 27 targets, 13 annotated picks, complete gear) \u2014 validates at exactly 99/99 main and 8/8 ascendancy points."
     }
   ]
 }

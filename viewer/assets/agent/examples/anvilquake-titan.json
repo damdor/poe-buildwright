@@ -1,0 +1,665 @@
+{
+  "format": "poe2-agent-plan",
+  "version": 1,
+  "name": "Anvilquake Titan",
+  "class": "Warrior",
+  "ascendancy": "Titan",
+  "notes": "Two-handed mace Titan built around physical Slam hits, Heavy Stun, Armour Break, and Aftershocks. Level with Earthquake and Rolling Slam, move into Sunder for clear, then use Supercharged Slam and Hammer of the Gods for bosses. Defence is pure armour plus life regeneration, life on gear, stun threshold, and recovery from leech/recoup. Keep elemental resistances capped on jewellery and armour pieces.",
+  "captures": [
+    {
+      "level": 20,
+      "name": "Acts 1-2: armour and first slams",
+      "notes": "Earthquake clears packs, Rolling Slam controls space, and Boneshatter detonates primed heavy stuns. First passives are intentionally close to Warrior start.",
+      "targets": [
+        {
+          "node": "Relentless",
+          "note": "Early armour, life regeneration, and Strength in one nearby node."
+        },
+        {
+          "node": "Titan's Determination",
+          "note": "Stun threshold and moving regeneration are the early survival layer."
+        },
+        {
+          "node": "Sturdy Metal",
+          "note": "Body armour scaling makes rare armour bases matter."
+        },
+        {
+          "node": "Brutal",
+          "note": "The first damage anchor: melee damage plus stun buildup."
+        },
+        {
+          "node": "Reverberating Impact",
+          "note": "Armour Break and attack area help Earthquake feel better immediately."
+        },
+        "Smash",
+        "Devastation"
+      ],
+      "skills": [
+        {
+          "gem": "Earthquake",
+          "level": 8,
+          "supports": [
+            "Brutality I",
+            "Aftershock I",
+            "Magnified Area I"
+          ]
+        },
+        {
+          "gem": "Rolling Slam",
+          "level": 8,
+          "supports": [
+            "Heavy Swing"
+          ]
+        },
+        {
+          "gem": "Boneshatter",
+          "level": 8,
+          "supports": [
+            "Stun I"
+          ]
+        },
+        {
+          "gem": "Infernal Cry",
+          "level": 6
+        }
+      ],
+      "gear": [
+        {
+          "slot": "weapon1",
+          "base": "Studded Greatclub",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Physical Damage",
+            "Adds # to # Physical Damage",
+            "+# to Strength"
+          ],
+          "note": "Use the highest physical DPS two-handed mace you find."
+        },
+        {
+          "slot": "body",
+          "base": "Maraketh Cuirass",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% increased Armour",
+            "+#% to Fire Resistance"
+          ]
+        },
+        {
+          "slot": "helmet",
+          "base": "Wrapped Greathelm",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% to Cold Resistance"
+          ]
+        },
+        {
+          "slot": "gloves",
+          "base": "Tempered Mitts",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Attack Speed",
+            "+# to maximum Life"
+          ]
+        },
+        {
+          "slot": "boots",
+          "base": "Bronze Greaves",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Movement Speed",
+            "+# to maximum Life"
+          ]
+        },
+        {
+          "slot": "amulet",
+          "base": "Amber Amulet",
+          "rarity": "rare",
+          "mods": [
+            "+# to Strength",
+            "+# to maximum Life"
+          ]
+        },
+        {
+          "slot": "ring1",
+          "base": "Topaz Ring",
+          "rarity": "rare",
+          "mods": [
+            "+#% to Lightning Resistance",
+            "+# to maximum Life"
+          ]
+        },
+        {
+          "slot": "ring2",
+          "base": "Ruby Ring",
+          "rarity": "rare",
+          "mods": [
+            "+#% to Fire Resistance",
+            "+# to maximum Life"
+          ]
+        },
+        {
+          "slot": "belt",
+          "base": "Long Belt",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% increased Flask Life Recovery rate"
+          ]
+        }
+      ]
+    },
+    {
+      "level": 45,
+      "name": "Cruel campaign: Sunder and aftershocks",
+      "notes": "Sunder becomes the main clear skill. Infernal Cry empowers the next slam, while Earthquake remains useful for jagged ground and delayed bursts.",
+      "targets": [
+        {
+          "node": "Earthbreaker",
+          "note": "Second Titan pick: more aftershocks from self-used Slam skills."
+        },
+        {
+          "node": "Ancestral Empowerment",
+          "note": "First Titan pick: every second self-used Slam is ancestrally boosted."
+        },
+        {
+          "node": "Aftershocks",
+          "note": "Aftershock area is core to the Titan slam identity."
+        },
+        {
+          "node": "Singular Purpose",
+          "note": "Two-handed weapon damage and stun buildup justify staying on a big mace."
+        },
+        "Shockwaves",
+        "Impact Force",
+        "Impact Area",
+        "Colossal Weapon"
+      ],
+      "skills": [
+        {
+          "gem": "Sunder",
+          "level": 13,
+          "supports": [
+            "Brutality II",
+            "Fist of War I",
+            "Upheaval I",
+            "Armour Break I"
+          ]
+        },
+        {
+          "gem": "Earthquake",
+          "level": 13,
+          "supports": [
+            "Aftershock I",
+            "Magnified Area I",
+            "Jagged Ground I"
+          ]
+        },
+        {
+          "gem": "Rolling Slam",
+          "level": 12,
+          "supports": [
+            "Heavy Swing",
+            "Rage I"
+          ]
+        },
+        {
+          "gem": "Boneshatter",
+          "level": 12,
+          "supports": [
+            "Stun I",
+            "Impact Shockwave"
+          ]
+        },
+        {
+          "gem": "Leap Slam",
+          "level": 10
+        },
+        {
+          "gem": "Infernal Cry",
+          "level": 10,
+          "supports": [
+            "Premeditation"
+          ]
+        }
+      ],
+      "gear": [
+        {
+          "slot": "weapon1",
+          "base": "Snakewood Greathammer",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Physical Damage",
+            "Adds # to # Physical Damage",
+            "+#% increased Attack Speed",
+            "+# to Strength"
+          ]
+        },
+        {
+          "slot": "body",
+          "base": "Juggernaut Plate",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% increased Armour",
+            "+#% to Elemental Resistances"
+          ]
+        },
+        {
+          "slot": "helmet",
+          "base": "Commander Greathelm",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% increased Armour",
+            "+#% to Cold Resistance"
+          ]
+        },
+        {
+          "slot": "gloves",
+          "base": "Detailed Mitts",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Attack Speed",
+            "+# to maximum Life",
+            "+# to Strength"
+          ]
+        },
+        {
+          "slot": "boots",
+          "base": "Reefsteel Greaves",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Movement Speed",
+            "+# to maximum Life",
+            "+#% to Lightning Resistance"
+          ]
+        },
+        {
+          "slot": "amulet",
+          "base": "Gold Amulet",
+          "rarity": "rare",
+          "mods": [
+            "+# to Strength",
+            "+#% increased Melee Damage",
+            "+# to maximum Life"
+          ]
+        },
+        {
+          "slot": "ring1",
+          "base": "Prismatic Ring",
+          "rarity": "rare",
+          "mods": [
+            "+#% to Elemental Resistances",
+            "+# to maximum Life"
+          ]
+        },
+        {
+          "slot": "ring2",
+          "base": "Amethyst Ring",
+          "rarity": "rare",
+          "mods": [
+            "+#% to Chaos Resistance",
+            "+# to maximum Life"
+          ]
+        },
+        {
+          "slot": "belt",
+          "base": "Double Belt",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% to Elemental Resistances",
+            "+#% increased Flask Life Recovery rate"
+          ]
+        }
+      ]
+    },
+    {
+      "level": 70,
+      "name": "Early maps: Supercharged Slam",
+      "notes": "Supercharged Slam takes over as the boss nuke. Sunder remains the map clear button, and Hammer of the Gods is the payoff after heavy stuns build Glory.",
+      "targets": [
+        {
+          "node": "Crushing Impacts",
+          "note": "Third Titan pick: Crushing Blows plus more damage against heavy stunned enemies."
+        },
+        {
+          "node": "Behemoth",
+          "note": "Life, area, and another aftershock chance in one efficient notable."
+        },
+        "Breaking Blows",
+        "Flip the Script",
+        "Crushing Verdict",
+        "Split the Earth",
+        "Skullcrusher",
+        "Made to Last"
+      ],
+      "skills": [
+        {
+          "gem": "Supercharged Slam",
+          "level": 18,
+          "supports": [
+            "Brutality II",
+            "Heavy Swing",
+            "Fist of War II",
+            "Concentrated Area",
+            "Stun II"
+          ]
+        },
+        {
+          "gem": "Sunder",
+          "level": 18,
+          "supports": [
+            "Upheaval I",
+            "Armour Break II",
+            "Magnified Area II",
+            "Rage II"
+          ]
+        },
+        {
+          "gem": "Earthquake",
+          "level": 18,
+          "supports": [
+            "Aftershock II",
+            "Jagged Ground II"
+          ]
+        },
+        {
+          "gem": "Hammer of the Gods",
+          "level": 16,
+          "supports": [
+            "Execute II",
+            "Close Combat II"
+          ]
+        },
+        {
+          "gem": "Leap Slam",
+          "level": 16
+        },
+        {
+          "gem": "Infernal Cry",
+          "level": 16,
+          "supports": [
+            "Premeditation"
+          ]
+        },
+        {
+          "gem": "Seismic Cry",
+          "level": 14
+        }
+      ],
+      "gear": [
+        {
+          "slot": "weapon1",
+          "base": "Runemastered Aberrant Sledge",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Physical Damage",
+            "Adds # to # Physical Damage",
+            "+#% increased Attack Speed",
+            "+# to Strength"
+          ],
+          "note": "This is the first big two-handed mace spike in the plan."
+        },
+        {
+          "slot": "body",
+          "base": "Ornate Plate",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% increased Armour",
+            "+#% to Elemental Resistances",
+            "+# to Strength"
+          ]
+        },
+        {
+          "slot": "helmet",
+          "base": "Masked Greathelm",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% increased Armour",
+            "+#% to Fire Resistance"
+          ]
+        },
+        {
+          "slot": "gloves",
+          "base": "Ornate Mitts",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Attack Speed",
+            "+# to maximum Life",
+            "+# to Strength"
+          ]
+        },
+        {
+          "slot": "boots",
+          "base": "Ornate Greaves",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Movement Speed",
+            "+# to maximum Life",
+            "+#% to Lightning Resistance"
+          ]
+        },
+        {
+          "slot": "amulet",
+          "base": "Solar Amulet",
+          "rarity": "rare",
+          "mods": [
+            "+# to Strength",
+            "+#% increased Melee Damage",
+            "+# to maximum Life",
+            "+#% increased Stun Buildup"
+          ]
+        },
+        {
+          "slot": "ring1",
+          "base": "Prismatic Ring",
+          "rarity": "rare",
+          "mods": [
+            "+#% to Elemental Resistances",
+            "+# to maximum Life",
+            "+# to Strength"
+          ]
+        },
+        {
+          "slot": "ring2",
+          "base": "Breach Ring",
+          "rarity": "rare",
+          "mods": [
+            "+#% to Elemental Resistances",
+            "+# to maximum Life",
+            "Adds # to # Physical Damage to Attacks"
+          ]
+        },
+        {
+          "slot": "belt",
+          "base": "Runemastered Heavy Belt",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% to Elemental Resistances",
+            "+#% increased Flask Life Recovery rate",
+            "+# to Strength"
+          ]
+        }
+      ]
+    },
+    {
+      "level": 90,
+      "name": "Endgame: Anvilquake Titan",
+      "notes": "Final loop: Sunder through packs, Supercharged Slam on rares, Infernal Cry before big slams, and Hammer of the Gods when Glory is ready. Stay on armour bases and keep a high physical DPS two-handed mace.",
+      "targets": [
+        {
+          "node": "Shattering Blow",
+          "note": "Heavy stuns now also break armour, improving follow-up slams."
+        },
+        {
+          "node": "Stone Skin",
+          "note": "Fourth Titan pick: body armour scaling turns rare armour upgrades into real defence."
+        },
+        "Fortifying Blood",
+        "Goring"
+      ],
+      "skills": [
+        {
+          "gem": "Supercharged Slam",
+          "level": 20,
+          "supports": [
+            "Brutality III",
+            "Heavy Swing",
+            "Fist of War III",
+            "Concentrated Area",
+            "Stun III"
+          ]
+        },
+        {
+          "gem": "Sunder",
+          "level": 20,
+          "supports": [
+            "Upheaval II",
+            "Armour Break II",
+            "Magnified Area II",
+            "Rage II",
+            "Execute II"
+          ]
+        },
+        {
+          "gem": "Earthquake",
+          "level": 20,
+          "supports": [
+            "Aftershock II",
+            "Jagged Ground II"
+          ]
+        },
+        {
+          "gem": "Hammer of the Gods",
+          "level": 20,
+          "supports": [
+            "Close Combat II",
+            "Life Leech II"
+          ]
+        },
+        {
+          "gem": "Leap Slam",
+          "level": 20
+        },
+        {
+          "gem": "Infernal Cry",
+          "level": 20,
+          "supports": [
+            "Premeditation"
+          ]
+        },
+        {
+          "gem": "Seismic Cry",
+          "level": 18
+        }
+      ],
+      "gear": [
+        {
+          "slot": "weapon1",
+          "base": "Runemastered Aberrant Sledge",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Physical Damage",
+            "Adds # to # Physical Damage",
+            "+#% increased Attack Speed",
+            "+# to Strength",
+            "+#% increased Stun Buildup"
+          ],
+          "note": "Replace only with a higher physical DPS two-handed mace."
+        },
+        {
+          "slot": "body",
+          "base": "Warlord Cuirass",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% increased Armour",
+            "+#% to Elemental Resistances",
+            "+# to Strength"
+          ]
+        },
+        {
+          "slot": "helmet",
+          "base": "Imperial Greathelm",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% increased Armour",
+            "+#% to Fire Resistance",
+            "+#% to Chaos Resistance"
+          ]
+        },
+        {
+          "slot": "gloves",
+          "base": "Massive Mitts",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Attack Speed",
+            "+# to maximum Life",
+            "+# to Strength",
+            "Adds # to # Physical Damage to Attacks"
+          ]
+        },
+        {
+          "slot": "boots",
+          "base": "Tasalian Greaves",
+          "rarity": "rare",
+          "mods": [
+            "+#% increased Movement Speed",
+            "+# to maximum Life",
+            "+#% to Lightning Resistance",
+            "+#% increased Armour"
+          ]
+        },
+        {
+          "slot": "amulet",
+          "base": "Solar Amulet",
+          "rarity": "rare",
+          "mods": [
+            "+# to Strength",
+            "+#% increased Melee Damage",
+            "+# to maximum Life",
+            "+#% increased Stun Buildup"
+          ]
+        },
+        {
+          "slot": "ring1",
+          "base": "Prismatic Ring",
+          "rarity": "rare",
+          "mods": [
+            "+#% to Elemental Resistances",
+            "+# to maximum Life",
+            "+# to Strength"
+          ]
+        },
+        {
+          "slot": "ring2",
+          "base": "Breach Ring",
+          "rarity": "rare",
+          "mods": [
+            "+#% to Elemental Resistances",
+            "+# to maximum Life",
+            "Adds # to # Physical Damage to Attacks"
+          ]
+        },
+        {
+          "slot": "belt",
+          "base": "Runemastered Heavy Belt",
+          "rarity": "rare",
+          "mods": [
+            "+# to maximum Life",
+            "+#% to Elemental Resistances",
+            "+#% increased Flask Life Recovery rate",
+            "+# to Strength"
+          ]
+        }
+      ]
+    }
+  ]
+}
