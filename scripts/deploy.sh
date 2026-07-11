@@ -73,6 +73,24 @@ fi
 echo "==> Building JS bundles ..."
 scripts/build_js.sh
 
+# ---- fixture-data guard -----------------------------------------------------
+# `./bw fixture` regenerates viewer/ artifacts (agent grounding data,
+# planner.html) from the committed toy tree. Deploying those to
+# production once served agents "Alpha/Beta/Fixture Might" as real
+# game data — the exact failure this guard exists to make impossible.
+if grep -q '"Fixture' viewer/assets/agent/nodes.json 2>/dev/null \
+   || grep -q '"Fixture Might"' viewer/planner.html 2>/dev/null; then
+  echo "ERROR: viewer/ contains FIXTURE data (bw fixture output)." >&2
+  echo "       Re-render from real data before deploying:" >&2
+  echo "       ./bw render --tree-dir data/parsed/<patch>/tree" >&2
+  echo "       and restore viewer/assets/agent/*.json for that patch." >&2
+  exit 1
+fi
+
+# ---- agent metadata ---------------------------------------------------------
+# capabilities.json (feature discovery) + support_compat.json
+# (precomputed support pairings) — generated fresh per deploy.
+
 # ---- deploy stamp -----------------------------------------------------------
 # Written AFTER the bundle build so it can't be clobbered, gitignored
 # so the tree stays clean. Served at /assets/deploy_meta.json.
@@ -118,6 +136,9 @@ if [ -z "$NODE_BIN" ]; then
 fi
 echo "==> node: $NODE_BIN ($($NODE_BIN --version))"
 
+# ---- agent metadata (needs node, so generated here) ------------------------
+"$NODE_BIN" scripts/gen_agent_meta.mjs
+
 # ---- create the Pages project if it doesn't exist yet ---------------------
 CF_API="https://api.cloudflare.com/client/v4"
 proj_status=$(curl -sS -o /dev/null -w "%{http_code}" \
@@ -147,13 +168,43 @@ COMMIT_FLAGS=(--commit-hash="$GIT_SHA")
 if [ "$GIT_DIRTY" = "1" ]; then
   COMMIT_FLAGS+=(--commit-dirty=true)
 fi
-npx --yes wrangler@latest pages deploy viewer/ \
+# Run wrangler FROM viewer/ — Pages discovers the Functions directory
+# relative to the working directory, so deploying "viewer/" from the
+# repo root uploaded viewer/functions/ as static files and never
+# registered /agent/* or /live/* as Functions (the first agent audit
+# found /agent/validate returning the homepage).
+DEPLOY_LOG=$(mktemp)
+(cd viewer && npx --yes wrangler@latest pages deploy . \
   --project-name="$POE2_PROJECT_NAME" \
   --branch=main \
-  "${COMMIT_FLAGS[@]}"
+  "${COMMIT_FLAGS[@]}") | tee "$DEPLOY_LOG"
+
+# ---- post-deploy smoke tests -------------------------------------------------
+# "Agent-facing docs need ruthless deploy-time tests" — the agent
+# surface is verified against the deployment URL on every deploy.
+DEPLOY_URL=$(grep -oE 'https://[a-z0-9]+\.[a-z0-9-]+\.pages\.dev' "$DEPLOY_LOG" | head -1)
+rm -f "$DEPLOY_LOG"
+if [ -n "$DEPLOY_URL" ]; then
+  echo "==> Smoke-testing agent surface on $DEPLOY_URL"
+  fail=0
+  classes=$(curl -sf "$DEPLOY_URL/assets/agent/nodes.json" | "$NODE_BIN" -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).classes.length))' 2>/dev/null || echo 0)
+  if [ "$classes" -lt 6 ]; then echo "FAIL: nodes.json has $classes classes (fixture data or missing)"; fail=1; else echo "  ok: nodes.json ($classes classes)"; fi
+  vt=$(curl -s -o /dev/null -w "%{content_type}" "$DEPLOY_URL/agent/validate")
+  case "$vt" in application/json*) echo "  ok: /agent/validate answers JSON";; *) echo "FAIL: /agent/validate content-type: $vt"; fail=1;; esac
+  bt=$(curl -s -o /dev/null -w "%{http_code}" -X OPTIONS "$DEPLOY_URL/agent/build")
+  if [ "$bt" = "204" ]; then echo "  ok: /agent/build routed"; else echo "FAIL: /agent/build OPTIONS -> $bt"; fail=1; fi
+  ct=$(curl -s -o /dev/null -w "%{http_code}" "$DEPLOY_URL/assets/agent/capabilities.json")
+  if [ "$ct" = "200" ]; then echo "  ok: capabilities.json served"; else echo "FAIL: capabilities.json -> $ct"; fail=1; fi
+  if [ "$fail" = "1" ]; then
+    echo "ERROR: agent-surface smoke tests FAILED on $DEPLOY_URL — do not promote/announce this deploy." >&2
+    exit 1
+  fi
+else
+  echo "WARNING: could not parse deployment URL from wrangler output; smoke tests skipped." >&2
+fi
 
 cat <<EOF
 
-Deploy complete: commit ${GIT_SHA:0:12} → https://$POE2_PROJECT_NAME.pages.dev
+Deploy complete: commit ${GIT_SHA:0:12}
 Provenance: /assets/deploy_meta.json on the deployment.
 EOF

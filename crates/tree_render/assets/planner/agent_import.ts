@@ -508,6 +508,30 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
     ", " + last.skills.length + " skills, " + last.items.length + " gear slots" +
     (problems.length ? " — " + problems.length + " unresolved: " + problems.slice(0, 3).join("; ") : "");
   window.PoE2Plan?.flash(summary, problems.length > 0);
+  // Machine-readable import result: browser agents shouldn't have to
+  // scrape the flash toast or the sidebar DOM to learn what happened.
+  // Stable contract: <script id="poe2-agent-import-result"
+  // type="application/json"> holding the same facts as the summary.
+  {
+    const blob = {
+      ok: problems.length === 0,
+      passives: last.passives.length,
+      skills: last.skills.length,
+      gear: last.items.length,
+      snapshots: captures.length,
+      class: klass,
+      ascendancy: asc,
+      unresolved: problems,
+    };
+    let el = document.getElementById("poe2-agent-import-result") as HTMLScriptElement | null;
+    if (!el) {
+      el = document.createElement("script");
+      el.id = "poe2-agent-import-result";
+      el.type = "application/json";
+      document.body.appendChild(el);
+    }
+    el.textContent = JSON.stringify(blob);
+  }
   // eslint-disable-next-line no-console
   if (problems.length) console.warn("[agent-import] unresolved:", problems);
   return summary;

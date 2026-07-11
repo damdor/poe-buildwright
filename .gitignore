@@ -140,3 +140,7 @@ crates/ooz_sys/vendor/stdafx.h
 
 # Deploy provenance stamp — written by scripts/deploy.sh per deploy.
 viewer/assets/deploy_meta.json
+
+# Agent metadata generated per-deploy by scripts/gen_agent_meta.mjs.
+viewer/assets/agent/capabilities.json
+viewer/assets/agent/support_compat.json
