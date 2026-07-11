@@ -26,7 +26,7 @@ export interface AgentPlanIn {
   format?: string; name?: string; notes?: string; description?: string; class?: string; ascendancy?: string;
   targets?: Target[]; skills?: AgentSkillIn[]; gear?: AgentGearIn[]; captures?: AgentCapture[];
 }
-export interface CatGem { id: string; name: string; skill_types?: string[]; require_skill_types?: string[]; exclude_skill_types?: string[]; req_level?: number; natural_max_level?: number }
+export interface CatGem { id: string; name: string; skill_types?: string[]; require_skill_types?: string[]; exclude_skill_types?: string[]; req_level?: number; natural_max_level?: number; tag_string?: string }
 
 export const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -99,6 +99,15 @@ export interface CapReport {
    *  (shared 24-point pool, quest-gated by level), not main points.
    *  Travel to them still costs main. */
   weapon_set_points: { set1: number; set2: number; used: number; cap: number; max: number };
+  /** Spirit accounting: persistent buffs/auras reserve from a
+   *  quest-earned base pool (conservative schedule; gear extends it,
+   *  which is why overspend is a WARNING, not an error).
+   *  unknown_reservations = HasReservation gems the dataset carries
+   *  no ladder for — their cost is real but unquantified. */
+  spirit: { reserved: number; base_available: number; unknown_reservations: string[] };
+  /** Skills granted for free by equipped uniques in this capture's
+   *  gear — available to the build without a gem slot. */
+  granted_skills: string[];
 }
 
 // Weapon-set passive points are quest rewards, earned gradually —
@@ -179,6 +188,35 @@ export async function runValidation(
     const cRes = await assets.fetch(origin + "/assets/skill_catalogue.json");
     if (cRes.ok) cat = ((await cRes.json()) as { gems?: CatGem[] }).gems ?? [];
   } catch { /* gem checks degrade */ }
+  // Spirit economy + unique-granted skills — small deploy-generated
+  // extracts (gen_agent_meta.mjs); both degrade to "not checked" when
+  // absent.
+  let spiritData: { base_schedule?: { lvl: number; pts: number }[]; reservations?: Record<string, Record<string, number>> } = {};
+  let grantedByUnique: Record<string, { grants?: string[]; spirit_bonus?: string }> = {};
+  try {
+    const sRes = await assets.fetch(origin + "/assets/agent/spirit.json");
+    if (sRes.ok) spiritData = await sRes.json() as typeof spiritData;
+  } catch { /* spirit checks degrade */ }
+  try {
+    const gRes2 = await assets.fetch(origin + "/assets/agent/granted_skills.json");
+    if (gRes2.ok) grantedByUnique = ((await gRes2.json()) as { uniques?: typeof grantedByUnique }).uniques ?? {};
+  } catch { /* granted-skill info degrades */ }
+  const spiritCapAt = (level: number): number => {
+    let cap = 0;
+    for (const r of spiritData.base_schedule ?? []) if (r.lvl <= level) cap += r.pts;
+    return cap;
+  };
+  // Reservation at a gem level: the ladder's highest key <= level.
+  const reservationAt = (gemName: string, level: number): number | null => {
+    const ladder = spiritData.reservations?.[gemName];
+    if (!ladder) return null;
+    let best: number | null = null, bestK = -1;
+    for (const k in ladder) {
+      const kn = Number(k);
+      if (kn <= level && kn > bestK) { bestK = kn; best = ladder[k] ?? null; }
+    }
+    return best;
+  };
 
   const problems: string[] = [];
 
@@ -251,6 +289,12 @@ export async function runValidation(
   // captures; pruned with their node).
   const setByNode = new Map<string, WeaponSet>();
   const noteByNodeCum = new Map<string, string>();
+  // Skills/gear are inherited when a capture omits them (the
+  // documented cumulative semantics) — spirit and granted-skill
+  // accounting must follow the EFFECTIVE lists, not the raw ones.
+  const catByName = new Map(cat.map(g => [g.name.toLowerCase(), g]));
+  let effSkills: AgentSkillIn[] = [];
+  let effGear: AgentGearIn[] = [];
   const capReports: CapReport[] = [];
   const capDetails: CapDetail[] = [];
   for (const c of capsIn) {
@@ -367,12 +411,35 @@ export async function runValidation(
     ascAllocated.sort();
     const capLevel = typeof c.level === "number" ? c.level : 100;
     const setCap = weaponSetCapAt(capLevel);
+    // Spirit: sum reservation ladders for this capture's EFFECTIVE
+    // skills; HasReservation gems without a mined ladder are listed
+    // as unknown instead of silently costing zero.
+    if (c.skills) effSkills = c.skills;
+    if (c.gear) effGear = c.gear;
+    let spiritReserved = 0;
+    const unknownResv: string[] = [];
+    for (const sk of effSkills) {
+      if (!sk.gem) continue;
+      const gemLvl = typeof sk.level === "number" ? sk.level : 1;
+      const r = reservationAt(sk.gem, gemLvl);
+      if (r !== null) spiritReserved += r;
+      else if ((catByName.get(sk.gem.toLowerCase())?.tag_string ?? "").includes("HasReservation")) {
+        unknownResv.push(sk.gem);
+      }
+    }
+    const grantedSkills: string[] = [];
+    for (const g of effGear) {
+      const gr = g.name ? grantedByUnique[g.name] : undefined;
+      for (const s of gr?.grants ?? []) grantedSkills.push(s + " (from " + g.name + ")");
+    }
     capReports.push({
       points, asc_points: ascPoints, resolved: goals.length, unresolved,
       allocated_notables: allocatedNotables,
       target_costs: targetCosts.map(t => ({ target: t.target, added_points: t.points })),
       asc_allocated: ascAllocated,
       weapon_set_points: { set1, set2, used: set1 + set2, cap: setCap, max: MAX_SET_POINTS },
+      spirit: { reserved: spiritReserved, base_available: spiritCapAt(capLevel), unknown_reservations: unknownResv },
+      granted_skills: grantedSkills,
     });
     if (set1 + set2 > setCap) {
       problems.push(
@@ -538,6 +605,27 @@ export async function runValidation(
         code: "weapon_set.over_cap", severity: "error",
         message: "capture " + (i + 1) + ": " + w.used + "/" + w.cap + " weapon-set points at that level",
         capture: i + 1, used: w.used, cap: w.cap,
+      });
+    }
+    // Spirit overspend is a WARNING: the base pool is a conservative
+    // quest schedule, and +Spirit gear/sceptres legitimately extend
+    // it. The agent should either lower reservations or spec gear
+    // that covers the gap (and say so in a note).
+    const sp = capReports[i]!.spirit;
+    if (sp.reserved > sp.base_available) {
+      diagnostics.push({
+        code: "spirit.over_base", severity: "warning",
+        message: "capture " + (i + 1) + ": " + sp.reserved + " spirit reserved vs " + sp.base_available +
+          " base spirit at that level — needs +Spirit gear to work, or lower the reservations",
+        capture: i + 1, reserved: sp.reserved, base_available: sp.base_available,
+      });
+    }
+    if (sp.unknown_reservations.length) {
+      diagnostics.push({
+        code: "spirit.unknown_reservation", severity: "warning",
+        message: "capture " + (i + 1) + ": no reservation data for " + sp.unknown_reservations.join(", ") +
+          " — its spirit cost is real but unquantified in this dataset",
+        capture: i + 1, gems: sp.unknown_reservations,
       });
     }
   }

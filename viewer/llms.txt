@@ -162,6 +162,23 @@ them a single URL. No login, no API key, no session.
      the mode-specific notables the same set; the game swaps them
      automatically with the weapons. Single-mode builds can skip
      this. See the titan-weapon-sets example.
+   - SPIRIT SKILLS (persistent buffs — real builds almost always run
+     1-3, and agents chronically skip them): gems tagged
+     HasReservation (heralds, auras, "Grim Feast"-style buffs) stay
+     on permanently and RESERVE Spirit instead of costing mana.
+     Spirit is a separate quest-earned pool: ~30 by Lv 18, 60 by 36,
+     100 by 50 (conservative estimates — validate reports
+     spirit.{reserved, base_available} per capture). Costs per gem
+     level: /assets/agent/spirit.json. Gear can extend the pool
+     (+Spirit mods; 14 uniques carry them — see granted_skills.json),
+     so overspend is a WARNING, not an error — but if you rely on
+     gear spirit, spec that gear and say so in a note.
+   - ITEM-GRANTED SKILLS: ~90 uniques grant a skill while equipped
+     (free — no gem slot; supports attach in-game) or bonus Spirit —
+     /assets/agent/granted_skills.json. When your gear[] names one,
+     validate lists the granted skill per capture; DON'T also add it
+     to skills[], build around it. (Base-item grants — e.g. sceptre
+     implicits — aren't in the dataset yet; don't guess them.)
    - NOTES ON IMPORTANT CHOICES: any target may be an object
      {"node": "Heart of the Storm", "note": "take before Act 3 boss"} —
      the note lands on that node in the planner (visible on hover,
