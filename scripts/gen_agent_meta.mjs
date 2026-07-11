@@ -73,7 +73,27 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
     "/assets/skill_catalogue.json",
     "/assets/item_catalogue.json",
   ],
-  examples: "/assets/agent/examples/",
+  // Directory listings don't exist on this host — the manifest IS the
+  // examples index (ids, tags, points, direct urls).
+  examples_index: "/assets/agent/examples/index.json",
+  // gear[].slot vocabulary: bases.json slot values are canonical
+  // singles ("ring1"); the plan schema accepts every alias here.
+  slots: {
+    weapon1: ["weapon1", "bow", "crossbow", "staff", "wand", "sceptre", "mace", "spear", "flail", "axe", "sword", "dagger", "claw"],
+    offhand1: ["offhand1", "shield", "focus", "quiver", "buckler"],
+    weapon2: ["weapon2"],
+    offhand2: ["offhand2"],
+    helmet: ["helmet"],
+    body: ["body"],
+    gloves: ["gloves"],
+    boots: ["boots"],
+    amulet: ["amulet"],
+    ring1: ["ring1", "ring"],
+    ring2: ["ring2"],
+    belt: ["belt"],
+    flask: ["flask"],
+    jewel: ["jewel"],
+  },
 }, null, 1));
 
 console.log(`agent meta: ${Object.keys(compat).length} actives x ${supports.length} supports -> support_compat.json + capabilities.json (patch ${patch})`);
