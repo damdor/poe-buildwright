@@ -4,21 +4,23 @@
 # ==========================
 # This project deliberately carries (almost) no third-party code:
 #
-# - Rust: no crates.io dependencies beyond `cc` (build-time, for the
-#   one C++ decoder). JSON parsing/emitting and SHA-256 are our own
-#   `crates/json` and `crates/hash`; the HTTP/CDN client shells out to
-#   curl; the static server is std-only. Every line that runs at
-#   mine-time or render-time is auditable in this repo.
+# - Rust: no crates.io dependencies at all. JSON parsing/emitting and
+#   SHA-256 are our own `crates/json` and `crates/hash`; the HTTP/CDN
+#   client shells out to curl; the static server is std-only. Every
+#   line that runs at mine-time or render-time is auditable in this
+#   repo.
 # - TypeScript: NO package manager. No npm, no package.json, no
 #   node_modules, no lockfile churn. The two toolchain binaries
 #   (esbuild for bundling, Deno for strict typechecking) are fetched
 #   as pinned, SHA-512-verified tarballs by tools/setup.sh — the npm
 #   registry is used strictly as a dumb CDN, and no dependency code
 #   ever executes in the site. The planner is plain DOM + WebGL2.
-# - The one true third-party code path is the Oodle decoder
-#   (crates/ooz_sys): GPL/unlicensed upstream, so it is NOT in this
-#   repo — build.rs fetches it from zao/ooz at a pinned, SHA-256
-#   verified commit. See crates/ooz_sys/VENDOR.md.
+# - The one binary-only third-party component is RAD/Epic's official
+#   Oodle decoder, dlopen'd at MINE TIME only (crates/oodle_official):
+#   fetched on first use from Epic's publicly-distributed SDK at a
+#   pinned commit, SHA-256 verified, cached outside the repo. No
+#   foreign source code is compiled into any binary, and the deployed
+#   site never touches it.
 #
 # Contributions should preserve this: a PR that adds a package
 # manager or a dependency tree needs an extraordinary justification.
@@ -29,7 +31,7 @@ members = [
     "crates/tree_render",
     "crates/serve",
     "crates/data_miner",
-    "crates/ooz_sys",
+    "crates/oodle_official",
     "crates/buildwright",
     "crates/json",
     "crates/hash",
@@ -37,10 +39,10 @@ members = [
 
 # Shared metadata picked up by member crates via `*.workspace = true`.
 # License: the repo ships under PolyForm Noncommercial 1.0.0 (see
-# LICENSE.md). ooz_sys and anything linking it (buildwright) carry
-# GPL-3.0-or-later markers instead because of the fetched decoder —
-# see crates/ooz_sys/VENDOR.md. `publish = false` everywhere: these
-# crates are not for crates.io.
+# LICENSE.md) — uniformly, since the ooz GPL exception is gone (the
+# Oodle decoder is now a runtime-loaded official binary, not compiled
+# sources; see crates/oodle_official). `publish = false` everywhere:
+# these crates are not for crates.io.
 [workspace.package]
 edition = "2024"
 rust-version = "1.95"

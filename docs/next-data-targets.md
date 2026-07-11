@@ -91,3 +91,29 @@ Detection heuristic that worked: mine → count `[?]` cells per column
 (garbage array counts now rejected by `Dat::array_ref` bounds), and
 diff re-baked ladders against the last good committed bake. Jewels
 (Session B) are blocked on the same decoder for `PassiveJewel*`.
+
+## RESOLVED (2026-07-11, same day): official Oodle decoder
+
+The blocker above is closed. The miner now dlopens RAD/Epic's
+OFFICIAL oo2core decoder at mine time (`crates/oodle_official` —
+fetched on first use from Epic's publicly-distributed SDK, SHA-256
+pinned, never committed; the GPL'd vendored ooz is deleted).
+Verification at 4.5.4.3, decoder vs the old ooz backend:
+
+- ooz had 258,111 wrong bytes in ONE bundle (silent); official: 0.
+- `[?]` cells: PassiveSkills 5,923→0, GEPL 16,292→0, Mods 15,733→0,
+  GrantedEffects 2,660→0. BaseItemTypes + SkillGems (formerly
+  "unparseable" — their 0xBB magic was corrupt) decode cleanly.
+- All 1,232 live tree node names present (was 831); all 110
+  reservation ladders match the live bake exactly (was 57).
+- The index decodes with ZERO dead blocks (was 33) — the tolerant
+  path-blob decode remains as a safety net only.
+- Sceptre/wand/staff granted skills mined first-party at last: the
+  missing link is the `ItemInherentSkills` table (BaseItemType →
+  SkillsGranted → SkillGems), NOT Implicit_Mods — base sceptres have
+  no implicits. grants.tsv now carries 253 rows ("Shrine Sceptre →
+  Purity of Fire/Ice/Lightning" per variant, spot-checked vs the
+  in-game text).
+
+Jewels (Session B) are UNBLOCKED. `data/curated/spirit_extras.json`
+can be retired once the full 4.5.4.3 rebake ships.

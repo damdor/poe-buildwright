@@ -10,9 +10,10 @@
 //! dispatch, `Result<(), String>` error flow. The command registry in
 //! [`help`] is the single source of truth for dispatch + help.
 //!
-//! NB: this binary links `data_miner` → `ooz_sys` (GPL-3.0). Like the
-//! miner it is an internal tool and must not be distributed; the
-//! shipped artefact (viewer/) links none of it.
+//! NB: extraction commands dlopen RAD/Epic's official Oodle decoder
+//! at runtime (`crates/oodle_official` — fetched on first use, never
+//! committed or linked). The shipped artefact (viewer/) touches none
+//! of this.
 
 mod handlers;
 mod help;

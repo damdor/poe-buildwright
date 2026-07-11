@@ -1,0 +1,26 @@
+# Mine-time-only backend: loads RAD/Epic's OFFICIAL Oodle decoder at
+# runtime via dlopen. The library file is NOT in this repo and is NOT
+# linked at build time — it is fetched on first use from Epic's
+# publicly-distributed Oodle SDK (SHA-256 pinned, see src/lib.rs), so
+# this repo distributes only the recipe. Everything in THIS crate is
+# first-party and carries the workspace license; the loaded library
+# stays under Epic's own distribution terms and must never be
+# committed or redistributed by us.
+#
+# Nothing outside the extraction pipeline may depend on this crate —
+# it is reachable only through data_miner's bundle decoding, and the
+# dlopen happens lazily on the first decompressed block.
+[package]
+name = "oodle_official"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# No `[lints] workspace = true`: the workspace forbids unsafe_code and
+# this crate exists precisely to contain the FFI unsafety (dlopen +
+# one foreign call). The unsafe surface is src/lib.rs only.
+
+[dependencies]
+hash = { path = "../hash" }

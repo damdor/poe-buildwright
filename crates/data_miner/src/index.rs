@@ -190,16 +190,18 @@ impl Index {
         }
 
         // Everything left is a nested bundle holding the path specs.
-        // Decoded TOLERANTLY: patch 4.5.4.3 has one block ooz can't
-        // decode (streaming-art path territory). Path reps that
-        // overlap a dead (zero-filled) range are dropped in
-        // resolve_paths with a stderr note — losing some art paths
-        // must not brick the data pipeline.
+        // Decoded TOLERANTLY as a safety net: under the old ooz
+        // backend, patch 4.5.4.3 had blocks that failed outright
+        // (the official decoder handles them, but a future format
+        // bump could regress). Path reps that overlap a dead
+        // (zero-filled) range are dropped in resolve_paths with a
+        // stderr note — losing some art paths must not brick the
+        // data pipeline.
         let mut cursor = Cursor::new(r.0);
         let (path_blob, dead_ranges) = bundle_decode::decompress_full_tolerant(&mut cursor)?;
         if !dead_ranges.is_empty() {
             eprintln!(
-                "index: {} path-blob block(s) undecodable (ooz); affected path entries will be skipped",
+                "index: {} path-blob block(s) undecodable; affected path entries will be skipped",
                 dead_ranges.len()
             );
         }
