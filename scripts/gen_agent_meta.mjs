@@ -74,6 +74,8 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
     "/assets/agent/bases.json",
     "/assets/agent/mods.json",
     "/assets/agent/support_compat.json",
+    "/assets/agent/spirit.json",
+    "/assets/agent/granted_skills.json",
     "/assets/skill_catalogue.json",
     "/assets/item_catalogue.json",
   ],
@@ -107,6 +109,66 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
     jewel: ["jewel"],
   },
 }, null, 1));
+
+// ---- spirit + granted-skills grounding --------------------------------------
+// agent/spirit.json: the spirit economy in one small file — the base
+// quest schedule plus per-gem reservation ladders (extracted from the
+// 824 KB skill_stats.json down to ~18 KB so the validator can afford
+// to read it per request, and agents don't have to dig).
+//
+// Base spirit: +30 (Act 1, King in the Mists), +30 (Act 3, Ignagduk),
+// +40 (post-Act-4 interlude, Lythara) = 100. Level mapping is
+// DELIBERATELY CONSERVATIVE (latest plausible level for each boss) so
+// leveling captures never overpromise spirit the player might not
+// have yet. Gear (+Spirit mods, sceptres) extends the pool beyond
+// this — the validator warns rather than errors for that reason.
+const stats = JSON.parse(readFileSync("viewer/assets/skill_stats.json", "utf-8"));
+const SPIRIT_REWARDS = [
+  { lvl: 18, pts: 30, source: "Act 1: King in the Mists" },
+  { lvl: 36, pts: 30, source: "Act 3: Ignagduk, the Bog Witch" },
+  { lvl: 50, pts: 40, source: "Interlude: Lythara, the Wayward Spear" },
+];
+const reservations = {};
+for (const g of gems) {
+  const eff = stats.effects?.[g.granted_effect_id];
+  if (eff && eff.reservation) reservations[g.name] = eff.reservation;
+}
+writeFileSync("viewer/assets/agent/spirit.json", JSON.stringify({
+  format: "poe2-agent-spirit",
+  version: 1,
+  patch,
+  note: "Base spirit is quest-earned (conservative level estimates). reservations = gem name -> {gem level: spirit cost}; a build's persistent buffs/auras reserve from the pool. Gear can extend the base.",
+  base_schedule: SPIRIT_REWARDS,
+  base_total: 100,
+  reservations,
+}));
+
+// agent/granted_skills.json: uniques whose stats grant a skill while
+// equipped — the skill is available to the build for free (no gem
+// slot), and supports can be socketed into it in-game.
+const itemCat = JSON.parse(readFileSync("viewer/assets/item_catalogue.json", "utf-8"));
+const grantPat = /Grants? Skill: (?:Level \(?[\d\-]+\)? )?([A-Z][A-Za-z '\-]+?)(?= ·|$)/g;
+const grantedByUnique = {};
+for (const u of itemCat.uniques ?? []) {
+  const s = u.latest_stats || "";
+  const skills = [...s.matchAll(grantPat)].map(m => m[1].trim());
+  const spiritM = s.match(/\+\(?([\d\-]+)\)? to Spirit/);
+  if (skills.length || spiritM) {
+    grantedByUnique[u.name] = {
+      slot: u.slot,
+      ...(skills.length ? { grants: skills } : {}),
+      ...(spiritM ? { spirit_bonus: spiritM[1] } : {}),
+    };
+  }
+}
+writeFileSync("viewer/assets/agent/granted_skills.json", JSON.stringify({
+  format: "poe2-agent-granted-skills",
+  version: 1,
+  patch,
+  note: "Equipping these uniques grants the listed skills for free (no gem slot; supports attach in-game) and/or bonus Spirit. Base-item grants (e.g. sceptre implicits) are not yet in the mined dataset.",
+  uniques: grantedByUnique,
+}));
+console.log(`spirit: ${Object.keys(reservations).length} reservation ladders; granted skills/spirit: ${Object.keys(grantedByUnique).length} uniques`);
 
 // ---- crawler files ---------------------------------------------------------
 // robots.txt always; sitemap.xml only when the deploy knows its

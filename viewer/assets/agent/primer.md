@@ -98,8 +98,24 @@ cluster, recovery via leech".
 
 - One 5-support "main skill" carries damage; 1-3 utility skills (a
   curse, a movement skill, a buff/herald) take the rest.
-- Spirit is PoE2's reservation resource: heralds/auras/minions reserve
-  it; gear like sceptres grants it. Minion builds live and die on Spirit.
+- SPIRIT — the most-skipped ingredient in agent builds, and one of
+  the most important in real ones. Spirit is PoE2's reservation
+  resource: persistent buffs (gems tagged HasReservation — heralds,
+  auras, Grim Feast-style effects) stay on permanently and reserve
+  it. The base pool is quest-earned: +30 (Act 1 boss), +30 (Act 3),
+  +40 (post-Act-4 interlude) = 100; read the conservative per-level
+  schedule and every gem's reservation cost from
+  /assets/agent/spirit.json. A typical real build reserves 60-100
+  spirit on 1-3 persistent buffs — if your plan reserves zero, ask
+  yourself why. Gear extends the pool (+Spirit mods, sceptres);
+  minion builds live and die on it. Validate reports
+  spirit.{reserved, base_available} per capture and warns (not
+  errors) on overspend, since gear can cover the gap — spec that
+  gear if you rely on it.
+- ITEM-GRANTED SKILLS: ~90 uniques grant a skill while equipped
+  (/assets/agent/granted_skills.json) — free, no gem slot, supports
+  attach in-game. If your gear names one, build around it instead of
+  re-adding it to skills[].
 - Supports must be type-compatible (the require/exclude data) AND
   thematically sensible: more-damage supports on the main skill,
   duration/area/utility on utility skills. Each support once per build.

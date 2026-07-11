@@ -149,3 +149,5 @@ viewer/assets/agent/support_compat.json
 # (need absolute URLs from POE2_SITE_ORIGIN; repo stays domain-neutral).
 viewer/robots.txt
 viewer/sitemap.xml
+viewer/assets/agent/spirit.json
+viewer/assets/agent/granted_skills.json
