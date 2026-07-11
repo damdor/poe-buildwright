@@ -3482,8 +3482,16 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         std::collections::HashMap::new();
     if let Ok((gh, grows)) = read_tsv(&parsed.join("items/grants.tsv")) {
         let gcol = |n: &str| idx(&gh, n);
-        if let (Some(g_name), Some(g_sp), Some(g_gr)) = (gcol("name"), gcol("spirit"), gcol("grants")) {
+        if let (Some(g_id), Some(g_name), Some(g_sp), Some(g_gr)) =
+            (gcol("base_id"), gcol("name"), gcol("spirit"), gcol("grants"))
+        {
             for r in &grows {
+                // Unique-only base variants (…SceptreUnique1) share the
+                // display name of the normal base but grant a skill a
+                // player can never roll on it — exclude from the union.
+                if r.get(g_id).is_some_and(|id| id.contains("Unique")) {
+                    continue;
+                }
                 let name = r.get(g_name).cloned().unwrap_or_default();
                 let sp: i64 = r.get(g_sp).and_then(|s| s.parse().ok()).unwrap_or(0);
                 let gr: Vec<String> = r
