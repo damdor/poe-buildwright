@@ -418,6 +418,11 @@ import type { Item } from "../../../../types/poe2.d.ts";
       if (!d) return;
       jewelData = d;
       for (const sk of d.sockets) socketById.set(sk.id, sk);
+      // Warm the overlay sprites — first locate/ring paint must not
+      // wait on a network fetch.
+      for (const src of ["/assets/sprites/Jewel_glow.png", "/assets/sprites/Jewel_ring.png"]) {
+        new Image().src = src;
+      }
       renderStrip();
       syncJewelOverlays();
     })
@@ -844,23 +849,19 @@ import type { Item } from "../../../../types/poe2.d.ts";
     return u?.variants ?? [];
   }
   // Uniques the data doesn't cover yet (stats pending the PoB pin —
-  // e.g. From Nothing) still ROLL: a free-text box takes the rolled
-  // lines verbatim, one per line, stored as the item's mods.
-  const rolledWrap = document.createElement("div");
-  rolledWrap.className = "gp-variant gp-rolled hidden";
-  rolledWrap.innerHTML = '<label>Rolled</label>';
-  const rolledInput = document.createElement("textarea");
-  rolledInput.rows = 2;
-  rolledInput.placeholder = "Rolled lines, one per line (this unique's data is pending — type what your copy says)";
-  rolledWrap.appendChild(rolledInput);
-  variantWrap.insertAdjacentElement("afterend", rolledWrap);
+  // e.g. From Nothing) still ROLL — a hint steers those rolls into
+  // the Notes field (this is a planner, not a PoB replacement).
+  const pendingNote = document.createElement("div");
+  pendingNote.className = "gp-pending hidden";
+  pendingNote.textContent = "Mod data for this unique is pending — describe your copy's roll in Notes below.";
+  variantWrap.insertAdjacentElement("afterend", pendingNote);
 
   function syncVariantSel(preselectMods?: string[]): void {
+    void preselectMods;
     const vs = currentVariants();
     const u = draftUnique ? uniques.find(x => x.name === draftUnique) : undefined;
     const dataless = !!u && !vs.length && !(u.latest_stats || "").trim();
-    rolledWrap.classList.toggle("hidden", !dataless);
-    if (dataless) rolledInput.value = (preselectMods ?? []).join("\n");
+    pendingNote.classList.toggle("hidden", !dataless);
     variantWrap.classList.toggle("hidden", vs.length === 0);
     if (!vs.length) return;
     variantSel.innerHTML = "";
@@ -1092,10 +1093,6 @@ import type { Item } from "../../../../types/poe2.d.ts";
       const vs = currentVariants();
       const v = vs[Number(variantSel.value)];
       if (vs.length && v) entry.mods = v.stats.split(" · ");
-      else if (!rolledWrap.classList.contains("hidden")) {
-        const lines = rolledInput.value.split("\n").map(l => l.trim()).filter(Boolean);
-        if (lines.length) entry.mods = lines;
-      }
     } else if (baseActive()) {
       // Composed base item — same shape the agent importer produces, so
       // the strip renders identically: "Rare Hexer's Robe" + base art.
