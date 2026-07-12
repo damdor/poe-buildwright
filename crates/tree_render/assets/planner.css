@@ -2369,3 +2369,23 @@ main#viewport canvas { display: block; width: 100%; height: 100%; }
 #jewel-picker .jp-row .jp-hint { margin-left: auto; font-size: 10.5px; color: var(--muted, #8a8fa3); }
 #jewel-picker .jp-row.is-current .jp-hint { color: #ffce7a; }
 #jewel-picker .jp-new { color: var(--accent, #d6b36a); }
+
+/* Unique variant picker (rolled variants like "Split Personality:
+   Warrior"). */
+.gp-variant { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.gp-variant.hidden { display: none; }
+.gp-variant label {
+  font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--muted, #8a8fa3);
+}
+.gp-variant select {
+  flex: 1; min-width: 0;
+  font: inherit; font-size: 12px;
+  color: var(--text, #d8dbe6);
+  background: var(--panel, #14161d);
+  border: 1px solid var(--line, #2c2f3a);
+  border-radius: 6px; padding: 3px 6px;
+}
+#jewel-picker .jp-note {
+  font-size: 10.5px; color: #c98b4a; padding: 0 8px 6px;
+}

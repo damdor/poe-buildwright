@@ -3537,6 +3537,24 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             })
     };
     let mut uniq_count = 0usize;
+    // Per-variant stat lines (variant label → lines), current-era only.
+    let mut variants_by_name: std::collections::HashMap<String, Vec<(String, String)>> =
+        std::collections::HashMap::new();
+    if let Ok((vh, vvrows)) = read_tsv(&parsed.join("items/uniques_variants.tsv")) {
+        if let (Some(v_n), Some(v_l), Some(v_s)) =
+            (idx(&vh, "name"), idx(&vh, "variant_label"), idx(&vh, "stat"))
+        {
+            for r in &vvrows {
+                let (Some(n), Some(l), Some(st)) = (r.get(v_n), r.get(v_l), r.get(v_s)) else {
+                    continue;
+                };
+                if l.starts_with("Pre ") || l.is_empty() || n.is_empty() {
+                    continue;
+                }
+                variants_by_name.entry(n.clone()).or_default().push((l.clone(), st.clone()));
+            }
+        }
+    }
     if let Ok((uh, urows)) = read_tsv(&parsed.join("items/uniques.tsv")) {
         let uc = |n: &str| idx(&uh, n);
         let bases = read_tsv(&parsed.join("items/bases.tsv")).ok();
@@ -3562,6 +3580,31 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             m.insert("variant_count".into(), json::Value::Integer(cell("variant_count").parse().unwrap_or(1)));
             m.insert("latest_variant".into(), json::Value::Str(cell("latest_variant")));
             m.insert("latest_stats".into(), json::Value::Str(cell("latest_stats")));
+            // Rollable variants (current-era only — "Pre X" labels are
+            // legacy history): label + stat lines, so the planner and
+            // agents can pick WHICH roll ("Split Personality: Warrior"
+            // = allocate from the Warrior start).
+            if let Some(vlist) = variants_by_name.get(&name) {
+                let labels: std::collections::BTreeSet<&str> =
+                    vlist.iter().map(|(l, _)| l.as_str()).collect();
+                if labels.len() > 1 {
+                    let arr: Vec<json::Value> = labels
+                        .iter()
+                        .map(|label| {
+                            let stats: Vec<String> = vlist
+                                .iter()
+                                .filter(|(l, _)| l == label)
+                                .map(|(_, st)| st.clone())
+                                .collect();
+                            let mut vm = json::Map::new();
+                            vm.insert("label".into(), json::Value::Str((*label).to_string()));
+                            vm.insert("stats".into(), json::Value::Str(stats.join(" · ")));
+                            json::Value::Object(vm)
+                        })
+                        .collect();
+                    m.insert("variants".into(), json::Value::Array(arr));
+                }
+            }
             m.insert(
                 "icon".into(),
                 match art_fuzzy(&name) {

@@ -15,7 +15,7 @@ import { state, viewport } from "./state.ts";
 import type { Item } from "../../../../types/poe2.d.ts";
 
 {
-  interface UniqueEntry { name: string; base?: string; slot?: string; icon?: string | null; latest_stats?: string; req_level?: number; }
+  interface UniqueEntry { name: string; base?: string; slot?: string; icon?: string | null; latest_stats?: string; req_level?: number; variants?: { label: string; stats: string }[]; }
   interface ItemCatalogue { uniques: UniqueEntry[]; }
   interface BaseEntry {
     name: string; slot?: string; class?: string; lvl?: number; icon?: string;
@@ -402,7 +402,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
   //   - one jewel per socket
   //   - a socketed radius jewel always shows its (subtle) ring
   //   - clicking an allocated socket opens the jewel picker
-  interface JewelSocket { id: number; x: number; y: number; name?: string; in_radius: Record<string, number[]> }
+  interface JewelSocket { id: number; x: number; y: number; name?: string; sinister?: boolean; special?: boolean; in_radius: Record<string, number[]> }
   interface JewelData {
     rings: Record<string, { outer: number; inner: number; radius: number }>;
     bases: Record<string, { radius: number }>;
@@ -596,6 +596,11 @@ import type { Item } from "../../../../types/poe2.d.ts";
     const jl = items.filter(it => (it.slot ?? "") === "jewel");
     const current = jl.find(it => it.socket === socketId);
     let html = '<div class="jp-head">' + esc(sock.name || "Jewel socket") + "</div>";
+    if (sock.sinister) {
+      html += '<div class="jp-note">Sinister socket — only active while the Voices jewel enables it</div>';
+    } else if (sock.special) {
+      html += '<div class="jp-note">Special socket — has its own rules in-game</div>';
+    }
     if (current) {
       html += '<button class="jp-row is-current" data-unsocket="1">' +
         '<img src="' + esc(jewelArtFor(current)) + '" alt=""><span>' + esc(current.name || current.base || "jewel") +
@@ -804,6 +809,41 @@ import type { Item } from "../../../../types/poe2.d.ts";
     const on = baseActive();
     baseOpts.classList.toggle("hidden", !on);
     if (on) { refreshChips(); enforceRarity(); }
+    syncVariantSel();
+  }
+
+  // --- Unique variants ("Split Personality: Warrior") -------------
+  // Some uniques ROLL differently (which class start, which element,
+  // …). The catalogue carries current-era variants; picking one
+  // stores its stat lines as the item's mods, so the choice travels
+  // in plans, shares, and to agents like any other mod line.
+  const variantWrap = document.createElement("div");
+  variantWrap.className = "gp-variant hidden";
+  variantWrap.innerHTML = '<label>Variant</label>';
+  const variantSel = document.createElement("select");
+  variantWrap.appendChild(variantSel);
+  popInput.parentElement?.insertAdjacentElement("afterend", variantWrap);
+  function currentVariants(): { label: string; stats: string }[] {
+    if (!draftUnique) return [];
+    const u = uniques.find(x => x.name === draftUnique);
+    return u?.variants ?? [];
+  }
+  function syncVariantSel(preselectMods?: string[]): void {
+    const vs = currentVariants();
+    variantWrap.classList.toggle("hidden", vs.length === 0);
+    if (!vs.length) return;
+    variantSel.innerHTML = "";
+    vs.forEach((v, i) => {
+      const o = document.createElement("option");
+      o.value = String(i);
+      o.textContent = v.label + " — " + v.stats;
+      variantSel.appendChild(o);
+    });
+    if (preselectMods?.length) {
+      const joined = preselectMods.join(" · ");
+      const i = vs.findIndex(v => v.stats === joined);
+      if (i >= 0) variantSel.value = String(i);
+    }
   }
   function toggleMod(label: string): void {
     const i = selectedMods.findIndex(m => m.toLowerCase() === label.toLowerCase());
@@ -972,6 +1012,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
     draftUnique    = existing?.uniqueName || null;
     statsInput.value = "";
     selectedMods = (existing?.mods ?? []).slice();
+    syncVariantSel(existing?.mods);
     if (existing?.base) {
       draftBase = bases.find(b => b.name.toLowerCase() === existing.base!.toLowerCase())
         ?? { name: existing.base };
@@ -1015,6 +1056,10 @@ import type { Item } from "../../../../types/poe2.d.ts";
     let note = popNote.value.trim();
     if (draftUnique && draftUnique === name) {
       entry.uniqueName = draftUnique;
+      // Rolled variant → its stat lines are the item's mods.
+      const vs = currentVariants();
+      const v = vs[Number(variantSel.value)];
+      if (vs.length && v) entry.mods = v.stats.split(" · ");
     } else if (baseActive()) {
       // Composed base item — same shape the agent importer produces, so
       // the strip renders identically: "Rare Hexer's Robe" + base art.

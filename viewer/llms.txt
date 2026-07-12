@@ -207,6 +207,13 @@ them a single URL. No login, no API key, no session.
      Medium/Large" (send it in mods[] and the radius grows).
      Regular jewels (Ruby/Emerald/Sapphire/Diamond) have no radius —
      any allocated socket works; spend mods on the build's theme.
+     Socket entries may be flagged sinister (Voices-only) or
+     special (own in-game rules) — prefer unflagged sockets.
+     UNIQUE VARIANTS: some uniques roll differently per copy —
+     item_catalogue entries carry `variants` [{label, stats}] when
+     they do (e.g. Split Personality rolls WHICH class start it can
+     allocate from). Send the chosen variant's stat lines in mods[]
+     so the plan is unambiguous.
    - NOTES ON IMPORTANT CHOICES: any target may be an object
      {"node": "Heart of the Storm", "note": "take before Act 3 boss"} —
      the note lands on that node in the planner (visible on hover,
