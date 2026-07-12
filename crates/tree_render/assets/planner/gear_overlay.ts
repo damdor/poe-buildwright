@@ -953,22 +953,31 @@ import type { Item } from "../../../../types/poe2.d.ts";
       }
       statChips.appendChild(onItem);
     }
+    // Pool: grouped by affix kind, so prefix/suffix is structural
+    // instead of a tag you squint at. A FULL kind collapses to just
+    // its header — small surface stays clean, the budget stays clear.
     const poolEl = document.createElement("div");
     poolEl.className = "gp-pool";
     let shownCount = 0;
-    for (const f of pool) {
-      const label = f.text || f.type;
-      if (isSel(label)) continue;
-      if (q && !label.toLowerCase().includes(q) && !f.type.toLowerCase().includes(q)) {
-        continue;
+    for (const kind of ["prefix", "suffix"]) {
+      const rows = pool.filter(f =>
+        f.kind === kind && !isSel(f.text || f.type) &&
+        (!q || (f.text || f.type).toLowerCase().includes(q) || f.type.toLowerCase().includes(q)));
+      if (!rows.length) continue;
+      const cap = affixCap();
+      const used = selectedMods.filter(m => kindOf(m) === kind).length;
+      const full = used >= cap;
+      const head = document.createElement("div");
+      head.className = "gp-pool-head" + (full ? " is-full" : "");
+      head.textContent = kind === "prefix" ? "Prefixes" : "Suffixes";
+      head.textContent += full ? " — full (" + used + "/" + cap + ")" : " (" + used + "/" + cap + " used)";
+      poolEl.appendChild(head);
+      if (full) { shownCount++; continue; }
+      for (const f of rows) {
+        const row = chip(f.text || f.type, "gp-pool-row", f.type + " (" + kind + ")");
+        poolEl.appendChild(row);
+        shownCount++;
       }
-      const row = chip(label, "gp-pool-row", f.type);
-      const kindTag = document.createElement("span");
-      kindTag.className = "gp-kind";
-      kindTag.textContent = f.kind;
-      row.appendChild(kindTag);
-      poolEl.appendChild(row);
-      shownCount++;
     }
     if (!shownCount) {
       const none = document.createElement("span");
