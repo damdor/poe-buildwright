@@ -242,7 +242,11 @@ import type { Item } from "../../../../types/poe2.d.ts";
         b, undefined, [], "");
     }
     if (kind === "slot") {
-      const it = shownItems().find(x => x.slot === ref);
+      // Jewels are multi-instance: "slot:jewel#<idx>" targets one.
+      const hash = ref.indexOf("#");
+      const it = hash >= 0
+        ? shownItems().filter(x => (x.slot ?? "") === ref.slice(0, hash))[Number(ref.slice(hash + 1))]
+        : shownItems().find(x => x.slot === ref);
       if (!it) return null;
       const nm = (it.name || it.uniqueName || "").trim();
       const uq = uniqueByName.get((it.uniqueName || nm).toLowerCase());
@@ -348,7 +352,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
       li.dataset.slot = s.key;
       if (ji !== null) li.dataset.jewelIdx = String(ji);
       const rv = resolveRow(it);
-      li.dataset.itemTip = "slot:" + s.key;
+      li.dataset.itemTip = "slot:" + s.key + (ji !== null ? "#" + ji : "");
       const art = rv.icon
         ? '<img class="gs-item-ic" src="' + esc(rv.icon) + '" alt="" loading="lazy">'
         : '<span class="gs-item-ic gs-ic-blank r-' + esc(rv.rarity) + '"></span>';
@@ -867,7 +871,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
     void preselectMods;
     const vs = currentVariants();
     const u = draftUnique ? uniques.find(x => x.name === draftUnique) : undefined;
-    const dataless = !!u && !vs.length && !(u.latest_stats || "").trim();
+    const dataless = !!u && !baseActive() && !vs.length && !(u.latest_stats || "").trim();
     pendingNote.classList.toggle("hidden", !dataless);
     variantWrap.classList.toggle("hidden", vs.length === 0);
     if (!vs.length) return;
@@ -884,10 +888,29 @@ import type { Item } from "../../../../types/poe2.d.ts";
       if (i >= 0) variantSel.value = String(i);
     }
   }
+  // Affix caps, like the game: rare jewels take at most 2 prefixes +
+  // 2 suffixes; other rare gear 3 + 3. (Bases that bend the rule are
+  // out of scope — notes cover them.)
+  function affixCap(): number {
+    return popSlot.value === "jewel" ? 2 : 3;
+  }
+  function kindOf(label: string): string {
+    return modFams.find(f => (f.text || f.type) === label)?.kind ?? "";
+  }
   function toggleMod(label: string): void {
     const i = selectedMods.findIndex(m => m.toLowerCase() === label.toLowerCase());
     if (i >= 0) selectedMods.splice(i, 1);
-    else selectedMods.push(label);
+    else {
+      const kind = kindOf(label);
+      if (kind === "prefix" || kind === "suffix") {
+        const n = selectedMods.filter(m => kindOf(m) === kind).length;
+        if (n >= affixCap()) {
+          window.PoE2Plan?.flash("An item takes at most " + affixCap() + " " + kind + (affixCap() > 1 ? "es" : "") + " — remove one first", true);
+          return;
+        }
+      }
+      selectedMods.push(label);
+    }
     refreshChips();
     enforceRarity();
   }
@@ -908,23 +931,35 @@ import type { Item } from "../../../../types/poe2.d.ts";
     const pool = modFams
       .filter(f => canRoll(f, tags))
       .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "prefix" ? -1 : 1));
-    const poolLabels = new Set(pool.map(f => (f.text || f.type).toLowerCase()));
     const isSel = (label: string): boolean =>
       selectedMods.some(m => m.toLowerCase() === label.toLowerCase());
-    // Selected-but-not-in-pool first (agent freeform mods survive the
-    // round-trip as toggleable chips too).
-    for (const m of selectedMods) {
-      if (!poolLabels.has(m.toLowerCase())) {
-        statChips.appendChild(chip(m, "gp-chip on", "custom mod — click to remove"));
+    // THE ITEM first — its chosen mods live in their own section with
+    // the affix budget, never buried in search results. Click removes.
+    if (selectedMods.length) {
+      const head = document.createElement("div");
+      head.className = "gp-chip-head";
+      const cap = affixCap();
+      const np = selectedMods.filter(m => kindOf(m) === "prefix").length;
+      const ns = selectedMods.filter(m => kindOf(m) === "suffix").length;
+      head.textContent = "On item — " + np + "/" + cap + " prefixes · " + ns + "/" + cap + " suffixes";
+      statChips.appendChild(head);
+      for (const m of selectedMods) {
+        const k = kindOf(m);
+        const cls = "gp-chip on" + (k === "suffix" ? " gp-chip-suf" : "");
+        statChips.appendChild(chip(m, cls, (k || "custom") + " — click to remove"));
       }
+      const div = document.createElement("div");
+      div.className = "gp-chip-head";
+      div.textContent = "Add from the rollable pool";
+      statChips.appendChild(div);
     }
     for (const f of pool) {
       const label = f.text || f.type;
-      const sel = isSel(label);
-      if (q && !sel && !label.toLowerCase().includes(q) && !f.type.toLowerCase().includes(q)) {
-        continue;   // search filters the pool; selections always stay visible
+      if (isSel(label)) continue;   // already shown in the item section
+      if (q && !label.toLowerCase().includes(q) && !f.type.toLowerCase().includes(q)) {
+        continue;
       }
-      const cls = "gp-chip" + (f.kind === "suffix" ? " gp-chip-suf" : "") + (sel ? " on" : "");
+      const cls = "gp-chip" + (f.kind === "suffix" ? " gp-chip-suf" : "");
       statChips.appendChild(chip(label, cls, f.type + " (" + f.kind + ")"));
     }
     if (!statChips.childElementCount) {
