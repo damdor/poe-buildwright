@@ -12,6 +12,7 @@
 // and GGG rarity colors; hover shows the unique's stats or the note.
 // ============================================================================
 import { state, viewport } from "./state.ts";
+import { requestRender } from "./render.ts";
 import type { Item } from "../../../../types/poe2.d.ts";
 
 {
@@ -703,6 +704,12 @@ import type { Item } from "../../../../types/poe2.d.ts";
     state.scale = Math.min(Math.max(state.scale, 0.12), 0.16);
     state.tx = rect.width / 2 - sk.x * state.scale;
     state.ty = rect.height / 2 - sk.y * state.scale;
+    // The tree renders on demand — without this the CANVAS keeps the
+    // old camera until the next input event while the DOM overlays
+    // (synced per frame off state) already sit at the new one: the
+    // glow appears "wrong" at screen center until the tree catches
+    // up. This was the locate-ping ghost.
+    requestRender();
     const glow = document.createElement("div");
     glow.className = "jewel-socket-glow is-ping";
     const sync = () => {
