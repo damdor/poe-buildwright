@@ -619,7 +619,7 @@ export async function runValidation(
   // ---- Jewels: socket grounding, occupancy, radius report ----
   // Sockets/rings/item radii from the deploy-generated jewels.json
   // (raw tree geometry precomputed into per-socket in-radius lists).
-  interface JewelSocketData { id: number; name?: string; in_radius: Record<string, number[]> }
+  interface JewelSocketData { id: number; name?: string; sinister?: boolean; special?: boolean; in_radius: Record<string, number[]> }
   interface JewelsData {
     rings?: Record<string, { outer: number; inner: number; radius: number }>;
     bases?: Record<string, { radius: number }>;
@@ -697,6 +697,14 @@ export async function runValidation(
           continue;
         }
         seen.set(g.socket, label);
+        if (sock.sinister && !jl.some(x => (x.name ?? "") === "Voices")) {
+          diagnostics.push({
+            code: "jewel.sinister_needs_voices", severity: "warning",
+            message: "capture " + (i + 1) + ": socket " + g.socket +
+              " is a Sinister socket — it only activates while a Voices jewel enables it",
+            capture: i + 1, socket: g.socket,
+          });
+        }
         if (!allocated.has(String(g.socket))) {
           diagnostics.push({
             code: "jewel.socket_unallocated", severity: "warning",

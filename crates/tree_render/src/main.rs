@@ -594,6 +594,15 @@ fn run() -> Result<(), String> {
                 if !n.name.is_empty() && n.name != "[Jewel] Socket" {
                     out.push_str(&format!(",\"name\":{}", text::json_str(&n.name)));
                 }
+                // Not every socket is an ordinary jewel home: Sinister
+                // sockets only activate via the Voices unique, and the
+                // named specials (Zarokh's Gift, Crystalline
+                // Phylactery) have their own mechanics.
+                if n.name.contains("Sinister") {
+                    out.push_str(",\"sinister\":true");
+                } else if !n.name.is_empty() && !n.name.contains("[Jewel]") {
+                    out.push_str(",\"special\":true");
+                }
                 out.push_str(",\"in_radius\":{");
                 let mut rfirst = true;
                 let mut emit_list = |key: String, lo2: f64, hi2: f64, out: &mut String, rfirst: &mut bool| {
