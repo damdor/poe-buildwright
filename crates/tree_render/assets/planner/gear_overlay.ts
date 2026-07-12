@@ -505,6 +505,14 @@ import type { Item } from "../../../../types/poe2.d.ts";
         img.className = "jewel-in-socket";
         img.alt = "";
         img.addEventListener("error", () => { img!.style.display = "none"; });
+        // Size + place before first paint — otherwise the sprite
+        // flashes at natural size in the corner for one frame.
+        const sk = socketById.get(sid)!;
+        const d0 = SOCKET_ART_D * state.scale;
+        img.style.width = d0 + "px";
+        img.style.height = d0 + "px";
+        img.style.transform = "translate3d(" + (sk.x * state.scale + state.tx - d0 / 2) + "px, " +
+          (sk.y * state.scale + state.ty - d0 / 2) + "px, 0)";
         jewelOverlay.appendChild(img);
         artEls.set(sid, img);
       }
@@ -685,21 +693,28 @@ import type { Item } from "../../../../types/poe2.d.ts";
     const sk = socketById.get(socketId);
     if (!sk || !jewelOverlay) return;
     const rect = viewport.getBoundingClientRect();
-    state.scale = Math.max(state.scale, 0.32);
+    // Overview zoom: close enough to see the socket's neighborhood
+    // (and a radius ring), never the deep detail zoom.
+    state.scale = Math.min(Math.max(state.scale, 0.12), 0.16);
     state.tx = rect.width / 2 - sk.x * state.scale;
     state.ty = rect.height / 2 - sk.y * state.scale;
     const glow = document.createElement("div");
     glow.className = "jewel-socket-glow is-ping";
-    jewelOverlay.appendChild(glow);
     const sync = () => {
       const sc = state.scale, d = SOCKET_ART_D * 1.8 * sc;
       glow.style.width = d + "px";
       glow.style.height = d + "px";
       glow.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
         (sk.y * sc + state.ty - d / 2) + "px, 0)";
-      if (glow.isConnected) requestAnimationFrame(sync);
     };
-    requestAnimationFrame(sync);
+    sync();                       // sized/placed BEFORE first paint
+    jewelOverlay.appendChild(glow);
+    const tick = () => {
+      if (!glow.isConnected) return;
+      sync();
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
     setTimeout(() => glow.remove(), 2600);
   }
   window.addEventListener("keydown", e => {
@@ -828,8 +843,24 @@ import type { Item } from "../../../../types/poe2.d.ts";
     const u = uniques.find(x => x.name === draftUnique);
     return u?.variants ?? [];
   }
+  // Uniques the data doesn't cover yet (stats pending the PoB pin —
+  // e.g. From Nothing) still ROLL: a free-text box takes the rolled
+  // lines verbatim, one per line, stored as the item's mods.
+  const rolledWrap = document.createElement("div");
+  rolledWrap.className = "gp-variant gp-rolled hidden";
+  rolledWrap.innerHTML = '<label>Rolled</label>';
+  const rolledInput = document.createElement("textarea");
+  rolledInput.rows = 2;
+  rolledInput.placeholder = "Rolled lines, one per line (this unique's data is pending — type what your copy says)";
+  rolledWrap.appendChild(rolledInput);
+  variantWrap.insertAdjacentElement("afterend", rolledWrap);
+
   function syncVariantSel(preselectMods?: string[]): void {
     const vs = currentVariants();
+    const u = draftUnique ? uniques.find(x => x.name === draftUnique) : undefined;
+    const dataless = !!u && !vs.length && !(u.latest_stats || "").trim();
+    rolledWrap.classList.toggle("hidden", !dataless);
+    if (dataless) rolledInput.value = (preselectMods ?? []).join("\n");
     variantWrap.classList.toggle("hidden", vs.length === 0);
     if (!vs.length) return;
     variantSel.innerHTML = "";
@@ -1056,10 +1087,15 @@ import type { Item } from "../../../../types/poe2.d.ts";
     let note = popNote.value.trim();
     if (draftUnique && draftUnique === name) {
       entry.uniqueName = draftUnique;
-      // Rolled variant → its stat lines are the item's mods.
+      // Rolled variant → its stat lines are the item's mods; for
+      // data-pending uniques the free-typed rolled lines are.
       const vs = currentVariants();
       const v = vs[Number(variantSel.value)];
       if (vs.length && v) entry.mods = v.stats.split(" · ");
+      else if (!rolledWrap.classList.contains("hidden")) {
+        const lines = rolledInput.value.split("\n").map(l => l.trim()).filter(Boolean);
+        if (lines.length) entry.mods = lines;
+      }
     } else if (baseActive()) {
       // Composed base item — same shape the agent importer produces, so
       // the strip renders identically: "Rare Hexer's Robe" + base art.
