@@ -214,6 +214,30 @@ writeFileSync("viewer/assets/agent/granted_skills.json", JSON.stringify({
   uniques: grantedByUnique,
   bases: grantedByBase,
 }));
+// ---- jewels: unique-jewel radii -------------------------------------------
+// jewels.json is written by tree_render (sockets/rings/bases, all
+// first-party); the UNIQUE jewels' radii derive from the catalogue
+// text + the mined radius stats, so this deploy step folds them in:
+//   - Timeless Jewel uniques: every mined UniqueJewelAlternateTreeInRadius*
+//     mod carries local_jewel_effect_base_radius = 1500
+//   - "… in <Name> Ring" stat text names a PassiveJewelRadii ring
+//     (annulus): Controlled Metamorphosis variants
+try {
+  const jewelsPath = "viewer/assets/agent/jewels.json";
+  const jw = JSON.parse(readFileSync(jewelsPath, "utf-8"));
+  const uniques = {};
+  for (const u of itemCat.uniques ?? []) {
+    if (u.slot !== "jewel") continue;
+    const text = u.latest_stats || "";
+    const ringM = /in (\w[\w]*) Ring/.exec(text);
+    if (ringM && jw.rings[ringM[1]]) uniques[u.name] = { ring: ringM[1] };
+    else if (u.base === "Timeless Jewel") uniques[u.name] = { radius: 1500 };
+  }
+  jw.uniques = uniques;
+  writeFileSync(jewelsPath, JSON.stringify(jw));
+  console.log(`jewels: ${jw.sockets.length} sockets, ${Object.keys(uniques).length} unique radii folded in`);
+} catch { console.log("jewels.json absent — skipped unique radii"); }
+
 console.log(`spirit: ${Object.keys(reservations).length} reservation ladders; granted skills/spirit: ${Object.keys(grantedByUnique).length} uniques`);
 
 // ---- crawler files ---------------------------------------------------------

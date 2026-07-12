@@ -19,7 +19,7 @@ export interface Graph {
 }
 export type WeaponSet = "set1" | "set2";
 export type Target = string | number | { node: string | number; note?: string; set?: WeaponSet };
-export interface AgentGearIn { slot?: string; name?: string; base?: string; rarity?: string; mods?: string[]; note?: string }
+export interface AgentGearIn { slot?: string; name?: string; base?: string; rarity?: string; mods?: string[]; note?: string; socket?: number }
 export interface AgentCapture { level?: number; name?: string; notes?: string; respec?: boolean; remove?: Target[]; targets?: Target[]; skills?: AgentSkillIn[]; gear?: AgentGearIn[] }
 export interface AgentSkillIn { gem?: string; level?: number; supports?: string[]; note?: string; set?: WeaponSet }
 
@@ -117,6 +117,15 @@ export interface CapReport {
   /** Skills granted for free by equipped uniques in this capture's
    *  gear — available to the build without a gem slot. */
   granted_skills: string[];
+  /** Jewels placed in tree sockets this capture: where, effective
+   *  radius, and which notables the radius covers. */
+  jewels?: {
+    name?: string; socket: number; socket_name?: string; radius?: number;
+    passives_in_radius?: number; notables_in_radius?: string[];
+    /** In-radius passives that are ALLOCATED this capture — what the
+     *  jewel actually affects in this build. */
+    allocated_in_radius?: string[];
+  }[];
 }
 
 // Weapon-set passive points are quest rewards, earned gradually —
@@ -605,6 +614,128 @@ export async function runValidation(
     }
   }
 
+  const diagnostics: Diagnostic[] = [];
+
+  // ---- Jewels: socket grounding, occupancy, radius report ----
+  // Sockets/rings/item radii from the deploy-generated jewels.json
+  // (raw tree geometry precomputed into per-socket in-radius lists).
+  interface JewelSocketData { id: number; name?: string; in_radius: Record<string, number[]> }
+  interface JewelsData {
+    rings?: Record<string, { outer: number; inner: number; radius: number }>;
+    bases?: Record<string, { radius: number }>;
+    radius_rolls?: Record<string, number>;
+    uniques?: Record<string, { radius?: number; ring?: string }>;
+    sockets?: JewelSocketData[];
+  }
+  let jd: JewelsData = {};
+  try {
+    const jRes = await assets.fetch(origin + "/assets/agent/jewels.json");
+    if (jRes.ok) jd = await jRes.json() as JewelsData;
+  } catch { /* jewel checks degrade */ }
+  const sockById = new Map((jd.sockets ?? []).map(sk => [sk.id, sk]));
+  const jewelProblems: string[] = [];
+  if (sockById.size) {
+    const radiusOf = (g: AgentGearIn): { r: number; inner: number } => {
+      const uq = g.name ? jd.uniques?.[g.name] : undefined;
+      if (uq?.radius) return { r: uq.radius, inner: 0 };
+      if (uq?.ring) {
+        const ring = jd.rings?.[uq.ring];
+        return ring ? { r: ring.outer, inner: ring.inner } : { r: 0, inner: 0 };
+      }
+      let r = g.base ? (jd.bases?.[g.base]?.radius ?? 0) : 0;
+      if (r > 0) {
+        for (const m of g.mods ?? []) {
+          // GGG's rollable radius mod: "Upgrades Radius to Medium/…"
+          const up = /Upgrades\s+Radius\s+to\s+(\w+)/i.exec(m);
+          if (up) {
+            const add = jd.radius_rolls?.[up[1]!] ?? 0;
+            if (add > 0) { r += add; continue; }
+          }
+          const mm = /\+\s*\(?(\d+)\)?\s*to\s+Radius/i.exec(m);
+          if (mm) r += Number(mm[1]);
+        }
+      }
+      return { r, inner: 0 };
+    };
+    let eg: AgentGearIn[] = plan.gear ?? [];
+    for (let i = 0; i < capsIn.length; i++) {
+      if (capsIn[i]!.gear) eg = capsIn[i]!.gear!;
+      const jl = eg.filter(g => (g.slot ?? "").toLowerCase().trim() === "jewel");
+      if (!jl.length) continue;
+      const allocated = new Set(capDetails[i]?.allocated ?? []);
+      const seen = new Map<number, string>();
+      const jr: NonNullable<CapReport["jewels"]> = [];
+      for (const g of jl) {
+        const label = g.name || g.base || "jewel";
+        if (typeof g.socket !== "number") {
+          diagnostics.push({
+            code: "jewel.unsocketed", severity: "warning",
+            message: "capture " + (i + 1) + ": jewel '" + label + "' has no socket — pick one from jewels.json sockets[] ({\"slot\":\"jewel\",\"socket\":<node id>})",
+            capture: i + 1, jewel: label,
+          });
+          continue;
+        }
+        const sock = sockById.get(g.socket);
+        if (!sock) {
+          jewelProblems.push("capture " + (i + 1) + ": '" + label + "' names socket " + g.socket +
+            " which is not a jewel socket (valid ids in /assets/agent/jewels.json sockets[])");
+          diagnostics.push({
+            code: "jewel.bad_socket", severity: "error",
+            message: "socket " + g.socket + " is not a jewel socket",
+            capture: i + 1, jewel: label, socket: g.socket,
+          });
+          continue;
+        }
+        if (seen.has(g.socket)) {
+          jewelProblems.push("capture " + (i + 1) + ": socket " + g.socket + " holds both '" +
+            seen.get(g.socket) + "' and '" + label + "' — one jewel per socket");
+          diagnostics.push({
+            code: "jewel.socket_conflict", severity: "error",
+            message: "two jewels in socket " + g.socket,
+            capture: i + 1, socket: g.socket,
+          });
+          continue;
+        }
+        seen.set(g.socket, label);
+        if (!allocated.has(String(g.socket))) {
+          diagnostics.push({
+            code: "jewel.socket_unallocated", severity: "warning",
+            message: "capture " + (i + 1) + ": jewel socket " + g.socket +
+              " isn't allocated — add it to targets (travel costs points) or the jewel does nothing",
+            capture: i + 1, socket: g.socket,
+          });
+        }
+        const { r, inner } = radiusOf(g);
+        const entry: NonNullable<CapReport["jewels"]>[number] = { name: label, socket: g.socket };
+        if (sock.name) entry.socket_name = sock.name;
+        if (r > 0) {
+          entry.radius = r;
+          const key = inner > 0 ? inner + "-" + r : String(r);
+          let ids = sock.in_radius[key];
+          if (!ids && inner === 0) {
+            // nearest available radius at or below (conservative)
+            const ks = Object.keys(sock.in_radius).filter(k => !k.includes("-")).map(Number).filter(k => k <= r);
+            if (ks.length) ids = sock.in_radius[String(Math.max(...ks))];
+          }
+          if (ids) {
+            entry.passives_in_radius = ids.length;
+            entry.notables_in_radius = ids
+              .map(id => graph.nodes[String(id)])
+              .filter(n => n && (n.k === "notable" || n.k === "keystone") && n.n)
+              .map(n => n!.n!) as string[];
+            // The metric that matters: a radius jewel only buffs
+            // passives you actually TOOK.
+            entry.allocated_in_radius = ids
+              .filter(id => allocated.has(String(id)))
+              .map(id => graph.nodes[String(id)]?.n ?? String(id));
+          }
+        }
+        jr.push(entry);
+      }
+      if (capReports[i]) capReports[i]!.jewels = jr;
+    }
+  }
+
   // ---- Budget + repair hints ----
   const last = capReports[capReports.length - 1];
   const lastDetail = capDetails[capDetails.length - 1];
@@ -616,7 +747,6 @@ export async function runValidation(
     note: "keep main ≤ " + MAIN_CAP + "; 40-70 is a typical leveling build",
   };
   const budgetProblems: string[] = [];
-  const diagnostics: Diagnostic[] = [];
   if (over > 0 && lastDetail) {
     // Most expensive targets first: dropping these saves the most.
     // Marginal costs are order-dependent (greedy), so present them as
@@ -677,7 +807,8 @@ export async function runValidation(
   }
 
   const ok = problems.length === 0 && gemProblems.length === 0 && gearProblems.length === 0
-    && levelingProblems.length === 0 && capReports.every(c => c.unresolved.length === 0)
+    && levelingProblems.length === 0 && jewelProblems.length === 0
+    && capReports.every(c => c.unresolved.length === 0)
     && over === 0;
 
   return {
@@ -689,7 +820,7 @@ export async function runValidation(
       total_points: mainPoints,
       total_asc_points: last?.asc_points ?? 0,
       budget,
-      problems: [...problems, ...gemProblems, ...gearProblems, ...levelingProblems, ...budgetProblems],
+      problems: [...problems, ...gemProblems, ...gearProblems, ...levelingProblems, ...jewelProblems, ...budgetProblems],
       diagnostics,
     },
     ok,

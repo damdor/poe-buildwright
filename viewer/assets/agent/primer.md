@@ -130,6 +130,20 @@ cluster, recovery via leech".
 - Damage-over-time skills don't crit; attack skills scale with weapon;
   spells scale with gem level — pick passives accordingly.
 
+## Jewels — sockets are nodes, radius is position
+
+The tree has jewel SOCKETS (19 of them). A jewel does nothing until
+its socket node is allocated — pathing there costs points like any
+node, so a socket is only worth it when it's near your route. Send
+jewels as gear entries: {"slot":"jewel", "base":"Time-Lost Ruby",
+"mods":[…], "socket": <node id from jewels.json>}, and put the same
+node id in targets. Radius jewels (Time-Lost bases, Timeless
+uniques) buff passives around the socket — pick the socket whose
+radius already covers notables you allocated (validate reports
+notables_in_radius per jewel; jewels.json has the per-socket lists
+to plan with). Plain jewels (Ruby/Emerald/…) are position-blind:
+nearest cheap socket wins.
+
 ## Leveling realism — captures must be obtainable at their level
 
 Nobody has an endgame setup in Act 1. Each capture's skills and gear

@@ -11,7 +11,7 @@
 // UniqueStashLayout, base art via BaseItemTypes→ItemVisualIdentity)
 // and GGG rarity colors; hover shows the unique's stats or the note.
 // ============================================================================
-import { state } from "./state.ts";
+import { state, viewport } from "./state.ts";
 import type { Item } from "../../../../types/poe2.d.ts";
 
 {
@@ -328,14 +328,24 @@ import type { Item } from "../../../../types/poe2.d.ts";
       listEl.appendChild(li);
       return;
     }
-    // Board order, not insertion order.
-    const bySlot = new Map(items.map(it => [it.slot ?? "", it]));
+    // Board order, not insertion order. Jewels are multi-instance
+    // (one per tree socket) — every jewel renders its own row.
+    const bySlot = new Map(items.filter(it => (it.slot ?? "") !== "jewel").map(it => [it.slot ?? "", it]));
+    const jewels = items.filter(it => (it.slot ?? "") === "jewel");
+    const rowPlan: { s: { key: string; label: string }; it: Item; ji: number | null }[] = [];
     for (const s of SLOTS) {
+      if (s.key === "jewel") {
+        jewels.forEach((it, ji) => rowPlan.push({ s, it, ji }));
+        continue;
+      }
       const it = bySlot.get(s.key);
-      if (!it) continue;
+      if (it) rowPlan.push({ s, it, ji: null });
+    }
+    for (const { s, it, ji } of rowPlan) {
       const li = document.createElement("li");
       li.className = "ss-row gs-row" + (it.note ? " has-note" : "");
       li.dataset.slot = s.key;
+      if (ji !== null) li.dataset.jewelIdx = String(ji);
       const rv = resolveRow(it);
       li.dataset.itemTip = "slot:" + s.key;
       const art = rv.icon
@@ -353,16 +363,358 @@ import type { Item } from "../../../../types/poe2.d.ts";
         grantHtml = '<span class="gs-grant" title="Granted while this item is equipped — the skill needs no gem slot; supports attach in-game.">' +
           esc(bits.join(" · ")) + "</span>";
       }
+      // Jewel rows: socket state badge. Socketed = where + how many
+      // passives its radius covers; unsocketed = the placement CTA.
+      // Socketed jewels get a locate ping (pan + glow at the socket);
+      // placement itself happens on the tree — click an allocated
+      // jewel socket and pick from the menu, like in-game.
+      let socketHtml = "";
+      if (ji !== null && it.socket != null) {
+        socketHtml = '<button type="button" class="gs-locate" data-jewel-locate="' + ji +
+          '" title="Show on tree">◎</button>';
+      } else if (ji !== null) {
+        li.title = "Unsocketed — click an allocated jewel socket on the tree to place it";
+        li.classList.add("jewel-unsocketed");
+      }
       li.innerHTML =
         art +
         '<span class="gs-slot-label">' + esc(s.label) + "</span>" +
         '<span class="gs-item-name r-' + esc(rv.rarity) + '">' +
           esc(it.name || it.uniqueName || "—") + "</span>" +
+        socketHtml +
         grantHtml +
         (it.note ? '<span class="ss-note-dot" title="has note">✎</span>' : "");
       listEl.appendChild(li);
     }
   }
+
+  // ---------------------------------------------------------------
+  // Jewels: in-game-style socketing + GGG art overlays
+  // ---------------------------------------------------------------
+  // Geometry + item radii from the deploy-generated agent dataset
+  // (raw tree units — the same space TREE renders, so screen pos is
+  // just x*scale+tx like the note badges). The art is GGG's own:
+  // Jewel_<base>.png / Jewel_U_<unique>.png socket-fill sprites and
+  // the PassiveSkillScreenJewelCircle1 radius ring (Jewel_ring.png).
+  //
+  // Rules mirrored from the game:
+  //   - a jewel can only sit in an ALLOCATED socket
+  //   - one jewel per socket
+  //   - a socketed radius jewel always shows its (subtle) ring
+  //   - clicking an allocated socket opens the jewel picker
+  interface JewelSocket { id: number; x: number; y: number; name?: string; in_radius: Record<string, number[]> }
+  interface JewelData {
+    rings: Record<string, { outer: number; inner: number; radius: number }>;
+    bases: Record<string, { radius: number }>;
+    radius_rolls: Record<string, number>;
+    uniques?: Record<string, { radius?: number; ring?: string }>;
+    sockets: JewelSocket[];
+  }
+  let jewelData: JewelData | null = null;
+  const socketById = new Map<number, JewelSocket>();
+  fetch("/assets/agent/jewels.json")
+    .then(r => (r.ok ? r.json() : null))
+    .then((d: JewelData | null) => {
+      if (!d) return;
+      jewelData = d;
+      for (const sk of d.sockets) socketById.set(sk.id, sk);
+      renderStrip();
+      syncJewelOverlays();
+    })
+    .catch(() => { /* optional */ });
+
+  const sanitizeArt = (n: string): string => n.replace(/[^A-Za-z0-9]/g, "_");
+  function jewelArtFor(it: Item): string {
+    if (it.uniqueName || (it.name && !it.base)) {
+      return "/assets/sprites/Jewel_U_" + sanitizeArt(it.uniqueName || it.name!) + ".png";
+    }
+    return "/assets/sprites/Jewel_" + sanitizeArt(it.base || "") + ".png";
+  }
+
+  function radiusForJewel(it: Item): number {
+    if (!jewelData) return 0;
+    const u = it.uniqueName || it.name;
+    const uq = u ? jewelData.uniques?.[u] : undefined;
+    if (uq?.radius) return uq.radius;
+    // "in <X> Ring" = the annulus band; its visual extent is OUTER.
+    if (uq?.ring) return jewelData.rings[uq.ring]?.outer ?? 0;
+    let r = it.base ? (jewelData.bases[it.base]?.radius ?? 0) : 0;
+    if (r > 0) {
+      for (const m of it.mods ?? []) {
+        // GGG's rollable radius mod reads "Upgrades Radius to Medium/
+        // Large/ExtraLarge" — sizes ship in jewels.json radius_rolls
+        // (+150/+300/+500). "+N to Radius" accepted as freetext too.
+        const up = /Upgrades\s+Radius\s+to\s+(\w+)/i.exec(m);
+        if (up) {
+          const add = jewelData.radius_rolls[up[1]!] ?? 0;
+          if (add > 0) { r += add; continue; }
+        }
+        const mm = /\+\s*\(?(\d+)\)?\s*to\s+Radius/i.exec(m);
+        if (mm) r += Number(mm[1]);
+      }
+    }
+    return r;
+  }
+  function ringInnerForJewel(it: Item): number {
+    const u = it.uniqueName || it.name;
+    const uq = u && jewelData ? jewelData.uniques?.[u] : undefined;
+    return uq?.ring ? (jewelData!.rings[uq.ring]?.inner ?? 0) : 0;
+  }
+  function nodesInRadius(sock: JewelSocket, radius: number, inner = 0): number[] | null {
+    if (inner > 0) return sock.in_radius[inner + "-" + radius] ?? null;
+    const keys = Object.keys(sock.in_radius).filter(k => !k.includes("-")).map(Number).sort((a, b) => a - b);
+    let best: number | null = null;
+    for (const k of keys) if (k <= radius) best = k;
+    const key = sock.in_radius[String(radius)] ? radius : best;
+    return key != null ? (sock.in_radius[String(key)] ?? null) : null;
+  }
+  const socketAllocated = (id: number): boolean => state.selected.has(String(id));
+
+  // --- Persistent overlays: socketed-jewel art + always-on rings ---
+  // GGG shows the jewel INSIDE its socket and, for radius jewels, a
+  // subtle circle whenever the jewel is slotted — so do we. One img
+  // per socketed jewel (+ one ring), synced to the camera every frame
+  // (the note-badge pattern; ≤ 19 elements, cheap).
+  const jewelOverlay = document.getElementById("jewel-overlay") as HTMLElement | null;
+  const artEls = new Map<number, HTMLImageElement>();   // socket id → jewel art
+  const ringEls = new Map<number, HTMLElement>();       // socket id → ring
+  // Socket node visual diameter in tree units (jewel frames render at
+  // roughly keystone size). Tune here if GGG resizes frames.
+  const SOCKET_ART_D = 110;
+  function syncJewelOverlays(): void {
+    if (!jewelOverlay || !jewelData) return;
+    const items = shownItems().filter(it => (it.slot ?? "") === "jewel");
+    const wanted = new Map<number, Item>();
+    for (const it of items) {
+      if (it.socket != null && socketById.has(it.socket) && socketAllocated(it.socket)) {
+        wanted.set(it.socket, it);
+      }
+    }
+    for (const [sid, el] of artEls) {
+      if (!wanted.has(sid)) { el.remove(); artEls.delete(sid); }
+    }
+    for (const [sid, el] of ringEls) {
+      const it = wanted.get(sid);
+      if (!it || radiusForJewel(it) <= 0) { el.remove(); ringEls.delete(sid); }
+    }
+    for (const [sid, it] of wanted) {
+      let img = artEls.get(sid);
+      const src = jewelArtFor(it);
+      if (!img) {
+        img = document.createElement("img");
+        img.className = "jewel-in-socket";
+        img.alt = "";
+        img.addEventListener("error", () => { img!.style.display = "none"; });
+        jewelOverlay.appendChild(img);
+        artEls.set(sid, img);
+      }
+      if (!img.src.endsWith(src)) { img.src = src; img.style.display = ""; }
+      img.title = it.name || it.base || "jewel";
+      const r = radiusForJewel(it);
+      if (r > 0 && !ringEls.get(sid)) {
+        const ring = document.createElement("div");
+        ring.className = "jewel-ring-art";
+        jewelOverlay.appendChild(ring);
+        ringEls.set(sid, ring);
+      }
+    }
+  }
+  function tickJewelOverlays(): void {
+    if (artEls.size || ringEls.size) {
+      const sc = state.scale;
+      for (const [sid, el] of artEls) {
+        const sk = socketById.get(sid)!;
+        const d = SOCKET_ART_D * sc;
+        el.style.width = d + "px";
+        el.style.height = d + "px";
+        el.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
+          (sk.y * sc + state.ty - d / 2) + "px, 0)";
+      }
+      const items = shownItems().filter(it => (it.slot ?? "") === "jewel");
+      for (const [sid, el] of ringEls) {
+        const sk = socketById.get(sid)!;
+        const it = items.find(i => i.socket === sid);
+        if (!it) continue;
+        const d = 2 * radiusForJewel(it) * sc;
+        el.style.width = d + "px";
+        el.style.height = d + "px";
+        el.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
+          (sk.y * sc + state.ty - d / 2) + "px, 0)";
+      }
+    }
+    requestAnimationFrame(tickJewelOverlays);
+  }
+  requestAnimationFrame(tickJewelOverlays);
+  window.addEventListener("poe2-capture-change", syncJewelOverlays);
+  window.addEventListener("poe2-replay-scrub", syncJewelOverlays);
+
+  // Hover ring preview for UNplaced context (row hover / picker) —
+  // reuses the same GGG ring art, temporary element.
+  const previewRing = document.createElement("div");
+  previewRing.className = "jewel-ring-art is-preview";
+  previewRing.style.display = "none";
+  jewelOverlay?.appendChild(previewRing);
+  let previewAt: { x: number; y: number; r: number } | null = null;
+  function tickPreview(): void {
+    if (!previewAt) return;
+    const sc = state.scale, d = 2 * previewAt.r * sc;
+    previewRing.style.width = d + "px";
+    previewRing.style.height = d + "px";
+    previewRing.style.transform = "translate3d(" + (previewAt.x * sc + state.tx - d / 2) + "px, " +
+      (previewAt.y * sc + state.ty - d / 2) + "px, 0)";
+    requestAnimationFrame(tickPreview);
+  }
+  function showPreviewRing(x: number, y: number, r: number): void {
+    if (!jewelOverlay || r <= 0) return;
+    previewAt = { x, y, r };
+    previewRing.style.display = "";
+    requestAnimationFrame(tickPreview);
+  }
+  function hidePreviewRing(): void {
+    previewAt = null;
+    previewRing.style.display = "none";
+  }
+
+  // --- The jewel picker: click an allocated socket, pick a jewel ---
+  // (the in-game flow). Also reachable from a gear row's ⬡ badge in
+  // the other direction (pick a socket for THIS jewel).
+  const pickerEl = document.createElement("div");
+  pickerEl.id = "jewel-picker";
+  pickerEl.className = "hidden";
+  document.body.appendChild(pickerEl);
+  let pickerSocket: number | null = null;
+  function closePicker(): void {
+    pickerEl.classList.add("hidden");
+    pickerSocket = null;
+    hidePreviewRing();
+  }
+  function openPicker(socketId: number, cx: number, cy: number): void {
+    const sock = socketById.get(socketId);
+    if (!sock) return;
+    pickerSocket = socketId;
+    const items = activeItems();
+    const jl = items.filter(it => (it.slot ?? "") === "jewel");
+    const current = jl.find(it => it.socket === socketId);
+    let html = '<div class="jp-head">' + esc(sock.name || "Jewel socket") + "</div>";
+    if (current) {
+      html += '<button class="jp-row is-current" data-unsocket="1">' +
+        '<img src="' + esc(jewelArtFor(current)) + '" alt=""><span>' + esc(current.name || current.base || "jewel") +
+        '</span><span class="jp-hint">unsocket</span></button>';
+    }
+    jl.forEach((it, ji) => {
+      if (it === current) return;
+      const where = it.socket != null && it.socket !== socketId
+        ? (socketById.get(it.socket)?.name || "socketed elsewhere — move here")
+        : "socket here";
+      html += '<button class="jp-row" data-pick="' + ji + '">' +
+        '<img src="' + esc(jewelArtFor(it)) + '" alt=""><span>' + esc(it.name || it.base || "jewel") +
+        '</span><span class="jp-hint">' + esc(where) + "</span></button>";
+    });
+    html += '<button class="jp-row jp-new" data-new="1">+ add a jewel…</button>';
+    pickerEl.innerHTML = html;
+    pickerEl.classList.remove("hidden");
+    // Position next to the socket AFTER the content has a size.
+    const pad = 8;
+    const place = () => {
+      const r = pickerEl.getBoundingClientRect();
+      pickerEl.style.left = Math.max(pad, Math.min(cx + 14, window.innerWidth - r.width - pad)) + "px";
+      pickerEl.style.top = Math.max(pad, Math.min(cy - r.height / 2, window.innerHeight - r.height - pad)) + "px";
+    };
+    place();
+    requestAnimationFrame(place);
+  }
+  pickerEl.addEventListener("click", e => {
+    const b = (e.target as HTMLElement | null)?.closest("button") as HTMLElement | null;
+    if (!b || pickerSocket === null) return;
+    const items = activeItems();
+    const jl = items.filter(it => (it.slot ?? "") === "jewel");
+    if (b.dataset.unsocket) {
+      const cur = jl.find(it => it.socket === pickerSocket);
+      if (cur) { delete cur.socket; commitItems(items); }
+    } else if (b.dataset.pick != null) {
+      const it = jl[Number(b.dataset.pick)];
+      if (it) {
+        for (const o of jl) if (o !== it && o.socket === pickerSocket) delete o.socket;
+        it.socket = pickerSocket!;
+        commitItems(items);
+      }
+    } else if (b.dataset.new) {
+      const sid = pickerSocket;
+      closePicker();
+      exitReplayForEdit();
+      pendingSocketForNew = sid;
+      openPopover("jewel", null);
+      return;
+    }
+    closePicker();
+    syncJewelOverlays();
+  });
+  pickerEl.addEventListener("mouseover", e => {
+    const b = (e.target as HTMLElement | null)?.closest("[data-pick]") as HTMLElement | null;
+    const sock = pickerSocket !== null ? socketById.get(pickerSocket) : undefined;
+    if (!b || !sock) return;
+    const it = activeItems().filter(x => (x.slot ?? "") === "jewel")[Number(b.dataset.pick)];
+    if (it) showPreviewRing(sock.x, sock.y, radiusForJewel(it));
+  });
+  pickerEl.addEventListener("mouseout", hidePreviewRing);
+  window.addEventListener("mousedown", e => {
+    if (!pickerEl.classList.contains("hidden") && !pickerEl.contains(e.target as Node)) closePicker();
+  });
+  // A jewel created from the picker's "+ add a jewel…" lands straight
+  // in the socket the picker was opened on.
+  let pendingSocketForNew: number | null = null;
+
+  // pathfind calls this before treating a click as allocate/deallocate.
+  // Handled (true) = allocated jewel socket → open the picker instead.
+  window.PoE2Jewels = {
+    handleSocketClick: (nodeId: string, cx: number, cy: number): boolean => {
+      const id = Number(nodeId);
+      if (!socketById.has(id) || !socketAllocated(id)) return false;
+      openPicker(id, cx, cy);
+      return true;
+    },
+  };
+
+  // --- Locate ping: pan to a jewel's socket + one glow breath ---
+  function pingSocket(socketId: number): void {
+    const sk = socketById.get(socketId);
+    if (!sk || !jewelOverlay) return;
+    const rect = viewport.getBoundingClientRect();
+    state.scale = Math.max(state.scale, 0.32);
+    state.tx = rect.width / 2 - sk.x * state.scale;
+    state.ty = rect.height / 2 - sk.y * state.scale;
+    const glow = document.createElement("div");
+    glow.className = "jewel-socket-glow is-ping";
+    jewelOverlay.appendChild(glow);
+    const sync = () => {
+      const sc = state.scale, d = SOCKET_ART_D * 1.8 * sc;
+      glow.style.width = d + "px";
+      glow.style.height = d + "px";
+      glow.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
+        (sk.y * sc + state.ty - d / 2) + "px, 0)";
+      if (glow.isConnected) requestAnimationFrame(sync);
+    };
+    requestAnimationFrame(sync);
+    setTimeout(() => glow.remove(), 2600);
+  }
+  window.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !pickerEl.classList.contains("hidden")) closePicker();
+  });
+  // Row hover previews the socketed jewel's radius on the tree.
+  listEl.addEventListener("mouseover", e => {
+    const row = (e.target as HTMLElement | null)?.closest(".gs-row") as HTMLElement | null;
+    if (!row || row.dataset.jewelIdx == null) return;
+    const jl = shownItems().filter(it => (it.slot ?? "") === "jewel");
+    const it = jl[Number(row.dataset.jewelIdx)];
+    if (it && it.socket != null) {
+      const sock = socketById.get(it.socket);
+      if (sock) showPreviewRing(sock.x, sock.y, radiusForJewel(it));
+    }
+  });
+  listEl.addEventListener("mouseout", e => {
+    const row = (e.target as HTMLElement | null)?.closest(".gs-row");
+    if (row) hidePreviewRing();
+  });
 
   // ---------------------------------------------------------------
   // Popover
@@ -580,7 +932,11 @@ import type { Item } from "../../../../types/poe2.d.ts";
   }
 
   let draftUnique: string | null = null;   // picked unique name, or null for freetext
-  function openPopover(slotKey: string | null): void {
+  // Which jewel instance the popover is editing (jewels share the
+  // 'jewel' slot; identity is the index within the jewel sub-list).
+  // null = editing a normal slot, or adding a NEW jewel.
+  let popJewelIdx: number | null = null;
+  function openPopover(slotKey: string | null, jewelIdx: number | null = null): void {
     if (!popSlot.options.length) {
       for (const s of SLOTS) {
         const o = document.createElement("option");
@@ -588,18 +944,22 @@ import type { Item } from "../../../../types/poe2.d.ts";
         popSlot.appendChild(o);
       }
     }
+    popJewelIdx = jewelIdx;
     const items = activeItems();
-    // Default to the first EMPTY slot when adding fresh.
-    const firstEmpty = SLOTS.find(s => !items.some(it => it.slot === s.key));
+    // Default to the first EMPTY slot when adding fresh (jewels are
+    // never "full" — the jewel option always means "add another").
+    const firstEmpty = SLOTS.find(s => s.key !== "jewel" && !items.some(it => it.slot === s.key));
     popSlot.value = slotKey ?? (firstEmpty ? firstEmpty.key : SLOTS[0]!.key);
-    const existing = items.find(it => it.slot === popSlot.value);
+    const existing = popSlot.value === "jewel"
+      ? (jewelIdx !== null ? items.filter(it => (it.slot ?? "") === "jewel")[jewelIdx] : undefined)
+      : items.find(it => it.slot === popSlot.value);
     seedFromExisting(existing);
     popRemove.hidden = !existing;
     refreshItemList();
     popEl.classList.remove("hidden");
     popInput.focus();
   }
-  function closePopover(): void { popEl.classList.add("hidden"); }
+  function closePopover(): void { popEl.classList.add("hidden"); pendingSocketForNew = null; }
 
   // Seed the form from whatever occupies a slot (also used on slot
   // change). A composed base item re-opens with its rarity selected;
@@ -632,8 +992,26 @@ import type { Item } from "../../../../types/poe2.d.ts";
   popApply.addEventListener("click", () => {
     const name = popInput.value.trim();
     if (!name) { window.PoE2Plan?.flash("Pick a unique, a base, or type an item name first", true); return; }
-    const items = activeItems().filter(it => it.slot !== popSlot.value);
+    const isJewel = popSlot.value === "jewel";
+    let keptSocket: number | undefined;
+    let items: Item[];
+    if (isJewel) {
+      // Replace exactly the edited instance (keeping its socket);
+      // popJewelIdx === null appends a new jewel.
+      items = activeItems();
+      if (popJewelIdx !== null) {
+        const jl = items.filter(it => (it.slot ?? "") === "jewel");
+        const prev = jl[popJewelIdx];
+        if (prev) {
+          keptSocket = prev.socket;
+          items = items.filter(it => it !== prev);
+        }
+      }
+    } else {
+      items = activeItems().filter(it => it.slot !== popSlot.value);
+    }
     let entry: Item = { slot: popSlot.value, name };
+    if (keptSocket != null) entry.socket = keptSocket;
     let note = popNote.value.trim();
     if (draftUnique && draftUnique === name) {
       entry.uniqueName = draftUnique;
@@ -652,22 +1030,45 @@ import type { Item } from "../../../../types/poe2.d.ts";
         base: b.name,
         rarity: rar,
       };
+      if (keptSocket != null) entry.socket = keptSocket;
       if (selectedMods.length) entry.mods = selectedMods.slice();
     }
     if (note) entry.note = note;
+    // A jewel added via the socket picker's "+ add a jewel…" goes
+    // straight into the socket the picker was opened on.
+    if (popSlot.value === "jewel" && popJewelIdx === null && pendingSocketForNew != null) {
+      for (const it of items) {
+        if ((it.slot ?? "") === "jewel" && it.socket === pendingSocketForNew) delete it.socket;
+      }
+      entry.socket = pendingSocketForNew;
+      pendingSocketForNew = null;
+    }
     items.push(entry);
     commitItems(items);
     closePopover();
+    syncJewelOverlays();
   });
   popRemove.addEventListener("click", () => {
-    commitItems(activeItems().filter(it => it.slot !== popSlot.value));
+    if (popSlot.value === "jewel" && popJewelIdx !== null) {
+      const items = activeItems();
+      const jl = items.filter(it => (it.slot ?? "") === "jewel");
+      const prev = jl[popJewelIdx];
+      commitItems(items.filter(it => it !== prev));
+    } else {
+      commitItems(activeItems().filter(it => it.slot !== popSlot.value));
+    }
     closePopover();
   });
   popClose.addEventListener("click", closePopover);
   popCancel.addEventListener("click", closePopover);
   popSlot.addEventListener("change", () => {
     // Re-seed the fields from whatever occupies the newly-picked slot.
-    const existing = activeItems().find(it => it.slot === popSlot.value);
+    // Switching TO jewel means "new jewel" (instances are edited from
+    // their own rows, not via the slot dropdown).
+    if (popSlot.value === "jewel") popJewelIdx = null;
+    const existing = popSlot.value === "jewel"
+      ? undefined
+      : activeItems().find(it => it.slot === popSlot.value);
     seedFromExisting(existing);
     popRemove.hidden = !existing;
     refreshItemList();
@@ -705,8 +1106,19 @@ import type { Item } from "../../../../types/poe2.d.ts";
   }
   addBtn.addEventListener("click", () => { exitReplayForEdit(); openPopover(null); });
   listEl.addEventListener("click", e => {
+    const loc = (e.target as HTMLElement | null)?.closest("[data-jewel-locate]") as HTMLElement | null;
+    if (loc) {
+      e.stopPropagation();
+      const jl = shownItems().filter(it => (it.slot ?? "") === "jewel");
+      const it = jl[Number(loc.dataset.jewelLocate)];
+      if (it && it.socket != null) pingSocket(it.socket);
+      return;
+    }
     const row = (e.target as HTMLElement | null)?.closest(".gs-row") as HTMLElement | null;
-    if (row && row.dataset.slot) { exitReplayForEdit(); openPopover(row.dataset.slot); }
+    if (row && row.dataset.slot) {
+      exitReplayForEdit();
+      openPopover(row.dataset.slot, row.dataset.jewelIdx != null ? Number(row.dataset.jewelIdx) : null);
+    }
   });
   // Esc closes (popover is modal-lite; backdrop-less like the skill one).
   window.addEventListener("keydown", e => {

@@ -2293,3 +2293,79 @@ main#viewport canvas { display: block; width: 100%; height: 100%; }
   margin-left: 6px;
   white-space: nowrap;
 }
+
+/* --- Jewels: socket badge, GGG art overlays, picker ------------------ */
+.gs-locate {
+  margin-left: 6px; padding: 0 4px;
+  font: inherit; font-size: 11px; line-height: 1.4;
+  border-radius: 50%; cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  border: 0; background: none;
+  color: rgba(214, 179, 106, 0.35);
+}
+.gs-row:hover .gs-locate { color: rgba(214, 179, 106, 0.7); }
+.gs-locate:hover { color: var(--accent, #d6b36a); }
+.gs-row.jewel-unsocketed .gs-item-ic { opacity: 0.45; }
+
+/* The jewel rendered inside its socket (GGG's own sprite). */
+.jewel-in-socket {
+  position: absolute; left: 0; top: 0;
+  pointer-events: none;
+  z-index: 39;
+}
+/* GGG's radius circle (PassiveSkillScreenJewelCircle1) — always on
+   for socketed radius jewels, additive like in-game. */
+.jewel-ring-art {
+  position: absolute; left: 0; top: 0;
+  pointer-events: none;
+  background: url("/assets/sprites/Jewel_ring.png") center / 100% 100% no-repeat;
+  mix-blend-mode: screen;
+  opacity: 0.75;
+  z-index: 38;
+}
+.jewel-ring-art.is-preview { opacity: 1; }
+
+/* Placement glow on allocated sockets — GGG's jewel glow sprite,
+   gently breathing instead of a hard green pulse. */
+.jewel-socket-glow {
+  position: absolute; left: 0; top: 0;
+  padding: 0; border: 0; cursor: pointer;
+  pointer-events: auto;
+  background: url("/assets/sprites/Jewel_glow.png") center / 100% 100% no-repeat transparent;
+  mix-blend-mode: screen;
+  animation: jewel-breathe 1.6s ease-in-out infinite;
+  z-index: 42;
+}
+@keyframes jewel-breathe {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.jewel-socket-glow.is-ping { pointer-events: none; }
+
+/* Socket-click jewel picker (in-game flow). */
+#jewel-picker {
+  position: fixed; z-index: 90;
+  min-width: 230px; max-width: 300px;
+  background: var(--panel, #14161d);
+  border: 1px solid var(--line, #2c2f3a);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  padding: 6px;
+}
+#jewel-picker.hidden { display: none; }
+#jewel-picker .jp-head {
+  font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--muted, #8a8fa3); padding: 4px 8px 6px;
+}
+#jewel-picker .jp-row {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 5px 8px;
+  font: inherit; font-size: 12.5px; text-align: left;
+  color: var(--text, #d8dbe6);
+  background: transparent; border: 0; border-radius: 6px; cursor: pointer;
+}
+#jewel-picker .jp-row:hover { background: rgba(255, 255, 255, 0.06); }
+#jewel-picker .jp-row img { width: 22px; height: 22px; object-fit: contain; }
+#jewel-picker .jp-row .jp-hint { margin-left: auto; font-size: 10.5px; color: var(--muted, #8a8fa3); }
+#jewel-picker .jp-row.is-current .jp-hint { color: #ffce7a; }
+#jewel-picker .jp-new { color: var(--accent, #d6b36a); }

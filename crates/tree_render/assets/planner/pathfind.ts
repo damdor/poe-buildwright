@@ -770,6 +770,17 @@ export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; al
   // navigation impossible.
   if (!id && !state.popoutId) return;
 
+  // Allocated jewel sockets open the jewel picker (gear_overlay) —
+  // the in-game interaction — instead of toggling allocation. The
+  // socket is deallocated from inside the picker if wanted.
+  if (id && !state.popoutId) {
+    const jn = TREE.nodes[id];
+    if (jn && jn.k === 'jewel' && state.selected.has(id)
+        && window.PoE2Jewels?.handleSocketClick(id, cx, cy)) {
+      return;
+    }
+  }
+
   // Auto-switch to the WORKING cap before processing a mutating
   // click. If the user is on a frozen snapshot (clicked a chip to
   // inspect) and then clicks a tree node, the mutation should land

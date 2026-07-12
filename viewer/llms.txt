@@ -188,6 +188,25 @@ them a single URL. No login, no API key, no session.
      3 at L10, 4 at L15, 5 at L20). When your gear[] names one,
      validate lists it per capture; DON'T re-add it to skills[] —
      build around it.
+   - JEWELS: gear entries with slot "jewel" — the ONE slot that
+     allows multiple entries (one per tree socket). Each jewel needs
+     {"slot":"jewel", "base"|"name":…, "socket": <node id>} where
+     socket is a jewel-socket node id from /assets/agent/jewels.json
+     sockets[] — and that node must ALSO be in targets (allocating
+     the socket costs travel points; an unallocated socket does
+     nothing → warning). One jewel per socket. Radius jewels
+     (Time-Lost bases: radius 1000, +N to Radius mods extend it;
+     Timeless uniques: 1500) affect passives around their socket —
+     jewels.json precomputes per-socket in-radius node lists, and
+     validate reports jewels[].{radius, passives_in_radius,
+     notables_in_radius, allocated_in_radius} per capture —
+     allocated_in_radius is the one to optimise: it lists what the
+     jewel ACTUALLY affects in your build. Pick the socket whose
+     radius covers notables you're allocating anyway. Time-Lost
+     radius upgrades roll as the mod "Upgrades Radius to
+     Medium/Large" (send it in mods[] and the radius grows).
+     Regular jewels (Ruby/Emerald/Sapphire/Diamond) have no radius —
+     any allocated socket works; spend mods on the build's theme.
    - NOTES ON IMPORTANT CHOICES: any target may be an object
      {"node": "Heart of the Storm", "note": "take before Act 3 boss"} —
      the note lands on that node in the planner (visible on hover,
