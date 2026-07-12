@@ -933,8 +933,9 @@ import type { Item } from "../../../../types/poe2.d.ts";
       .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "prefix" ? -1 : 1));
     const isSel = (label: string): boolean =>
       selectedMods.some(m => m.toLowerCase() === label.toLowerCase());
-    // THE ITEM first — its chosen mods live in their own section with
-    // the affix budget, never buried in search results. Click removes.
+    // Two fixed zones: the item's chosen mods as pills up top (with
+    // the affix budget), and a real SCROLLABLE list for the rollable
+    // pool below — one mod per row, kind-tagged, searchable.
     if (selectedMods.length) {
       const head = document.createElement("div");
       head.className = "gp-chip-head";
@@ -943,31 +944,39 @@ import type { Item } from "../../../../types/poe2.d.ts";
       const ns = selectedMods.filter(m => kindOf(m) === "suffix").length;
       head.textContent = "On item — " + np + "/" + cap + " prefixes · " + ns + "/" + cap + " suffixes";
       statChips.appendChild(head);
+      const onItem = document.createElement("div");
+      onItem.className = "gp-on-item";
       for (const m of selectedMods) {
         const k = kindOf(m);
         const cls = "gp-chip on" + (k === "suffix" ? " gp-chip-suf" : "");
-        statChips.appendChild(chip(m, cls, (k || "custom") + " — click to remove"));
+        onItem.appendChild(chip(m, cls, (k || "custom") + " — click to remove"));
       }
-      const div = document.createElement("div");
-      div.className = "gp-chip-head";
-      div.textContent = "Add from the rollable pool";
-      statChips.appendChild(div);
+      statChips.appendChild(onItem);
     }
+    const poolEl = document.createElement("div");
+    poolEl.className = "gp-pool";
+    let shownCount = 0;
     for (const f of pool) {
       const label = f.text || f.type;
-      if (isSel(label)) continue;   // already shown in the item section
+      if (isSel(label)) continue;
       if (q && !label.toLowerCase().includes(q) && !f.type.toLowerCase().includes(q)) {
         continue;
       }
-      const cls = "gp-chip" + (f.kind === "suffix" ? " gp-chip-suf" : "");
-      statChips.appendChild(chip(label, cls, f.type + " (" + f.kind + ")"));
+      const row = chip(label, "gp-pool-row", f.type);
+      const kindTag = document.createElement("span");
+      kindTag.className = "gp-kind";
+      kindTag.textContent = f.kind;
+      row.appendChild(kindTag);
+      poolEl.appendChild(row);
+      shownCount++;
     }
-    if (!statChips.childElementCount) {
+    if (!shownCount) {
       const none = document.createElement("span");
       none.className = "gp-chip-none";
       none.textContent = "no rollable mod matches “" + statsInput.value.trim() + "”";
-      statChips.appendChild(none);
+      poolEl.appendChild(none);
     }
+    statChips.appendChild(poolEl);
   }
 
   let comboFocusIdx = -1;
@@ -980,15 +989,6 @@ import type { Item } from "../../../../types/poe2.d.ts";
     const shown = pool.slice(0, q ? 8 : 12);
     popList.innerHTML = "";
     comboFocusIdx = -1;
-    if (q) {
-      // Freetext escape hatch first — an agent- and author-friendly
-      // "use exactly what I typed" row (rare/base descriptions).
-      const li = document.createElement("li");
-      li.className = "gp-freetext";
-      li.dataset.free = popInput.value.trim();
-      li.innerHTML = 'Use “<b>' + esc(popInput.value.trim()) + "</b>” as written";
-      popList.appendChild(li);
-    }
     for (const u of shown) {
       const li = document.createElement("li");
       li.dataset.unique = u.name;
@@ -1041,6 +1041,15 @@ import type { Item } from "../../../../types/poe2.d.ts";
       li.textContent = uniques.length
         ? "Nothing catalogued for this slot — type any item name."
         : "Catalogue unavailable — type any item name.";
+      popList.appendChild(li);
+    }
+    if (q && shown.length === 0 && bshown.length === 0) {
+      // Nothing matched: offer the typed text verbatim (freetext gear
+      // descriptions stay possible without cluttering real matches).
+      const li = document.createElement("li");
+      li.className = "gp-freetext";
+      li.dataset.free = popInput.value.trim();
+      li.innerHTML = 'No match — use “<b>' + esc(popInput.value.trim()) + "</b>” as written";
       popList.appendChild(li);
     }
   }
@@ -1179,6 +1188,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
     }
     closePopover();
   });
+  popEl.addEventListener("wheel", e => e.stopPropagation());
   popClose.addEventListener("click", closePopover);
   popCancel.addEventListener("click", closePopover);
   popSlot.addEventListener("change", () => {

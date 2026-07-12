@@ -2406,3 +2406,24 @@ main#viewport canvas { display: block; width: 100%; height: 100%; }
   font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase;
   color: var(--muted, #8a8fa3);
 }
+.gp-on-item { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.gp-pool {
+  max-height: 220px; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--line, #2c2f3a); border-radius: 8px;
+  padding: 4px; margin-top: 2px;
+  scrollbar-width: thin;
+}
+.gp-pool .gp-pool-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; text-align: left;
+  font: inherit; font-size: 12px;
+  padding: 4px 8px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--text, #d8dbe6);
+  cursor: pointer;
+}
+.gp-pool .gp-pool-row:hover { background: rgba(255, 255, 255, 0.06); }
+.gp-pool .gp-kind {
+  flex: none; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--muted, #8a8fa3);
+}
