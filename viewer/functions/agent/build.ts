@@ -113,6 +113,7 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
       items: (c.gear ?? []).map(g => ({
         slot: g.slot, base: g.base, name: g.name, rarity: g.rarity,
         mods: g.mods,
+        ...(typeof g.socket === "number" ? { socket: g.socket } : {}),
         ...(g.note ? { note: g.note } : {}),
       })),
     });

@@ -28,6 +28,7 @@ interface AgentSkill { gem?: string; level?: number; supports?: string[]; note?:
 interface AgentGear {
   slot?: string;
   name?: string;
+  socket?: number;
   base?: string;
   rarity?: string;                     // "rare" | "magic" | "normal"
   mods?: string[];                     // most-important-first affix wishes
@@ -392,10 +393,15 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
       }
       if (!g.slot || !name) continue;
       let slot = SLOT_ALIAS[g.slot.toLowerCase().trim()] ?? g.slot.toLowerCase().trim();
-      if (takenSlots.has(slot) && BUMP[slot]) slot = BUMP[slot]!;
-      if (takenSlots.has(slot)) { problems.push("gear slot '" + g.slot + "' already filled"); continue; }
-      takenSlots.add(slot);
+      // Jewels are multi-instance (one per tree socket) — every other
+      // slot is single-occupancy (with the weapon/ring bump).
+      if (slot !== "jewel") {
+        if (takenSlots.has(slot) && BUMP[slot]) slot = BUMP[slot]!;
+        if (takenSlots.has(slot)) { problems.push("gear slot '" + g.slot + "' already filled"); continue; }
+        takenSlots.add(slot);
+      }
       const it: Item = { slot, name };
+      if (slot === "jewel" && typeof g.socket === "number") it.socket = g.socket;
       // Keep the grounded pieces — the gear strip resolves base art,
       // rarity color and mods-hover from them.
       if (g.base) it.base = g.base;
