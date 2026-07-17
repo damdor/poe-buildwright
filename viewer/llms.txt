@@ -229,6 +229,16 @@ share links).
      any allocated socket works; spend mods on the build's theme.
      Socket entries may be flagged sinister (Voices-only) or
      special (own in-game rules) — prefer unflagged sockets.
+     JEWELS WITH PATHING RULES (validate reports jewels[].rule):
+     - Split Personality: its rolled variant line ("Can Allocate
+       Passive Skills from the X's starting point", sent in mods[])
+       adds that class start as an extra pathing root — targets near
+       it route from there. List the jewel's socket in targets.
+     - Controlled Metamorphosis: passives inside its ring allocate
+       WITHOUT connection (cost 1 each); they never connect anything
+       else to your tree.
+     - Voices: while socketed in an allocated socket, the sinister
+       sockets count as allocated (jewels placed there stop warning).
      DATA-PENDING UNIQUES: a few uniques exist in the game data
      but have NO stat lines here yet (item_catalogue entries with an
      empty latest_stats — e.g. From Nothing, Against the Darkness).

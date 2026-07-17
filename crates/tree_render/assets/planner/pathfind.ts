@@ -70,6 +70,22 @@ export const ALLOWED_SETS_FOR_MODE: Record<SetMode, Set<string>> = {
 // requested mode count (see ALLOWED_SETS_FOR_MODE). Asc allocations
 // are always roots: they live in a disjoint subgraph and don't
 // belong to a weapon set.
+// Jewel-granted pathing rules — gear_overlay computes these from the
+// ACTIVE capture's socketed jewels (see window.PoE2JewelRules):
+//   starts:    class-start names ("Warrior", "Shadow"…) usable as
+//              extra pathing roots (Split Personality's rolled start)
+//   freeAlloc: node ids allocatable WITHOUT connection (Controlled
+//              Metamorphosis's ring). Intuitive-Leap semantics: such
+//              nodes never act as connection points for anything else.
+function jewelRules(): { starts: string[]; freeAlloc: Set<string>; freeAllocBySocket: Record<string, string[]> } {
+  const r = window.PoE2JewelRules;
+  return {
+    starts: r?.starts ?? [],
+    freeAlloc: new Set(r?.freeAlloc ?? []),
+    freeAllocBySocket: r?.freeAllocBySocket ?? {},
+  };
+}
+
 export function pathfindRoots(activeSet?: SetMode): Set<string> {
   const mode: SetMode = activeSet || state.activeSet || 'main';
   const allowed = ALLOWED_SETS_FOR_MODE[mode];
@@ -101,9 +117,21 @@ export function pathfindRoots(activeSet?: SetMode): Set<string> {
       if ((n.kl || '').split('|').includes(eff.altStartClass)) { roots.add(id); break; }
     }
   }
+  // Jewel alt-starts (Split Personality's rolled class start).
+  for (const nm of jewelRules().starts) {
+    for (const id in TREE.nodes) {
+      const n = TREE.nodes[id];
+      if (!n || n.k !== 'class_start') continue;
+      if ((n.kl || '').split('|').includes(nm)) { roots.add(id); break; }
+    }
+  }
+  const freeAlloc = jewelRules().freeAlloc;
   for (const [id, setKind] of state.selected) {
     const n = TREE.nodes[id];
     if (!n) continue;
+    // Metamorphosis-ring allocations are islands: allocated, but
+    // never path seeds (they can't connect anything to the tree).
+    if (freeAlloc.has(id)) continue;
     if (n.a) { roots.add(id); continue; }
     if (allowed.has(setKind)) roots.add(id);
   }
@@ -143,6 +171,11 @@ export function shortestPath(target: string, activeSet?: SetMode): string[] | nu
   const roots = pathfindRoots(mode);
   if (roots.size === 0) return null;
   if (roots.has(target)) return [];
+  // Controlled Metamorphosis: in-ring passives allocate directly,
+  // no path — and never serve as a path for anything else.
+  if (jewelRules().freeAlloc.has(target) && !state.selected.has(target)) {
+    return [target];
+  }
   const visited = new Set<string>(roots);
   const parent = new Map<string, string>();
   let frontier = [...roots];
@@ -200,6 +233,9 @@ export function shortestPathEdges(target: string, activeSet?: SetMode): Shortest
   const roots = pathfindRoots(mode);
   if (roots.size === 0 || roots.has(target)) {
     return { primary: [], alternate: [] };
+  }
+  if (jewelRules().freeAlloc.has(target) && !state.selected.has(target)) {
+    return { primary: [], alternate: [] };   // direct alloc: no edges to light
   }
   const dist = new Map<string, number>();
   const preds = new Map<string, Set<string>>();
@@ -361,6 +397,8 @@ export function computeDeallocResult(targetId: string): Set<string> {
     const eff = ASC_EFFECTS[sid];
     if (eff && eff.altStartClass) addClassHub(eff.altStartClass);
   }
+  // Jewel alt-starts survive the cascade like MC alt-starts do.
+  for (const nm of jewelRules().starts) addClassHub(nm);
   // Locked AFTER the target is removed: same as isLocked, but also
   // treats the targetId as if it's already gone from state.selected.
   // Catches the Unseen Path case where deallocating node 5571 makes
@@ -441,9 +479,40 @@ export function computeDeallocResult(targetId: string): Set<string> {
     } else {
       ok = reachMain.has(id);
     }
+    // Metamorphosis lifecycle: a ring allocation with no normal
+    // connection survives ONLY while its jewel's socket does —
+    // socket deallocated/orphaned ⇒ the jewel deactivates ⇒ its
+    // disconnected ring points fall with it.
+    if (!ok) {
+      const bySock = jewelRules().freeAllocBySocket;
+      for (const sockId in bySock) {
+        if (!bySock[sockId]!.includes(id)) continue;
+        const sockAlive = sockId !== targetId
+          && state.selected.has(sockId)
+          && !removed.has(sockId)
+          && reachMain.has(sockId);
+        if (sockAlive) { ok = true; break; }
+      }
+    }
     if (!ok) removed.add(id);
   }
   return removed;
+}
+
+// Sweep allocations that lost their jewel-granted justification —
+// called by gear_overlay after the jewel rules change (unsocketing or
+// moving a Metamorphosis drops its disconnected ring points, like
+// removing the jewel does in game). Returns how many nodes fell.
+export function cascadeJewelOrphans(): number {
+  const orphans = computeDeallocResult('__none__');
+  orphans.delete('__none__');
+  for (const rid of orphans) {
+    state.selected.delete(rid);
+    state.pickedAttrs.delete(rid);
+    state.allocationMeta.delete(rid);
+  }
+  if (orphans.size) state.selDirty = true;
+  return orphans.size;
 }
 
 // Tessellate a list of [a, b] edge pairs into the dashed-line VBO.
@@ -775,7 +844,10 @@ export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; al
   // socket is deallocated from inside the picker if wanted.
   if (id && !state.popoutId) {
     const jn = TREE.nodes[id];
-    if (jn && jn.k === 'jewel' && state.selected.has(id)
+    // The bridge returns false for sockets that aren't active (not
+    // allocated, sinister without Voices) — then the click falls
+    // through to normal allocation handling.
+    if (jn && jn.k === 'jewel'
         && window.PoE2Jewels?.handleSocketClick(id, cx, cy)) {
       return;
     }
@@ -916,7 +988,13 @@ export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; al
     // highlighted alternate.
     const paths = shortestPathEdges(id, activeSet);
     if (!paths) return;
-    const pathNodes = paths.primary.map(e => String(e[1]));
+    let pathNodes = paths.primary.map(e => String(e[1]));
+    // Metamorphosis ring: connection-free allocation — the edge list
+    // is empty by design (no path exists), the node allocates ALONE.
+    if (!pathNodes.length && !state.selected.has(id)
+        && jewelRules().freeAlloc.has(id) && !isSetMode) {
+      pathNodes = [id];
+    }
     let mainAdd = 0, ascAdd = 0, setAdd = 0;
     for (const p of pathNodes) {
       if (state.selected.has(p)) continue;
