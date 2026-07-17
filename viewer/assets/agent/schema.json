@@ -224,6 +224,10 @@
      "note": {
       "type": "string",
       "maxLength": 300
+     },
+     "socket": {
+      "type": "integer",
+      "description": "Jewels only: tree node id of the jewel socket this jewel is placed in (valid ids: /assets/agent/jewels.json sockets[]). The socket node must also be allocated (add it to targets). One jewel per socket; jewels are the one gear slot allowed multiple entries."
      }
     }
    }

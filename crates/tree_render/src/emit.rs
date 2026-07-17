@@ -783,6 +783,7 @@ pub(crate) fn render_canvas_html(
   <ol id="cap-chip-list" class="cap-chip-list" aria-label="Capture snapshots"></ol>
   </div><!-- /.hud-row -->
   <div id="note-overlay" class="note-overlay" aria-hidden="true"></div>
+  <div id="jewel-overlay" class="note-overlay" aria-hidden="true"></div>
   <div id="note-popover" class="note-popover hidden" role="dialog" aria-label="Edit note">
     <div class="note-popover-head">
       <span class="note-popover-name" id="note-popover-name">Node name</span>

@@ -28,6 +28,7 @@ interface AgentSkill { gem?: string; level?: number; supports?: string[]; note?:
 interface AgentGear {
   slot?: string;
   name?: string;
+  socket?: number;
   base?: string;
   rarity?: string;                     // "rare" | "magic" | "normal"
   mods?: string[];                     // most-important-first affix wishes
@@ -392,10 +393,15 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
       }
       if (!g.slot || !name) continue;
       let slot = SLOT_ALIAS[g.slot.toLowerCase().trim()] ?? g.slot.toLowerCase().trim();
-      if (takenSlots.has(slot) && BUMP[slot]) slot = BUMP[slot]!;
-      if (takenSlots.has(slot)) { problems.push("gear slot '" + g.slot + "' already filled"); continue; }
-      takenSlots.add(slot);
+      // Jewels are multi-instance (one per tree socket) — every other
+      // slot is single-occupancy (with the weapon/ring bump).
+      if (slot !== "jewel") {
+        if (takenSlots.has(slot) && BUMP[slot]) slot = BUMP[slot]!;
+        if (takenSlots.has(slot)) { problems.push("gear slot '" + g.slot + "' already filled"); continue; }
+        takenSlots.add(slot);
+      }
       const it: Item = { slot, name };
+      if (slot === "jewel" && typeof g.socket === "number") it.socket = g.socket;
       // Keep the grounded pieces — the gear strip resolves base art,
       // rarity color and mods-hover from them.
       if (g.base) it.base = g.base;
@@ -543,11 +549,21 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
 // (loadPlanData needs window.PoE2Plan). Clear the hash after import so
 // reloads don't re-import over the user's edits.
 const m = /[#&]agent=([A-Za-z0-9_-]+)/.exec(location.hash);
-if (m) {
-  const payload = m[1]!;
+// Plain-JSON variant: #plan=<url-encoded agent-plan JSON>. Chat
+// assistants without tools can't gzip+base64, but they CAN write a
+// URL — this makes "paste this link" a working build handoff.
+const mj = /[#&]plan=([^&]+)/.exec(location.hash);
+if (m || mj) {
   const tryRun = (): void => {
     if (window.PoE2Plan && state.geomReady) {
-      void runImport(payload);
+      if (m) {
+        void runImport(m[1]!);
+      } else {
+        let plan: AgentPlan | null = null;
+        try { plan = JSON.parse(decodeURIComponent(mj![1]!)) as AgentPlan; } catch { /* flash below */ }
+        if (plan && plan.format === "poe2-agent-plan") void importAgentPlan(plan);
+        else window.PoE2Plan?.flash("#plan= link was malformed — started a blank build instead", true);
+      }
       history.replaceState(null, "", location.pathname + location.search);
     } else {
       setTimeout(tryRun, 150);

@@ -930,6 +930,7 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let (tables, out_rel): (&[&str], &str) = match dataset.as_str() {
         "bases" => (data_miner::shape::BASES_TABLES, "items/bases.tsv"),
         "grants" => (data_miner::shape::GRANTS_TABLES, "items/grants.tsv"),
+        "jewels" => (data_miner::shape::JEWELS_TABLES, "tree/jewels.tsv"),
         "gems" => (data_miner::shape::GEMS_TABLES, "skills/gems.tsv"),
         "active_skills" => (
             data_miner::shape::ACTIVE_SKILLS_TABLES,
@@ -1021,6 +1022,7 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let tsv = match dataset.as_str() {
         "bases" => data_miner::shape::shape_bases(&ts).map_err(|e| e.to_string())?,
         "grants" => data_miner::shape::shape_item_grants(&ts).map_err(|e| e.to_string())?,
+        "jewels" => data_miner::shape::shape_jewels(&ts).map_err(|e| e.to_string())?,
         "gems" => data_miner::shape::shape_gems(&ts).map_err(|e| e.to_string())?,
         "active_skills" => {
             data_miner::shape::shape_active_skills(&ts).map_err(|e| e.to_string())?
@@ -1578,6 +1580,78 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     .map_err(|e| format!("write {name}: {e}"))?;
                 out.push_str(&format!("{name}\t{name}\t{}\t{}\n", img.width, img.height));
                 ok += 1;
+            }
+        }
+    }
+
+    // --- Jewel art: socket-fill sprites + the radius circle ----------
+    // GGG draws a socketed jewel INSIDE the socket node with a per-base
+    // "JewelSocketActive…" texture, and radius jewels get the subtle
+    // PassiveSkillScreenJewelCircle1 ring. Base → file stems verified
+    // against the 4.5.4.3 index ("special" = the Time-Lost variants);
+    // unique jewels' art comes from the PassiveJewelUniqueArt table.
+    {
+        let ui = "art/textures/interface/2d/2dart/uiimages/ingame/";
+        let sanitize = |n: &str| -> String {
+            n.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect()
+        };
+        let mut jobs: Vec<(String, String)> = vec![
+            ("Jewel_ring.png".into(), format!("{ui}passiveskillscreenjewelcircle1.dds")),
+            ("Jewel_glow.png".into(), format!("{ui}passiveskillscreenjeweleffectglow.dds")),
+        ];
+        for (base, stem) in [
+            ("Ruby", "rubyjewel"),
+            ("Emerald", "emeraldjewel"),
+            ("Sapphire", "_sapphirejewel"),
+            ("Diamond", "diamondbasejewel"),
+            ("Time-Lost Ruby", "specialrubyjewel"),
+            ("Time-Lost Emerald", "specialemeraldjewel"),
+            ("Time-Lost Sapphire", "specialsapphirejewel"),
+            ("Time-Lost Diamond", "diamondbasetimelost"),
+            // timeless lives under the mtx/jewels/ subdir
+            ("Timeless Jewel", "__MTX__timeless"),
+        ] {
+            jobs.push((
+                format!("Jewel_{}.png", sanitize(base)),
+                if let Some(m) = stem.strip_prefix("__MTX__") {
+                    format!("{ui}mtx/jewels/passiveskillscreenjewelsocketactive{m}.dds")
+                } else {
+                    format!("{ui}passiveskillscreenjewelsocketactive{stem}.dds")
+                },
+            ));
+        }
+        if let Ok((jh, jrows)) = read_tsv(&dir.join("dat/PassiveJewelUniqueArt.tsv")) {
+            let col = |n: &str| jh.iter().position(|h| h == n);
+            if let (Some(c_name), Some(c_art)) = (col("Name"), col("JewelArt")) {
+                for r in &jrows {
+                    let (Some(name), Some(art)) = (r.get(c_name), r.get(c_art)) else {
+                        continue;
+                    };
+                    if name.is_empty() || art.is_empty() {
+                        continue;
+                    }
+                    let vpath = art
+                        .to_ascii_lowercase()
+                        .replace("art/2dart/uiimages/", "art/textures/interface/2d/2dart/uiimages/")
+                        + ".dds";
+                    jobs.push((format!("Jewel_U_{}.png", sanitize(name)), vpath));
+                }
+            }
+        }
+        for (out_name, vpath) in jobs {
+            match extract_cached(&client, &index, &vpath, &mut cache)
+                .ok()
+                .and_then(|b| data_miner::dds::decode(&b).ok())
+            {
+                Some(img) => {
+                    let png = data_miner::png::encode_rgba(img.width, img.height, &img.rgba);
+                    std::fs::write(assets.join(&out_name), &png)
+                        .map_err(|e| format!("write {out_name}: {e}"))?;
+                    out.push_str(&format!("{out_name}	{out_name}	{}	{}
+", img.width, img.height));
+                    ok += 1;
+                }
+                None => ui::warn(ctx.style, &format!("jewel art {vpath}: missing — skipped")),
             }
         }
     }
@@ -2404,6 +2478,57 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             ));
             total += 1;
         }
+    }
+
+    // 3.5 Uniques the GAME knows but the pinned PoB doesn't (yet):
+    //    UniqueStashLayout enumerates every unique by display name +
+    //    stash type. Append name/slot-only rows for the gap so they're
+    //    at least pickable and validate as real names — their stats
+    //    fill in when the PoB pin catches up. First-party, no guesses.
+    let mut game_only = 0usize;
+    if let Ok((gh, grows)) = read_tsv(&dir.join("dat/UniqueStashLayout.tsv")) {
+        let gcol = |n: &str| gh.iter().position(|h| h == n);
+        if let (Some(c_w), Some(c_t)) = (gcol("WordsKey"), gcol("UniqueStashTypesKey")) {
+            let have: std::collections::HashSet<String> = rows
+                .lines()
+                .skip(1)
+                .filter_map(|l| l.split('\t').next())
+                .map(str::to_string)
+                .collect();
+            let slot_of = |t: &str| -> &str {
+                match t {
+                    "Jewel" => "jewel",
+                    "Amulet" => "amulet",
+                    "Ring" => "ring",
+                    "Belt" => "belt",
+                    "Body Armour" => "body",
+                    "Helmet" => "helmet",
+                    "Gloves" => "gloves",
+                    "Boots" => "boots",
+                    "Shield" => "shield",
+                    "Quiver" => "quiver",
+                    "Flask" | "Life Flask" | "Mana Flask" => "flask",
+                    "Focus" => "focus",
+                    _ => "weapon",
+                }
+            };
+            let mut seen: std::collections::HashSet<String> = Default::default();
+            for r in &grows {
+                let name = r.get(c_w).cloned().unwrap_or_default();
+                if name.is_empty() || name.starts_with('#') || have.contains(&name) || !seen.insert(name.clone()) {
+                    continue;
+                }
+                let ty = r.get(c_t).cloned().unwrap_or_default();
+                rows.push_str(&format!("{name}\t\t{}\t0\t\t\n", slot_of(&ty)));
+                game_only += 1;
+            }
+        }
+    }
+    if game_only > 0 {
+        ui::note(
+            ctx.style,
+            &format!("{game_only} uniques known to the game but not the PoB pin — added name/slot only (stats pending)"),
+        );
     }
 
     // 4. Write the two datasets + a hashed provenance sidecar. The sidecar
@@ -3412,6 +3537,24 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             })
     };
     let mut uniq_count = 0usize;
+    // Per-variant stat lines (variant label → lines), current-era only.
+    let mut variants_by_name: std::collections::HashMap<String, Vec<(String, String)>> =
+        std::collections::HashMap::new();
+    if let Ok((vh, vvrows)) = read_tsv(&parsed.join("items/uniques_variants.tsv")) {
+        if let (Some(v_n), Some(v_l), Some(v_s)) =
+            (idx(&vh, "name"), idx(&vh, "variant_label"), idx(&vh, "stat"))
+        {
+            for r in &vvrows {
+                let (Some(n), Some(l), Some(st)) = (r.get(v_n), r.get(v_l), r.get(v_s)) else {
+                    continue;
+                };
+                if l.starts_with("Pre ") || l.is_empty() || n.is_empty() {
+                    continue;
+                }
+                variants_by_name.entry(n.clone()).or_default().push((l.clone(), st.clone()));
+            }
+        }
+    }
     if let Ok((uh, urows)) = read_tsv(&parsed.join("items/uniques.tsv")) {
         let uc = |n: &str| idx(&uh, n);
         let bases = read_tsv(&parsed.join("items/bases.tsv")).ok();
@@ -3437,6 +3580,31 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             m.insert("variant_count".into(), json::Value::Integer(cell("variant_count").parse().unwrap_or(1)));
             m.insert("latest_variant".into(), json::Value::Str(cell("latest_variant")));
             m.insert("latest_stats".into(), json::Value::Str(cell("latest_stats")));
+            // Rollable variants (current-era only — "Pre X" labels are
+            // legacy history): label + stat lines, so the planner and
+            // agents can pick WHICH roll ("Split Personality: Warrior"
+            // = allocate from the Warrior start).
+            if let Some(vlist) = variants_by_name.get(&name) {
+                let labels: std::collections::BTreeSet<&str> =
+                    vlist.iter().map(|(l, _)| l.as_str()).collect();
+                if labels.len() > 1 {
+                    let arr: Vec<json::Value> = labels
+                        .iter()
+                        .map(|label| {
+                            let stats: Vec<String> = vlist
+                                .iter()
+                                .filter(|(l, _)| l == label)
+                                .map(|(_, st)| st.clone())
+                                .collect();
+                            let mut vm = json::Map::new();
+                            vm.insert("label".into(), json::Value::Str((*label).to_string()));
+                            vm.insert("stats".into(), json::Value::Str(stats.join(" · ")));
+                            json::Value::Object(vm)
+                        })
+                        .collect();
+                    m.insert("variants".into(), json::Value::Array(arr));
+                }
+            }
             m.insert(
                 "icon".into(),
                 match art_fuzzy(&name) {
@@ -3674,6 +3842,12 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 "spear", "staff", "wand", "armour", "weapon", "str_armour",
                 "dex_armour", "int_armour", "str_dex_armour", "str_int_armour",
                 "dex_int_armour", "str_dex_int_armour",
+                // Jewel-domain gating tags (strjewel = Ruby, dexjewel =
+                // Emerald, intjewel = Sapphire; *_radius_jewel = the
+                // Time-Lost variants). "default" jewel mods roll on any.
+                "strjewel", "dexjewel", "intjewel",
+                "str_radius_jewel", "dex_radius_jewel", "int_radius_jewel",
+                "radius_jewel",
             ];
             let g2 = |r: &[String], i: usize| r.get(i).cloned().unwrap_or_default();
             let m_lvl = mcol("required_level");
@@ -3714,7 +3888,8 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             }
             let mut fam: std::collections::BTreeMap<String, Fam> = std::collections::BTreeMap::new();
             for r in &mrows {
-                if g2(r, m_dom) != "item" {
+                let dom = g2(r, m_dom);
+                if dom != "item" && dom != "jewel" {
                     continue;
                 }
                 let gentype = g2(r, m_gen);
@@ -3727,6 +3902,11 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     let (tag, w) = (it.next().unwrap_or(""), it.next().unwrap_or("0"));
                     if CORE_TAGS.contains(&tag) && w != "0" {
                         slots.insert(tag.to_string());
+                    }
+                    // Jewel mods gated only by `default` roll on every
+                    // jewel — give them the generic tag.
+                    if dom == "jewel" && tag == "default" && w != "0" {
+                        slots.insert("jewel".to_string());
                     }
                 }
                 if slots.is_empty() {
@@ -4126,6 +4306,7 @@ pub fn update_native(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     for dataset in [
         "bases",
         "grants",
+        "jewels",
         "mods",
         "gems",
         "active_skills",

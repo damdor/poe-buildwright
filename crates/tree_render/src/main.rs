@@ -497,6 +497,153 @@ fn run() -> Result<(), String> {
         fs::write(&graph_path, g)
             .map_err(|e| format!("writing {}: {e}", graph_path.display()))?;
         eprintln!("Agent graph → {}", graph_path.display());
+
+        // jewels.json — jewel sockets (position + what's reachable in
+        // each ring size), the ring geometry itself, and jewel item
+        // radii. Positions/radii are raw GGG tree units — the same
+        // space the TREE blob renders in, so the planner can draw
+        // rings without a transform. Optional: skipped when the patch
+        // predates the jewels dataset (`shape jewels`).
+        let jewels_tsv = args.tree_dir.join("jewels.tsv");
+        if let Ok(raw) = fs::read_to_string(&jewels_tsv) {
+            let mut rings: Vec<(String, i64, i64, i64)> = Vec::new(); // name, outer, inner, radius
+            let mut bases: Vec<(String, i64)> = Vec::new();
+            let mut adds: Vec<(String, i64)> = Vec::new();
+            for line in raw.lines().skip(1) {
+                let c: Vec<&str> = line.split('\t').collect();
+                if c.len() < 3 {
+                    continue;
+                }
+                let num = |i: usize| c.get(i).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+                match c[0] {
+                    "ring" => rings.push((c[1].to_string(), num(2), num(3), num(4))),
+                    "base" => bases.push((c[1].to_string(), num(2))),
+                    "radius_add" => adds.push((c[1].to_string(), num(2))),
+                    _ => {}
+                }
+            }
+            // Every distinct radius a jewel can have: base radii and
+            // their rollable "+N" combinations, plus each ring's
+            // nominal radius (unique jewels reference rings by name).
+            let mut radii_set: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
+            for (_, r) in bases.iter().filter(|(_, r)| *r > 0) {
+                radii_set.insert(*r);
+                for (_, a) in &adds {
+                    radii_set.insert(*r + *a);
+                }
+            }
+            for (_, _, _, r) in &rings {
+                radii_set.insert(*r);
+            }
+            // Annulus bands ("Only affects Passives in <X> Ring"):
+            // nodes BETWEEN inner and outer, keyed "inner-outer".
+            let bands: Vec<(i64, i64)> = rings.iter().map(|(_, o, i, _)| (*i, *o)).collect();
+            // Sockets: kind=jewel nodes. For each, precompute which
+            // passives fall inside every candidate radius (euclidean,
+            // tree units, mastery/asc/start nodes excluded — jewels
+            // affect the main tree only).
+            let affectable = |n: &model::Node| {
+                matches!(n.kind.as_str(), "small" | "notable" | "keystone" | "attribute" | "jewel")
+            };
+            let mut out = String::from("{\"format\":\"poe2-agent-jewels\",\"version\":1,");
+            out.push_str("\"units\":\"tree coordinates (same space as node positions)\",");
+            out.push_str("\"rings\":{");
+            let mut first = true;
+            for (name, outer, inner, radius) in &rings {
+                if !first {
+                    out.push(',');
+                }
+                first = false;
+                out.push_str(&format!(
+                    "{}:{{\"outer\":{outer},\"inner\":{inner},\"radius\":{radius}}}",
+                    text::json_str(name),
+                ));
+            }
+            out.push_str("},\"bases\":{");
+            first = true;
+            for (name, r) in &bases {
+                if !first {
+                    out.push(',');
+                }
+                first = false;
+                out.push_str(&format!("{}:{{\"radius\":{r}}}", text::json_str(name)));
+            }
+            out.push_str("},\"radius_rolls\":{");
+            first = true;
+            for (name, a) in &adds {
+                if !first {
+                    out.push(',');
+                }
+                first = false;
+                out.push_str(&format!("{}:{a}", text::json_str(name)));
+            }
+            out.push_str("},\"sockets\":[");
+            first = true;
+            for n in &nodes {
+                if n.kind != "jewel" {
+                    continue;
+                }
+                if !first {
+                    out.push(',');
+                }
+                first = false;
+                out.push_str(&format!(
+                    "{{\"id\":{},\"x\":{:.1},\"y\":{:.1}",
+                    n.id, n.x, n.y
+                ));
+                if !n.name.is_empty() && n.name != "[Jewel] Socket" {
+                    out.push_str(&format!(",\"name\":{}", text::json_str(&n.name)));
+                }
+                // Not every socket is an ordinary jewel home: Sinister
+                // sockets only activate via the Voices unique, and the
+                // named specials (Zarokh's Gift, Crystalline
+                // Phylactery) have their own mechanics.
+                if n.name.contains("Sinister") {
+                    out.push_str(",\"sinister\":true");
+                } else if !n.name.is_empty() && !n.name.contains("[Jewel]") {
+                    out.push_str(",\"special\":true");
+                }
+                out.push_str(",\"in_radius\":{");
+                let mut rfirst = true;
+                let mut emit_list = |key: String, lo2: f64, hi2: f64, out: &mut String, rfirst: &mut bool| {
+                    let mut ids: Vec<u32> = Vec::new();
+                    for m in &nodes {
+                        if m.id == n.id || !affectable(m) {
+                            continue;
+                        }
+                        let (dx, dy) = (m.x - n.x, m.y - n.y);
+                        let d2 = dx * dx + dy * dy;
+                        if d2 > lo2 && d2 <= hi2 {
+                            ids.push(m.id);
+                        }
+                    }
+                    if !*rfirst {
+                        out.push(',');
+                    }
+                    *rfirst = false;
+                    let list: Vec<String> = ids.iter().map(u32::to_string).collect();
+                    out.push_str(&format!("\"{key}\":[{}]", list.join(",")));
+                };
+                for r in &radii_set {
+                    emit_list(r.to_string(), -1.0, (*r * *r) as f64, &mut out, &mut rfirst);
+                }
+                for (inner, outer) in &bands {
+                    emit_list(
+                        format!("{inner}-{outer}"),
+                        (*inner * *inner) as f64,
+                        (*outer * *outer) as f64,
+                        &mut out,
+                        &mut rfirst,
+                    );
+                }
+                out.push_str("}}");
+            }
+            out.push_str("]}\n");
+            let jewels_path = agent_dir.join("jewels.json");
+            fs::write(&jewels_path, out)
+                .map_err(|e| format!("writing {}: {e}", jewels_path.display()))?;
+            eprintln!("Agent jewels → {}", jewels_path.display());
+        }
     }
 
     // Friendly warning if the JS bundle is missing entirely — common
