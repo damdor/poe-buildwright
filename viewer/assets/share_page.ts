@@ -116,6 +116,9 @@ function err(msg: string, detail?: unknown): void {
     // Identity moved into the planner sidebar; share imports land
     // directly on the planner page (the old /identity.html was
     // removed in the wizard restructure).
-    location.replace("/planner.html?build=" + encodeURIComponent(id));
+    // Keep the share code in the URL: the address bar stays a
+    // canonical, copy-pasteable share link (PoB-style) — the planner
+    // ALSO imports #code= itself for recipients who land there.
+    location.replace("/planner.html?build=" + encodeURIComponent(id) + "#code=" + m[1]);
   }, 600);
 })();

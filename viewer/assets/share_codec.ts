@@ -67,3 +67,6 @@ async function buildUrl(plan: Plan, origin?: string): Promise<string> {
 // Expose to the global namespace for the classic-<script> wizard pages
 // that consume this. window.PoE2Share is typed via types/poe2.d.ts.
 window.PoE2Share = { encode, decode, buildUrl };
+// Module consumers (wizard_chrome's share-recipient path) import
+// directly; the window global stays for the planner bundle.
+export { encode, decode, buildUrl };
