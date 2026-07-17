@@ -435,11 +435,39 @@ import type { Item } from "../../../../types/poe2.d.ts";
     .catch(() => { /* optional */ });
 
   const sanitizeArt = (n: string): string => n.replace(/[^A-Za-z0-9]/g, "_");
-  function jewelArtFor(it: Item): string {
-    if (it.uniqueName || (it.name && !it.base)) {
-      return "/assets/sprites/Jewel_U_" + sanitizeArt(it.uniqueName || it.name!) + ".png";
+  // Socket-fill art fallback chain: not every unique has its own
+  // JewelSocketActive sprite (only 11 do) — fall back to the BASE's
+  // socket art, then to the item's 2D icon.
+  function jewelArtChain(it: Item): string[] {
+    const chain: string[] = [];
+    const uname = it.uniqueName || (it.name && !it.base ? it.name : null);
+    if (uname) {
+      chain.push("/assets/sprites/Jewel_U_" + sanitizeArt(uname) + ".png");
+      const u = uniques.find(x => x.name === uname);
+      if (u?.base) chain.push("/assets/sprites/Jewel_" + sanitizeArt(u.base) + ".png");
+      if (u?.icon) chain.push(u.icon);
+    } else if (it.base) {
+      chain.push("/assets/sprites/Jewel_" + sanitizeArt(it.base) + ".png");
+      const b = baseByName.get(it.base.toLowerCase());
+      if (b?.icon) chain.push(b.icon);
     }
-    return "/assets/sprites/Jewel_" + sanitizeArt(it.base || "") + ".png";
+    return chain;
+  }
+  function jewelArtFor(it: Item): string {
+    return jewelArtChain(it)[0] ?? "";
+  }
+  // Wire an <img> to walk the chain on error instead of showing the
+  // broken-image glyph.
+  function applyArtChain(img: HTMLImageElement, chain: string[]): void {
+    let i = 0;
+    img.onerror = () => {
+      i++;
+      if (i < chain.length) img.src = chain[i]!;
+      else img.style.display = "none";
+    };
+    img.style.display = "";
+    img.src = chain[0] ?? "";
+    if (!chain.length) img.style.display = "none";
   }
 
   function radiusForJewel(it: Item): number {
@@ -542,8 +570,27 @@ import type { Item } from "../../../../types/poe2.d.ts";
   // Socket node visual diameter in tree units (jewel frames render at
   // roughly keystone size). Tune here if GGG resizes frames.
   const SOCKET_ART_D = 110;
+  const sinisterGlowEls = new Map<number, HTMLElement>();
+  function syncSinisterGlow(): void {
+    if (!jewelOverlay || !jewelData) return;
+    const on = voicesActive();
+    for (const sk of jewelData.sockets) {
+      if (!sk.sinister) continue;
+      let el = sinisterGlowEls.get(sk.id);
+      if (on && !el) {
+        el = document.createElement("div");
+        el.className = "jewel-sinister-lit";
+        jewelOverlay.appendChild(el);
+        sinisterGlowEls.set(sk.id, el);
+      } else if (!on && el) {
+        el.remove();
+        sinisterGlowEls.delete(sk.id);
+      }
+    }
+  }
   function syncJewelOverlays(): void {
     if (!jewelOverlay || !jewelData) return;
+    syncSinisterGlow();
     const items = shownItems().filter(it => (it.slot ?? "") === "jewel");
     const wanted = new Map<number, Item>();
     for (const it of items) {
@@ -577,7 +624,10 @@ import type { Item } from "../../../../types/poe2.d.ts";
         jewelOverlay.appendChild(img);
         artEls.set(sid, img);
       }
-      if (!img.src.endsWith(src)) { img.src = src; img.style.display = ""; }
+      if (!img.dataset.artFor || img.dataset.artFor !== src) {
+        img.dataset.artFor = src;
+        applyArtChain(img, jewelArtChain(it));
+      }
       img.title = it.name || it.base || "jewel";
       const r = radiusForJewel(it);
       if (r > 0 && !ringEls.get(sid)) {
@@ -589,6 +639,17 @@ import type { Item } from "../../../../types/poe2.d.ts";
     }
   }
   function tickJewelOverlays(): void {
+    if (sinisterGlowEls.size) {
+      const sc = state.scale;
+      for (const [sid, el] of sinisterGlowEls) {
+        const sk = socketById.get(sid)!;
+        const d = SOCKET_ART_D * 1.4 * sc;
+        el.style.width = d + "px";
+        el.style.height = d + "px";
+        el.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
+          (sk.y * sc + state.ty - d / 2) + "px, 0)";
+      }
+    }
     if (artEls.size || ringEls.size) {
       const sc = state.scale;
       for (const [sid, el] of artEls) {
@@ -670,22 +731,35 @@ import type { Item } from "../../../../types/poe2.d.ts";
     } else if (sock.special) {
       html += '<div class="jp-note">Special socket — has its own rules in-game</div>';
     }
-    if (current) {
-      html += '<button class="jp-row is-current" data-unsocket="1">' +
-        '<img src="' + esc(jewelArtFor(current)) + '" alt=""><span>' + esc(current.name || current.base || "jewel") +
-        '</span><span class="jp-hint">unsocket</span></button>';
-    }
+    pickerEl.innerHTML = html;
+    const mkRow = (it: Item, attrs: Record<string, string>, hint: string, cls = "jp-row"): void => {
+      const b = document.createElement("button");
+      b.className = cls;
+      for (const k in attrs) b.dataset[k] = attrs[k]!;
+      const img = document.createElement("img");
+      img.alt = "";
+      applyArtChain(img, jewelArtChain(it));
+      const nameEl = document.createElement("span");
+      nameEl.textContent = it.name || it.base || "jewel";
+      const hintEl = document.createElement("span");
+      hintEl.className = "jp-hint";
+      hintEl.textContent = hint;
+      b.append(img, nameEl, hintEl);
+      pickerEl.appendChild(b);
+    };
+    if (current) mkRow(current, { unsocket: "1" }, "unsocket", "jp-row is-current");
     jl.forEach((it, ji) => {
       if (it === current) return;
       const where = it.socket != null && it.socket !== socketId
         ? (socketById.get(it.socket)?.name || "socketed elsewhere — move here")
         : "socket here";
-      html += '<button class="jp-row" data-pick="' + ji + '">' +
-        '<img src="' + esc(jewelArtFor(it)) + '" alt=""><span>' + esc(it.name || it.base || "jewel") +
-        '</span><span class="jp-hint">' + esc(where) + "</span></button>";
+      mkRow(it, { pick: String(ji) }, where);
     });
-    html += '<button class="jp-row jp-new" data-new="1">+ add a jewel…</button>';
-    pickerEl.innerHTML = html;
+    const addB = document.createElement("button");
+    addB.className = "jp-row jp-new";
+    addB.dataset.new = "1";
+    addB.textContent = "+ add a jewel…";
+    pickerEl.appendChild(addB);
     pickerEl.classList.remove("hidden");
     // Position next to the socket AFTER the content has a size.
     const pad = 8;
@@ -746,6 +820,33 @@ import type { Item } from "../../../../types/poe2.d.ts";
       if (!socketById.has(id) || !socketAllocated(id)) return false;
       openPicker(id, cx, cy);
       return true;
+    },
+    // Tree tooltip: what's in this socket / what state is it in.
+    infoForSocket: (nodeId: string): { title: string; lines: string[] } | null => {
+      const id = Number(nodeId);
+      const sk = socketById.get(id);
+      if (!sk) return null;
+      const it = shownItems().find(x => (x.slot ?? "") === "jewel" && x.socket === id);
+      if (it) {
+        const lines = (it.mods ?? []).slice();
+        if (!lines.length) {
+          const u = uniques.find(x => x.name === (it.uniqueName || it.name));
+          if (u?.latest_stats) lines.push(...u.latest_stats.split(" · "));
+        }
+        const r = radiusForJewel(it);
+        if (r > 0) lines.push("Radius: " + r);
+        return { title: it.name || it.base || "jewel", lines };
+      }
+      if (sk.sinister) {
+        return {
+          title: "Sinister socket",
+          lines: [voicesActive()
+            ? "Active via Voices — click to socket a jewel"
+            : "Only active while a Voices jewel is socketed"],
+        };
+      }
+      if (socketAllocated(id)) return { title: "Empty jewel socket", lines: ["Click to socket a jewel"] };
+      return null;
     },
   };
 
@@ -938,10 +1039,18 @@ import type { Item } from "../../../../types/poe2.d.ts";
     variantWrap.classList.toggle("hidden", vs.length === 0);
     if (!vs.length) return;
     variantSel.innerHTML = "";
+    // GGG's roll text uses the START POSITION's name, which for four
+    // starts is the PoE1 class (mined class_start pairs: Shadow|Monk,
+    // Marauder|Warrior, Duelist|Mercenary, Templar|Druid) — append
+    // the PoE2 class so nobody has to know tree archaeology.
+    const START_POS: Record<string, string> = {
+      Shadow: "Monk", Marauder: "Warrior", Duelist: "Mercenary", Templar: "Druid",
+    };
     vs.forEach((v, i) => {
       const o = document.createElement("option");
       o.value = String(i);
-      o.textContent = v.label + " — " + v.stats;
+      const poe2 = START_POS[v.label];
+      o.textContent = (poe2 ? v.label + " (" + poe2 + "'s start)" : v.label) + " — " + v.stats;
       variantSel.appendChild(o);
     });
     if (preselectMods?.length) {

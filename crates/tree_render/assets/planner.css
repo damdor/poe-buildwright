@@ -2455,3 +2455,14 @@ main#viewport canvas { display: block; width: 100%; height: 100%; }
 .gp-pool .gp-pool-row {
   appearance: none; -webkit-appearance: none;
 }
+/* Sinister sockets lit while Voices is active — GGG's glow, steady. */
+.jewel-sinister-lit {
+  position: absolute; left: 0; top: 0;
+  pointer-events: none;
+  background: url("/assets/sprites/Jewel_glow.png") center / 100% 100% no-repeat;
+  mix-blend-mode: screen;
+  opacity: 0.8;
+  z-index: 38;
+  transition: none !important;
+  will-change: transform;
+}
