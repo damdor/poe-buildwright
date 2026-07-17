@@ -334,13 +334,23 @@ export async function runValidation(
   const START_CLASS: Record<string, string> = {
     shadow: "Monk", marauder: "Warrior", duelist: "Mercenary", templar: "Druid",
   };
+  // The rolled ring comes from the ITEM's mods first (Metamorphosis
+  // rolls its ring per copy); the catalogue entry is only fallback.
+  const ringNameOf = (g: AgentGearIn): string | null => {
+    for (const m of g.mods ?? []) {
+      const mm = /in (\w+) Ring/i.exec(m);
+      if (mm && jd.rings?.[mm[1]!]) return mm[1]!;
+    }
+    return (g.name ? jd.uniques?.[g.name]?.ring : null) ?? null;
+  };
   const jewelRadiusOf = (g: AgentGearIn): { r: number; inner: number } => {
-    const uq = g.name ? jd.uniques?.[g.name] : undefined;
-    if (uq?.radius) return { r: uq.radius, inner: 0 };
-    if (uq?.ring) {
-      const ring = jd.rings?.[uq.ring];
+    const rn = ringNameOf(g);
+    if (rn) {
+      const ring = jd.rings?.[rn];
       return ring ? { r: ring.outer, inner: ring.inner } : { r: 0, inner: 0 };
     }
+    const uq = g.name ? jd.uniques?.[g.name] : undefined;
+    if (uq?.radius) return { r: uq.radius, inner: 0 };
     let r = g.base ? (jd.bases?.[g.base]?.radius ?? 0) : 0;
     if (r > 0) {
       for (const m of g.mods ?? []) {
@@ -382,9 +392,11 @@ export async function runValidation(
         // Allocation covers the full DISC of the ring's Radius field,
         // not just the drawn annulus (see planner publishJewelRules).
         const sock = sockById.get(g.socket);
-        const uq = g.name ? jd.uniques?.[g.name] : undefined;
-        const disc = uq?.ring
-          ? (jd.rings?.[uq.ring]?.radius ?? 0)
+        // Disc follows the item's ROLLED ring (its mods), not the
+        // catalogue's latest variant.
+        const rn = ringNameOf(g);
+        const disc = rn
+          ? (jd.rings?.[rn]?.radius ?? 0)
           : jewelRadiusOf(g).r;
         if (sock && disc > 0) {
           for (const id of sock.in_radius[String(disc)] ?? []) freeAlloc.add(String(id));

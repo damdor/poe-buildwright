@@ -470,13 +470,26 @@ import type { Item } from "../../../../types/poe2.d.ts";
     if (!chain.length) img.style.display = "none";
   }
 
+  // Which ring a jewel is rolled with: the ITEM's own mod lines win
+  // ("Only affects Passives in Small Ring" — Metamorphosis rolls its
+  // ring per copy); the catalogue's latest-variant entry is fallback.
+  function ringNameForJewel(it: Item): string | null {
+    if (!jewelData) return null;
+    for (const m of it.mods ?? []) {
+      const mm = /in (\w+) Ring/i.exec(m);
+      if (mm && jewelData.rings[mm[1]!]) return mm[1]!;
+    }
+    const u = it.uniqueName || it.name;
+    return (u ? jewelData.uniques?.[u]?.ring : null) ?? null;
+  }
   function radiusForJewel(it: Item): number {
     if (!jewelData) return 0;
     const u = it.uniqueName || it.name;
     const uq = u ? jewelData.uniques?.[u] : undefined;
-    if (uq?.radius) return uq.radius;
     // "in <X> Ring" = the annulus band; its visual extent is OUTER.
-    if (uq?.ring) return jewelData.rings[uq.ring]?.outer ?? 0;
+    const rn = ringNameForJewel(it);
+    if (rn) return jewelData.rings[rn]?.outer ?? 0;
+    if (uq?.radius) return uq.radius;
     let r = it.base ? (jewelData.bases[it.base]?.radius ?? 0) : 0;
     if (r > 0) {
       for (const m of it.mods ?? []) {
@@ -495,9 +508,8 @@ import type { Item } from "../../../../types/poe2.d.ts";
     return r;
   }
   function ringInnerForJewel(it: Item): number {
-    const u = it.uniqueName || it.name;
-    const uq = u && jewelData ? jewelData.uniques?.[u] : undefined;
-    return uq?.ring ? (jewelData!.rings[uq.ring]?.inner ?? 0) : 0;
+    const rn = ringNameForJewel(it);
+    return rn && jewelData ? (jewelData.rings[rn]?.inner ?? 0) : 0;
   }
   function nodesInRadius(sock: JewelSocket, radius: number, inner = 0): number[] | null {
     if (inner > 0) return sock.in_radius[inner + "-" + radius] ?? null;
@@ -548,8 +560,10 @@ import type { Item } from "../../../../types/poe2.d.ts";
       const u = uniques.find(x => x.name === (it.uniqueName || it.name));
       if (u && /can be Allocated without being connected/i.test(u.latest_stats || "")) {
         const sock = socketById.get(it.socket);
-        const uq = jewelData?.uniques?.[u.name];
-        const disc = uq?.ring ? (jewelData!.rings[uq.ring]?.radius ?? 0) : radiusForJewel(it);
+        // The DISC follows the item's ROLLED ring (its mods), not the
+        // catalogue's latest variant.
+        const rn = ringNameForJewel(it);
+        const disc = rn ? (jewelData?.rings[rn]?.radius ?? 0) : radiusForJewel(it);
         if (sock && disc > 0) {
           const ids = nodesInRadius(sock, disc, 0) ?? [];
           for (const id of ids) freeAlloc.push(String(id));
