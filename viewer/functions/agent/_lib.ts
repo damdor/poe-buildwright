@@ -393,12 +393,9 @@ export async function runValidation(
         // Allocation covers the full DISC of the ring's Radius field,
         // not just the drawn annulus (see planner publishJewelRules).
         const sock = sockById.get(g.socket);
-        // Disc follows the item's ROLLED ring (its mods), not the
-        // catalogue's latest variant.
-        const rn = ringNameOf(g);
-        const disc = rn
-          ? (jd.rings?.[rn]?.radius ?? 0)
-          : jewelRadiusOf(g).r;
+        // Allocation zone = the full disc bounded by the DRAWN circle
+        // (the rolled ring's outer) — matches the planner exactly.
+        const disc = jewelRadiusOf(g).r;
         if (sock && disc > 0) {
           const ids = (sock.in_radius[String(disc)] ?? []).map(String);
           for (const id of ids) freeAlloc.add(id);
