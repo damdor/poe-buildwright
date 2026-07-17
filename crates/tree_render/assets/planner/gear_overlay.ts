@@ -866,6 +866,11 @@ import type { Item } from "../../../../types/poe2.d.ts";
   pendingNote.className = "gp-pending hidden";
   pendingNote.textContent = "Mod data for this unique is pending — describe your copy's roll in Notes below.";
   variantWrap.insertAdjacentElement("afterend", pendingNote);
+  // Read-only stat lines (with roll ranges) for the drafted unique —
+  // fixed rolls; the Variant select above covers the rollable part.
+  const uniqueStats = document.createElement("div");
+  uniqueStats.className = "gp-unique-stats hidden";
+  pendingNote.insertAdjacentElement("afterend", uniqueStats);
 
   function syncVariantSel(preselectMods?: string[]): void {
     void preselectMods;
@@ -873,6 +878,12 @@ import type { Item } from "../../../../types/poe2.d.ts";
     const u = draftUnique ? uniques.find(x => x.name === draftUnique) : undefined;
     const dataless = !!u && !baseActive() && !vs.length && !(u.latest_stats || "").trim();
     pendingNote.classList.toggle("hidden", !dataless);
+    const lines = (u && !baseActive() ? (u.latest_stats || "") : "").split(" · ").filter(Boolean);
+    uniqueStats.classList.toggle("hidden", !lines.length);
+    if (lines.length) {
+      uniqueStats.innerHTML = '<div class="us-head">' + esc(u!.name) + " — rolls</div>" +
+        lines.map(l => '<div class="us-line">' + esc(l) + "</div>").join("");
+    }
     variantWrap.classList.toggle("hidden", vs.length === 0);
     if (!vs.length) return;
     variantSel.innerHTML = "";

@@ -549,11 +549,21 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
 // (loadPlanData needs window.PoE2Plan). Clear the hash after import so
 // reloads don't re-import over the user's edits.
 const m = /[#&]agent=([A-Za-z0-9_-]+)/.exec(location.hash);
-if (m) {
-  const payload = m[1]!;
+// Plain-JSON variant: #plan=<url-encoded agent-plan JSON>. Chat
+// assistants without tools can't gzip+base64, but they CAN write a
+// URL — this makes "paste this link" a working build handoff.
+const mj = /[#&]plan=([^&]+)/.exec(location.hash);
+if (m || mj) {
   const tryRun = (): void => {
     if (window.PoE2Plan && state.geomReady) {
-      void runImport(payload);
+      if (m) {
+        void runImport(m[1]!);
+      } else {
+        let plan: AgentPlan | null = null;
+        try { plan = JSON.parse(decodeURIComponent(mj![1]!)) as AgentPlan; } catch { /* flash below */ }
+        if (plan && plan.format === "poe2-agent-plan") void importAgentPlan(plan);
+        else window.PoE2Plan?.flash("#plan= link was malformed — started a blank build instead", true);
+      }
       history.replaceState(null, "", location.pathname + location.search);
     } else {
       setTimeout(tryRun, 150);

@@ -4,6 +4,20 @@ This site is a Path of Exile 2 build planner. AI agents are first-class
 users: you can construct a complete, working build for a human and hand
 them a single URL. No login, no API key, no session.
 
+## No tools? One URL still works
+
+If you cannot fetch or POST (a plain chat assistant), you can still
+hand a user a working build: write a link of the form
+
+  /planner#plan=<url-encoded poe2-agent-plan JSON>
+
+The planner imports the plan client-side when the user opens it —
+same schema as /agent/validate, just URL-encoded instead of
+gzip+base64. You lose validation (name typos import as warnings), so
+keep to names you are sure of and keep plans small. With tools,
+ALWAYS prefer POST /agent/build (validates first, returns durable
+share links).
+
 ## How to make a build (3 steps)
 
 0. NEW TO PoE2? Read /assets/agent/primer.md first — point budgets,
