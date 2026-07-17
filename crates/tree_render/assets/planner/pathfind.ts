@@ -988,7 +988,13 @@ export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; al
     // highlighted alternate.
     const paths = shortestPathEdges(id, activeSet);
     if (!paths) return;
-    const pathNodes = paths.primary.map(e => String(e[1]));
+    let pathNodes = paths.primary.map(e => String(e[1]));
+    // Metamorphosis ring: connection-free allocation — the edge list
+    // is empty by design (no path exists), the node allocates ALONE.
+    if (!pathNodes.length && !state.selected.has(id)
+        && jewelRules().freeAlloc.has(id) && !isSetMode) {
+      pathNodes = [id];
+    }
     let mainAdd = 0, ascAdd = 0, setAdd = 0;
     for (const p of pathNodes) {
       if (state.selected.has(p)) continue;
