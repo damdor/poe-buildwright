@@ -125,6 +125,10 @@ export interface CapReport {
     /** In-radius passives that are ALLOCATED this capture — what the
      *  jewel actually affects in this build. */
     allocated_in_radius?: string[];
+    /** Pathing rule this jewel grants while socketed+allocated:
+     *  "alt_start:<Name>" | "free_alloc_in_ring" |
+     *  "activates_sinister_sockets". */
+    rule?: string;
   }[];
 }
 
@@ -302,6 +306,106 @@ export async function runValidation(
     return null;
   };
 
+  interface JewelSocketData { id: number; name?: string; sinister?: boolean; special?: boolean; in_radius: Record<string, number[]> }
+  interface JewelsData {
+    rings?: Record<string, { outer: number; inner: number; radius: number }>;
+    bases?: Record<string, { radius: number }>;
+    radius_rolls?: Record<string, number>;
+    uniques?: Record<string, { radius?: number; ring?: string }>;
+    sockets?: JewelSocketData[];
+  }
+  let jd: JewelsData = {};
+  try {
+    const jRes = await assets.fetch(origin + "/assets/agent/jewels.json");
+    if (jRes.ok) jd = await jRes.json() as JewelsData;
+  } catch { /* jewel checks degrade */ }
+  const sockById = new Map((jd.sockets ?? []).map(sk => [sk.id, sk]));
+
+  // Jewel PATHING rules, mirroring the planner's pathfind:
+  //   Split Personality (rolled start) → extra BFS root (not counted
+  //     as allocated); Controlled Metamorphosis → its ring's nodes
+  //     allocate connection-free (and never act as connectors).
+  // Active only while the jewel's socket is allocated — or listed in
+  // the same capture's targets (list the socket in targets!).
+  const ALT_START_RE = /from the (\w+)'s starting point/i;
+  // Start-position names → the hub is shared with a PoE2 class
+  // (mined class_start rows: Shadow|Monk, Marauder|Warrior,
+  // Duelist|Mercenary, Templar|Druid).
+  const START_CLASS: Record<string, string> = {
+    shadow: "Monk", marauder: "Warrior", duelist: "Mercenary", templar: "Druid",
+  };
+  // The rolled ring comes from the ITEM's mods first (Metamorphosis
+  // rolls its ring per copy); the catalogue entry is only fallback.
+  const ringNameOf = (g: AgentGearIn): string | null => {
+    for (const m of g.mods ?? []) {
+      const mm = /in (\w+) Ring/i.exec(m);
+      if (mm && jd.rings?.[mm[1]!]) return mm[1]!;
+    }
+    return (g.name ? jd.uniques?.[g.name]?.ring : null) ?? null;
+  };
+  const jewelRadiusOf = (g: AgentGearIn): { r: number; inner: number } => {
+    const rn = ringNameOf(g);
+    if (rn) {
+      const ring = jd.rings?.[rn];
+      return ring ? { r: ring.outer, inner: ring.inner } : { r: 0, inner: 0 };
+    }
+    const uq = g.name ? jd.uniques?.[g.name] : undefined;
+    if (uq?.radius) return { r: uq.radius, inner: 0 };
+    let r = g.base ? (jd.bases?.[g.base]?.radius ?? 0) : 0;
+    if (r > 0) {
+      for (const m of g.mods ?? []) {
+        const up = /Upgrades\s+Radius\s+to\s+(\w+)/i.exec(m);
+        if (up) {
+          const add = jd.radius_rolls?.[up[1]!] ?? 0;
+          if (add > 0) { r += add; continue; }
+        }
+        const mm = /\+\s*\(?(\d+)\)?\s*to\s+Radius/i.exec(m);
+        if (mm) r += Number(mm[1]);
+      }
+    }
+    return { r, inner: 0 };
+  };
+  const jewelPathRules = (
+    gear: AgentGearIn[],
+    allocatedNow: Set<string>,
+    goalIds: Set<string>,
+  ): { extraRoots: Set<string>; freeAlloc: Set<string>; freeAllocBySocket: Record<string, string[]> } => {
+    const extraRoots = new Set<string>();
+    const freeAlloc = new Set<string>();
+    const freeAllocBySocket: Record<string, string[]> = {};
+    for (const g of gear) {
+      if ((g.slot ?? "").toLowerCase().trim() !== "jewel" || typeof g.socket !== "number") continue;
+      const sid = String(g.socket);
+      if (!allocatedNow.has(sid) && !goalIds.has(sid)) continue;
+      for (const m of g.mods ?? []) {
+        const sm = ALT_START_RE.exec(m);
+        if (!sm) continue;
+        const nm = sm[1]!;
+        const cls = START_CLASS[nm.toLowerCase()] ?? nm;
+        const hubId = graph.classes[cls] ?? graph.classes[nm];
+        if (hubId != null) extraRoots.add(String(hubId));
+      }
+      // Metamorphosis-style: identified by its stat text in the plan's
+      // mods OR by the unique's known radius data.
+      const isFree = (g.mods ?? []).some(m => /without being connected/i.test(m))
+        || (g.name != null && /Metamorphosis/.test(g.name));
+      if (isFree) {
+        // Allocation covers the full DISC of the ring's Radius field,
+        // not just the drawn annulus (see planner publishJewelRules).
+        const sock = sockById.get(g.socket);
+        // Allocation zone = the full disc bounded by the DRAWN circle
+        // (the rolled ring's outer) — matches the planner exactly.
+        const disc = jewelRadiusOf(g).r;
+        if (sock && disc > 0) {
+          const ids = (sock.in_radius[String(disc)] ?? []).map(String);
+          for (const id of ids) freeAlloc.add(id);
+          freeAllocBySocket[sid] = (freeAllocBySocket[sid] ?? []).concat(ids);
+        }
+      }
+    }
+    return { extraRoots, freeAlloc, freeAllocBySocket };
+  };
+
   // ---- Captures (same cumulative/respec semantics as the importer) ----
   const capsIn: AgentCapture[] = plan.captures?.length
     ? plan.captures
@@ -312,6 +416,10 @@ export async function runValidation(
     return s;
   };
   let carry = roots();
+  // Nodes allocated CONNECTION-FREE (Metamorphosis ring). Real
+  // allocations (cost, effects) but never valid PATH SEEDS — the
+  // island can't connect anything else to the tree.
+  const ringAllocated = new Set<string>();
   // Which allocated node is paid for with a weapon-set point, and
   // which carries a target note (both persist across cumulative
   // captures; pruned with their node).
@@ -325,8 +433,11 @@ export async function runValidation(
   let effGear: AgentGearIn[] = [];
   const capReports: CapReport[] = [];
   const capDetails: CapDetail[] = [];
+  const diagnostics: Diagnostic[] = [];
+  let pathGear: AgentGearIn[] = plan.gear ?? [];
   for (const c of capsIn) {
-    if (c.respec) { carry = roots(); setByNode.clear(); noteByNodeCum.clear(); }
+    if (c.gear) pathGear = c.gear;
+    if (c.respec) { carry = roots(); ringAllocated.clear(); setByNode.clear(); noteByNodeCum.clear(); }
     else if (c.remove?.length) {
       // Partial respec: deallocate + orphan-prune (mirror the importer).
       for (const raw2 of c.remove) {
@@ -347,7 +458,17 @@ export async function runValidation(
           if (carry.has(nb) && !keep.has(nb)) { keep.add(nb); q.push(nb); }
         }
       }
-      for (const id of [...carry]) if (!keep.has(id)) { carry.delete(id); setByNode.delete(id); noteByNodeCum.delete(id); }
+      // Metamorphosis-ring allocations survive the prune ONLY while
+      // their jewel's socket does — post-union so they never block
+      // normal reachability, never rescue anything else.
+      {
+        const { freeAllocBySocket } = jewelPathRules(pathGear, carry, new Set());
+        for (const sockId in freeAllocBySocket) {
+          if (!keep.has(sockId)) continue;
+          for (const fid of freeAllocBySocket[sockId]!) if (carry.has(fid)) keep.add(fid);
+        }
+      }
+      for (const id of [...carry]) if (!keep.has(id)) { carry.delete(id); ringAllocated.delete(id); setByNode.delete(id); noteByNodeCum.delete(id); }
     }
     const unresolved: string[] = [];
     const goals: { label: string; ids: Set<string>; note?: string; set?: WeaponSet }[] = [];
@@ -373,6 +494,47 @@ export async function runValidation(
     // so target notes can be re-attached to the resolved allocation.
     const targetCosts: { target: string; points: number; nodeId: string | null; note?: string; set?: WeaponSet }[] = [];
     const remaining = goals.slice();
+    // Jewel pathing rules for THIS capture: sockets already allocated
+    // or being allocated by this capture's own targets activate them.
+    const allGoalIds = new Set<string>();
+    for (const g2 of goals) for (const id of g2.ids) allGoalIds.add(id);
+    const jpr = jewelPathRules(pathGear, carry, allGoalIds);
+    // Lifecycle: disconnected ring points from PREVIOUS captures fall
+    // if this capture's gear no longer justifies them (jewel removed
+    // or socket gone) — like unsocketing does in game.
+    {
+      const keep2 = new Set<string>();
+      const q2 = [...roots()].filter(id => carry.has(id));
+      for (const r of q2) keep2.add(r);
+      let qi2 = 0;
+      while (qi2 < q2.length) {
+        for (const nb of adj.get(q2[qi2++]!) ?? []) {
+          if (carry.has(nb) && !keep2.has(nb)) { keep2.add(nb); q2.push(nb); }
+        }
+      }
+      for (const sockId in jpr.freeAllocBySocket) {
+        if (!keep2.has(sockId) && !allGoalIds.has(sockId)) continue;
+        for (const fid of jpr.freeAllocBySocket[sockId]!) if (carry.has(fid)) keep2.add(fid);
+      }
+      const fallen: string[] = [];
+      for (const id of [...carry]) {
+        if (!keep2.has(id)) { carry.delete(id); ringAllocated.delete(id); setByNode.delete(id); noteByNodeCum.delete(id); fallen.push(id); }
+      }
+      if (fallen.length) {
+        diagnostics.push({
+          code: "jewel.ring_allocations_dropped", severity: "warning",
+          message: "capture " + (capReports.length + 1) + ": " + fallen.length +
+            " disconnected ring allocation(s) fell — the granting jewel or its socket is gone",
+          capture: capReports.length + 1, nodes: fallen.slice(0, 12),
+        });
+      }
+    }
+    const pathSeeds = (): Set<string> => {
+      const seeds = new Set<string>();
+      for (const id of carry) if (!ringAllocated.has(id)) seeds.add(id);
+      for (const id of jpr.extraRoots) seeds.add(id);
+      return seeds;
+    };
     while (remaining.length) {
       // A target already swallowed by an earlier target's path is
       // RESOLVED at zero marginal cost, not unreachable.
@@ -383,10 +545,21 @@ export async function runValidation(
           remaining.splice(i, 1);
         }
       }
+      // Metamorphosis ring: in-ring targets allocate directly, cost 1
+      // (never a connector for anything else — the node just appears).
+      for (let i = remaining.length - 1; i >= 0; i--) {
+        const hit = [...remaining[i]!.ids].find(id => jpr.freeAlloc.has(id));
+        if (hit) {
+          carry.add(hit);
+          ringAllocated.add(hit);
+          targetCosts.push({ target: remaining[i]!.label, points: 1, nodeId: hit, note: remaining[i]!.note, set: remaining[i]!.set });
+          remaining.splice(i, 1);
+        }
+      }
       if (!remaining.length) break;
       let best: { idx: number; path: string[] } | null = null;
       for (let i = 0; i < remaining.length; i++) {
-        const path = bfsNearest(carry, remaining[i]!.ids);
+        const path = bfsNearest(pathSeeds(), remaining[i]!.ids);
         if (path && (!best || path.length < best.path.length)) best = { idx: i, path };
       }
       if (!best) { for (const r of remaining) unresolved.push(r.label + " (unreachable)"); break; }
@@ -614,25 +787,10 @@ export async function runValidation(
     }
   }
 
-  const diagnostics: Diagnostic[] = [];
-
   // ---- Jewels: socket grounding, occupancy, radius report ----
   // Sockets/rings/item radii from the deploy-generated jewels.json
   // (raw tree geometry precomputed into per-socket in-radius lists).
-  interface JewelSocketData { id: number; name?: string; sinister?: boolean; special?: boolean; in_radius: Record<string, number[]> }
-  interface JewelsData {
-    rings?: Record<string, { outer: number; inner: number; radius: number }>;
-    bases?: Record<string, { radius: number }>;
-    radius_rolls?: Record<string, number>;
-    uniques?: Record<string, { radius?: number; ring?: string }>;
-    sockets?: JewelSocketData[];
-  }
-  let jd: JewelsData = {};
-  try {
-    const jRes = await assets.fetch(origin + "/assets/agent/jewels.json");
-    if (jRes.ok) jd = await jRes.json() as JewelsData;
-  } catch { /* jewel checks degrade */ }
-  const sockById = new Map((jd.sockets ?? []).map(sk => [sk.id, sk]));
+  // (jewels data hoisted above the capture loop — pathing rules need it)
   const jewelProblems: string[] = [];
   if (sockById.size) {
     const radiusOf = (g: AgentGearIn): { r: number; inner: number } => {
@@ -663,6 +821,12 @@ export async function runValidation(
       const jl = eg.filter(g => (g.slot ?? "").toLowerCase().trim() === "jewel");
       if (!jl.length) continue;
       const allocated = new Set(capDetails[i]?.allocated ?? []);
+      // Voices: sinister sockets count as allocated while a Voices
+      // jewel sits in an allocated socket.
+      const voicesOn = jl.some(x => (x.name ?? "") === "Voices"
+        && typeof x.socket === "number" && allocated.has(String(x.socket)));
+      const socketCounts = (sock2: JewelSocketData, sid2: string): boolean =>
+        allocated.has(sid2) || (!!sock2.sinister && voicesOn);
       const seen = new Map<number, string>();
       const jr: NonNullable<CapReport["jewels"]> = [];
       for (const g of jl) {
@@ -697,7 +861,16 @@ export async function runValidation(
           continue;
         }
         seen.set(g.socket, label);
-        if (sock.sinister && !jl.some(x => (x.name ?? "") === "Voices")) {
+        if (sock.sinister && label === "Voices") {
+          jewelProblems.push("capture " + (i + 1) + ": Voices can't occupy a sinister socket — it's what creates them");
+          diagnostics.push({
+            code: "jewel.voices_in_sinister", severity: "error",
+            message: "Voices in sinister socket " + g.socket,
+            capture: i + 1, socket: g.socket,
+          });
+          continue;
+        }
+        if (sock.sinister && !voicesOn) {
           diagnostics.push({
             code: "jewel.sinister_needs_voices", severity: "warning",
             message: "capture " + (i + 1) + ": socket " + g.socket +
@@ -705,7 +878,7 @@ export async function runValidation(
             capture: i + 1, socket: g.socket,
           });
         }
-        if (!allocated.has(String(g.socket))) {
+        if (!socketCounts(sock, String(g.socket))) {
           diagnostics.push({
             code: "jewel.socket_unallocated", severity: "warning",
             message: "capture " + (i + 1) + ": jewel socket " + g.socket +
@@ -716,6 +889,12 @@ export async function runValidation(
         const { r, inner } = radiusOf(g);
         const entry: NonNullable<CapReport["jewels"]>[number] = { name: label, socket: g.socket };
         if (sock.name) entry.socket_name = sock.name;
+        // Surface the pathing rule the jewel grants, so agents know
+        // WHY an alt-start or a disconnected allocation validated.
+        const startMod = (g.mods ?? []).map(m => ALT_START_RE.exec(m)).find(Boolean);
+        if (startMod) entry.rule = "alt_start:" + startMod[1];
+        else if ((g.mods ?? []).some(m => /without being connected/i.test(m)) || /Metamorphosis/.test(label)) entry.rule = "free_alloc_in_ring";
+        else if (label === "Voices") entry.rule = "activates_sinister_sockets";
         if (r > 0) {
           entry.radius = r;
           const key = inner > 0 ? inner + "-" + r : String(r);

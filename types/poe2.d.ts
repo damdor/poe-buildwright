@@ -411,7 +411,24 @@ declare global {
     PoE2Plan?: PoE2PlanAPI;
     // Jewel socketing bridge: pathfind consults this before treating
     // a click on an allocated jewel-socket node as (de)allocation.
-    PoE2Jewels?: { handleSocketClick: (nodeId: string, cx: number, cy: number) => boolean };
+    PoE2Jewels?: {
+      handleSocketClick: (nodeId: string, cx: number, cy: number) => boolean;
+      /** Tooltip payload for a jewel-socket node: the socketed jewel's
+       *  name/mods/rule, or the socket's state (empty / sinister). */
+      infoForSocket?: (nodeId: string) => { title: string; lines: string[] } | null;
+    };
+    // Jewel-granted pathing rules for the ACTIVE capture, published
+    // by gear_overlay and consumed by pathfind: extra class-start
+    // roots (Split Personality) and connection-free allocatable node
+    // ids (Controlled Metamorphosis ring).
+    PoE2JewelRules?: {
+      starts: string[];
+      freeAlloc: string[];
+      /** freeAlloc grouped by the granting jewel's socket node id —
+       *  ring allocations live and die with their socket. */
+      freeAllocBySocket: Record<string, string[]>;
+      voicesActive: boolean;
+    };
     PoE2SliderDebug?: PoE2SliderDebugAPI;
     PoE2SliderExit?: () => void;
     PoE2SliderExitRestore?: () => void;

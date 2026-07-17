@@ -1598,6 +1598,9 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         let mut jobs: Vec<(String, String)> = vec![
             ("Jewel_ring.png".into(), format!("{ui}passiveskillscreenjewelcircle1.dds")),
             ("Jewel_glow.png".into(), format!("{ui}passiveskillscreenjeweleffectglow.dds")),
+            // The plain "activated" socket frame — used to light
+            // Voices-activated sinister sockets without a jewel.
+            ("Jewel_socket_active.png".into(), format!("{ui}passiveskillscreenjewelsocketactive.dds")),
         ];
         for (base, stem) in [
             ("Ruby", "rubyjewel"),
