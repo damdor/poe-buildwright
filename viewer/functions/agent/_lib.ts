@@ -379,11 +379,15 @@ export async function runValidation(
       const isFree = (g.mods ?? []).some(m => /without being connected/i.test(m))
         || (g.name != null && /Metamorphosis/.test(g.name));
       if (isFree) {
+        // Allocation covers the full DISC of the ring's Radius field,
+        // not just the drawn annulus (see planner publishJewelRules).
         const sock = sockById.get(g.socket);
-        const { r, inner } = jewelRadiusOf(g);
-        if (sock && r > 0) {
-          const key = inner > 0 ? inner + "-" + r : String(r);
-          for (const id of sock.in_radius[key] ?? []) freeAlloc.add(String(id));
+        const uq = g.name ? jd.uniques?.[g.name] : undefined;
+        const disc = uq?.ring
+          ? (jd.rings?.[uq.ring]?.radius ?? 0)
+          : jewelRadiusOf(g).r;
+        if (sock && disc > 0) {
+          for (const id of sock.in_radius[String(disc)] ?? []) freeAlloc.add(String(id));
         }
       }
     }
@@ -805,6 +809,15 @@ export async function runValidation(
           continue;
         }
         seen.set(g.socket, label);
+        if (sock.sinister && label === "Voices") {
+          jewelProblems.push("capture " + (i + 1) + ": Voices can't occupy a sinister socket — it's what creates them");
+          diagnostics.push({
+            code: "jewel.voices_in_sinister", severity: "error",
+            message: "Voices in sinister socket " + g.socket,
+            capture: i + 1, socket: g.socket,
+          });
+          continue;
+        }
         if (sock.sinister && !voicesOn) {
           diagnostics.push({
             code: "jewel.sinister_needs_voices", severity: "warning",

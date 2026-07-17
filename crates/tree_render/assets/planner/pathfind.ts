@@ -811,7 +811,10 @@ export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; al
   // socket is deallocated from inside the picker if wanted.
   if (id && !state.popoutId) {
     const jn = TREE.nodes[id];
-    if (jn && jn.k === 'jewel' && state.selected.has(id)
+    // The bridge returns false for sockets that aren't active (not
+    // allocated, sinister without Voices) — then the click falls
+    // through to normal allocation handling.
+    if (jn && jn.k === 'jewel'
         && window.PoE2Jewels?.handleSocketClick(id, cx, cy)) {
       return;
     }
