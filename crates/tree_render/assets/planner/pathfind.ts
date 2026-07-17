@@ -70,6 +70,18 @@ export const ALLOWED_SETS_FOR_MODE: Record<SetMode, Set<string>> = {
 // requested mode count (see ALLOWED_SETS_FOR_MODE). Asc allocations
 // are always roots: they live in a disjoint subgraph and don't
 // belong to a weapon set.
+// Jewel-granted pathing rules — gear_overlay computes these from the
+// ACTIVE capture's socketed jewels (see window.PoE2JewelRules):
+//   starts:    class-start names ("Warrior", "Shadow"…) usable as
+//              extra pathing roots (Split Personality's rolled start)
+//   freeAlloc: node ids allocatable WITHOUT connection (Controlled
+//              Metamorphosis's ring). Intuitive-Leap semantics: such
+//              nodes never act as connection points for anything else.
+function jewelRules(): { starts: string[]; freeAlloc: Set<string> } {
+  const r = window.PoE2JewelRules;
+  return { starts: r?.starts ?? [], freeAlloc: new Set(r?.freeAlloc ?? []) };
+}
+
 export function pathfindRoots(activeSet?: SetMode): Set<string> {
   const mode: SetMode = activeSet || state.activeSet || 'main';
   const allowed = ALLOWED_SETS_FOR_MODE[mode];
@@ -99,6 +111,14 @@ export function pathfindRoots(activeSet?: SetMode): Set<string> {
       const n = TREE.nodes[id];
       if (!n || n.k !== 'class_start') continue;
       if ((n.kl || '').split('|').includes(eff.altStartClass)) { roots.add(id); break; }
+    }
+  }
+  // Jewel alt-starts (Split Personality's rolled class start).
+  for (const nm of jewelRules().starts) {
+    for (const id in TREE.nodes) {
+      const n = TREE.nodes[id];
+      if (!n || n.k !== 'class_start') continue;
+      if ((n.kl || '').split('|').includes(nm)) { roots.add(id); break; }
     }
   }
   for (const [id, setKind] of state.selected) {
@@ -143,6 +163,11 @@ export function shortestPath(target: string, activeSet?: SetMode): string[] | nu
   const roots = pathfindRoots(mode);
   if (roots.size === 0) return null;
   if (roots.has(target)) return [];
+  // Controlled Metamorphosis: in-ring passives allocate directly,
+  // no path — and never serve as a path for anything else.
+  if (jewelRules().freeAlloc.has(target) && !state.selected.has(target)) {
+    return [target];
+  }
   const visited = new Set<string>(roots);
   const parent = new Map<string, string>();
   let frontier = [...roots];
@@ -200,6 +225,9 @@ export function shortestPathEdges(target: string, activeSet?: SetMode): Shortest
   const roots = pathfindRoots(mode);
   if (roots.size === 0 || roots.has(target)) {
     return { primary: [], alternate: [] };
+  }
+  if (jewelRules().freeAlloc.has(target) && !state.selected.has(target)) {
+    return { primary: [], alternate: [] };   // direct alloc: no edges to light
   }
   const dist = new Map<string, number>();
   const preds = new Map<string, Set<string>>();
@@ -361,6 +389,8 @@ export function computeDeallocResult(targetId: string): Set<string> {
     const eff = ASC_EFFECTS[sid];
     if (eff && eff.altStartClass) addClassHub(eff.altStartClass);
   }
+  // Jewel alt-starts survive the cascade like MC alt-starts do.
+  for (const nm of jewelRules().starts) addClassHub(nm);
   // Locked AFTER the target is removed: same as isLocked, but also
   // treats the targetId as if it's already gone from state.selected.
   // Catches the Unseen Path case where deallocating node 5571 makes
@@ -382,6 +412,12 @@ export function computeDeallocResult(targetId: string): Set<string> {
   function reachableInMode(allowed: Set<string>): Set<string> {
     const visited = new Set<string>(startHubs);
     const stack: string[] = [...startHubs];
+    // Metamorphosis-ring allocations are self-rooted: they SURVIVE
+    // (added to visited) but never expand (not pushed) — a
+    // disconnected island can't keep normal allocations alive.
+    for (const fid of jewelRules().freeAlloc) {
+      if (fid !== targetId && state.selected.has(fid)) visited.add(fid);
+    }
     while (stack.length) {
       const cur = stack.pop();
       if (!cur) continue;

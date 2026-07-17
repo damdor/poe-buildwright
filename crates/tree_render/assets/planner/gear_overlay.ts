@@ -430,6 +430,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
       }
       renderStrip();
       syncJewelOverlays();
+      publishJewelRules();
     })
     .catch(() => { /* optional */ });
 
@@ -478,7 +479,57 @@ import type { Item } from "../../../../types/poe2.d.ts";
     const key = sock.in_radius[String(radius)] ? radius : best;
     return key != null ? (sock.in_radius[String(key)] ?? null) : null;
   }
-  const socketAllocated = (id: number): boolean => state.selected.has(String(id));
+  // A sinister socket counts as allocated while a Voices jewel sits
+  // in an allocated socket ("Allocates X Sinister Jewel sockets").
+  const socketAllocated = (id: number): boolean => {
+    if (state.selected.has(String(id))) return true;
+    const sk = socketById.get(id);
+    return !!(sk?.sinister && voicesActive());
+  };
+  function voicesActive(): boolean {
+    return shownItems().some(it => (it.slot ?? "") === "jewel"
+      && (it.name || it.uniqueName) === "Voices"
+      && it.socket != null && state.selected.has(String(it.socket)));
+  }
+
+  // ---------------------------------------------------------------
+  // Jewel pathing rules → window.PoE2JewelRules (pathfind consumes).
+  // Recomputed on every capture change; derived from the ACTIVE
+  // capture's socketed jewels sitting in allocated sockets:
+  //   Split Personality        → its rolled class start becomes an
+  //                              extra pathing root
+  //   Controlled Metamorphosis → its ring's passives allocate
+  //                              without connection
+  //   Voices                   → sinister sockets activate
+  // ---------------------------------------------------------------
+  const ALT_START_RE = /from the (\w+)'s starting point/i;
+  function publishJewelRules(): void {
+    const starts: string[] = [];
+    const freeAlloc: string[] = [];
+    for (const it of shownItems()) {
+      if ((it.slot ?? "") !== "jewel" || it.socket == null) continue;
+      if (!state.selected.has(String(it.socket))) continue;
+      for (const m of it.mods ?? []) {
+        const sm = ALT_START_RE.exec(m);
+        if (sm) starts.push(sm[1]!);
+      }
+      // Metamorphosis: ring-scoped free allocation. Identified by the
+      // unique's own stat text (data), not by name.
+      const u = uniques.find(x => x.name === (it.uniqueName || it.name));
+      if (u && /can be Allocated without being connected/i.test(u.latest_stats || "")) {
+        const sock = socketById.get(it.socket);
+        const inner = ringInnerForJewel(it);
+        const r = radiusForJewel(it);
+        if (sock && r > 0) {
+          const ids = nodesInRadius(sock, r, inner) ?? [];
+          for (const id of ids) freeAlloc.push(String(id));
+        }
+      }
+    }
+    window.PoE2JewelRules = { starts, freeAlloc, voicesActive: voicesActive() };
+  }
+  window.addEventListener("poe2-capture-change", publishJewelRules);
+  window.addEventListener("poe2-replay-scrub", publishJewelRules);
 
   // --- Persistent overlays: socketed-jewel art + always-on rings ---
   // GGG shows the jewel INSIDE its socket and, for radius jewels, a

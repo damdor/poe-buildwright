@@ -412,6 +412,11 @@ declare global {
     // Jewel socketing bridge: pathfind consults this before treating
     // a click on an allocated jewel-socket node as (de)allocation.
     PoE2Jewels?: { handleSocketClick: (nodeId: string, cx: number, cy: number) => boolean };
+    // Jewel-granted pathing rules for the ACTIVE capture, published
+    // by gear_overlay and consumed by pathfind: extra class-start
+    // roots (Split Personality) and connection-free allocatable node
+    // ids (Controlled Metamorphosis ring).
+    PoE2JewelRules?: { starts: string[]; freeAlloc: string[]; voicesActive: boolean };
     PoE2SliderDebug?: PoE2SliderDebugAPI;
     PoE2SliderExit?: () => void;
     PoE2SliderExitRestore?: () => void;
