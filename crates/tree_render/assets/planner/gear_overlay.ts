@@ -541,15 +541,17 @@ import type { Item } from "../../../../types/poe2.d.ts";
         const sm = ALT_START_RE.exec(m);
         if (sm) starts.push(sm[1]!);
       }
-      // Metamorphosis: ring-scoped free allocation. Identified by the
-      // unique's own stat text (data), not by name.
+      // Metamorphosis: free allocation covers the full DISC of the
+      // ring's Radius field ("Passives in Radius can be Allocated…"),
+      // not just the drawn annulus — the ring art is where its OTHER
+      // effects apply. Identified by the unique's stat text (data).
       const u = uniques.find(x => x.name === (it.uniqueName || it.name));
       if (u && /can be Allocated without being connected/i.test(u.latest_stats || "")) {
         const sock = socketById.get(it.socket);
-        const inner = ringInnerForJewel(it);
-        const r = radiusForJewel(it);
-        if (sock && r > 0) {
-          const ids = nodesInRadius(sock, r, inner) ?? [];
+        const uq = jewelData?.uniques?.[u.name];
+        const disc = uq?.ring ? (jewelData!.rings[uq.ring]?.radius ?? 0) : radiusForJewel(it);
+        if (sock && disc > 0) {
+          const ids = nodesInRadius(sock, disc, 0) ?? [];
           for (const id of ids) freeAlloc.push(String(id));
         }
       }
@@ -643,7 +645,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
       const sc = state.scale;
       for (const [sid, el] of sinisterGlowEls) {
         const sk = socketById.get(sid)!;
-        const d = SOCKET_ART_D * 1.4 * sc;
+        const d = SOCKET_ART_D * sc;
         el.style.width = d + "px";
         el.style.height = d + "px";
         el.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
@@ -750,6 +752,8 @@ import type { Item } from "../../../../types/poe2.d.ts";
     if (current) mkRow(current, { unsocket: "1" }, "unsocket", "jp-row is-current");
     jl.forEach((it, ji) => {
       if (it === current) return;
+      // Voices creates the sinister sockets — it can't occupy one.
+      if (sock.sinister && (it.name || it.uniqueName) === "Voices") return;
       const where = it.socket != null && it.socket !== socketId
         ? (socketById.get(it.socket)?.name || "socketed elsewhere — move here")
         : "socket here";
@@ -1346,10 +1350,14 @@ import type { Item } from "../../../../types/poe2.d.ts";
     // A jewel added via the socket picker's "+ add a jewel…" goes
     // straight into the socket the picker was opened on.
     if (popSlot.value === "jewel" && popJewelIdx === null && pendingSocketForNew != null) {
-      for (const it of items) {
-        if ((it.slot ?? "") === "jewel" && it.socket === pendingSocketForNew) delete it.socket;
+      if ((entry.uniqueName || entry.name) === "Voices" && socketById.get(pendingSocketForNew)?.sinister) {
+        window.PoE2Plan?.flash("Voices creates the sinister sockets — it can't occupy one", true);
+      } else {
+        for (const it of items) {
+          if ((it.slot ?? "") === "jewel" && it.socket === pendingSocketForNew) delete it.socket;
+        }
+        entry.socket = pendingSocketForNew;
       }
-      entry.socket = pendingSocketForNew;
       pendingSocketForNew = null;
     }
     items.push(entry);
