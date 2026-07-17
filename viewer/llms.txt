@@ -229,6 +229,12 @@ share links).
      any allocated socket works; spend mods on the build's theme.
      Socket entries may be flagged sinister (Voices-only) or
      special (own in-game rules) — prefer unflagged sockets.
+     DATA-PENDING UNIQUES: a few uniques exist in the game data
+     but have NO stat lines here yet (item_catalogue entries with an
+     empty latest_stats — e.g. From Nothing, Against the Darkness).
+     Don't build synergies around them: you'd be guessing what they
+     do. Prefer covered uniques, or tell the user to fill the roll
+     into the item note themselves.
      UNIQUE VARIANTS: some uniques roll differently per copy —
      item_catalogue entries carry `variants` [{label, stats}] when
      they do (e.g. Split Personality rolls WHICH class start it can
