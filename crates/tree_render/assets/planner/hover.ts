@@ -260,6 +260,17 @@ export function showTooltip(id: string, cx: number, cy: number): void {
               '</div>';
     }
   }
+  // Jewel sockets: show WHAT sits in them (name + mod lines + any
+  // pathing rule), or the socket's state — gear_overlay owns the
+  // jewel model and serves it over the PoE2Jewels bridge.
+  if (n.k === 'jewel') {
+    const info = window.PoE2Jewels?.infoForSocket?.(String(id));
+    if (info) {
+      html += '<div class="tt-note-section"><div class="tt-note-head">' + esc(info.title) + '</div>';
+      for (const line of info.lines) html += '<div class="tt-mod">' + esc(line) + '</div>';
+      html += '</div>';
+    }
+  }
   // Warn when hovering a global node (keystone / jewel socket) while
   // a weapon-set mode is active — explains why the click is refused.
   // Uses the effective mode so the warning lights up the moment the
