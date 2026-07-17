@@ -421,7 +421,14 @@ declare global {
     // by gear_overlay and consumed by pathfind: extra class-start
     // roots (Split Personality) and connection-free allocatable node
     // ids (Controlled Metamorphosis ring).
-    PoE2JewelRules?: { starts: string[]; freeAlloc: string[]; voicesActive: boolean };
+    PoE2JewelRules?: {
+      starts: string[];
+      freeAlloc: string[];
+      /** freeAlloc grouped by the granting jewel's socket node id —
+       *  ring allocations live and die with their socket. */
+      freeAllocBySocket: Record<string, string[]>;
+      voicesActive: boolean;
+    };
     PoE2SliderDebug?: PoE2SliderDebugAPI;
     PoE2SliderExit?: () => void;
     PoE2SliderExitRestore?: () => void;

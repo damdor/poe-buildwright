@@ -77,9 +77,13 @@ export const ALLOWED_SETS_FOR_MODE: Record<SetMode, Set<string>> = {
 //   freeAlloc: node ids allocatable WITHOUT connection (Controlled
 //              Metamorphosis's ring). Intuitive-Leap semantics: such
 //              nodes never act as connection points for anything else.
-function jewelRules(): { starts: string[]; freeAlloc: Set<string> } {
+function jewelRules(): { starts: string[]; freeAlloc: Set<string>; freeAllocBySocket: Record<string, string[]> } {
   const r = window.PoE2JewelRules;
-  return { starts: r?.starts ?? [], freeAlloc: new Set(r?.freeAlloc ?? []) };
+  return {
+    starts: r?.starts ?? [],
+    freeAlloc: new Set(r?.freeAlloc ?? []),
+    freeAllocBySocket: r?.freeAllocBySocket ?? {},
+  };
 }
 
 export function pathfindRoots(activeSet?: SetMode): Set<string> {
@@ -121,9 +125,13 @@ export function pathfindRoots(activeSet?: SetMode): Set<string> {
       if ((n.kl || '').split('|').includes(nm)) { roots.add(id); break; }
     }
   }
+  const freeAlloc = jewelRules().freeAlloc;
   for (const [id, setKind] of state.selected) {
     const n = TREE.nodes[id];
     if (!n) continue;
+    // Metamorphosis-ring allocations are islands: allocated, but
+    // never path seeds (they can't connect anything to the tree).
+    if (freeAlloc.has(id)) continue;
     if (n.a) { roots.add(id); continue; }
     if (allowed.has(setKind)) roots.add(id);
   }
@@ -412,12 +420,6 @@ export function computeDeallocResult(targetId: string): Set<string> {
   function reachableInMode(allowed: Set<string>): Set<string> {
     const visited = new Set<string>(startHubs);
     const stack: string[] = [...startHubs];
-    // Metamorphosis-ring allocations are self-rooted: they SURVIVE
-    // (added to visited) but never expand (not pushed) — a
-    // disconnected island can't keep normal allocations alive.
-    for (const fid of jewelRules().freeAlloc) {
-      if (fid !== targetId && state.selected.has(fid)) visited.add(fid);
-    }
     while (stack.length) {
       const cur = stack.pop();
       if (!cur) continue;
@@ -477,9 +479,40 @@ export function computeDeallocResult(targetId: string): Set<string> {
     } else {
       ok = reachMain.has(id);
     }
+    // Metamorphosis lifecycle: a ring allocation with no normal
+    // connection survives ONLY while its jewel's socket does —
+    // socket deallocated/orphaned ⇒ the jewel deactivates ⇒ its
+    // disconnected ring points fall with it.
+    if (!ok) {
+      const bySock = jewelRules().freeAllocBySocket;
+      for (const sockId in bySock) {
+        if (!bySock[sockId]!.includes(id)) continue;
+        const sockAlive = sockId !== targetId
+          && state.selected.has(sockId)
+          && !removed.has(sockId)
+          && reachMain.has(sockId);
+        if (sockAlive) { ok = true; break; }
+      }
+    }
     if (!ok) removed.add(id);
   }
   return removed;
+}
+
+// Sweep allocations that lost their jewel-granted justification —
+// called by gear_overlay after the jewel rules change (unsocketing or
+// moving a Metamorphosis drops its disconnected ring points, like
+// removing the jewel does in game). Returns how many nodes fell.
+export function cascadeJewelOrphans(): number {
+  const orphans = computeDeallocResult('__none__');
+  orphans.delete('__none__');
+  for (const rid of orphans) {
+    state.selected.delete(rid);
+    state.pickedAttrs.delete(rid);
+    state.allocationMeta.delete(rid);
+  }
+  if (orphans.size) state.selDirty = true;
+  return orphans.size;
 }
 
 // Tessellate a list of [a, b] edge pairs into the dashed-line VBO.

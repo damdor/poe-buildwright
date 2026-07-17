@@ -13,6 +13,8 @@
 // ============================================================================
 import { state, viewport } from "./state.ts";
 import { requestRender } from "./render.ts";
+import { cascadeJewelOrphans } from "./pathfind.ts";
+import { flushPersistNow } from "./wizard_sync.ts";
 import type { Item } from "../../../../types/poe2.d.ts";
 
 {
@@ -546,6 +548,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
   function publishJewelRules(): void {
     const starts: string[] = [];
     const freeAlloc: string[] = [];
+    const freeAllocBySocket: Record<string, string[]> = {};
     for (const it of shownItems()) {
       if ((it.slot ?? "") !== "jewel" || it.socket == null) continue;
       if (!state.selected.has(String(it.socket))) continue;
@@ -565,12 +568,26 @@ import type { Item } from "../../../../types/poe2.d.ts";
         const rn = ringNameForJewel(it);
         const disc = rn ? (jewelData?.rings[rn]?.radius ?? 0) : radiusForJewel(it);
         if (sock && disc > 0) {
-          const ids = nodesInRadius(sock, disc, 0) ?? [];
-          for (const id of ids) freeAlloc.push(String(id));
+          const ids = (nodesInRadius(sock, disc, 0) ?? []).map(String);
+          freeAlloc.push(...ids);
+          freeAllocBySocket[String(it.socket)] =
+            (freeAllocBySocket[String(it.socket)] ?? []).concat(ids);
         }
       }
     }
-    window.PoE2JewelRules = { starts, freeAlloc, voicesActive: voicesActive() };
+    const before = JSON.stringify(window.PoE2JewelRules ?? null);
+    window.PoE2JewelRules = { starts, freeAlloc, freeAllocBySocket, voicesActive: voicesActive() };
+    // Rules shrank (jewel unsocketed/moved/removed)? Ring points that
+    // lost their justification fall, like in game. Only on CHANGE —
+    // the sweep itself triggers a capture-change, so guard the loop.
+    if (before !== JSON.stringify(window.PoE2JewelRules)) {
+      const dropped = cascadeJewelOrphans();
+      if (dropped > 0) {
+        flushPersistNow();   // the sweep ran outside a click flow — persist it
+        window.PoE2Plan?.flash(dropped + " disconnected ring point" + (dropped > 1 ? "s" : "") + " lost with the jewel");
+        window.dispatchEvent(new CustomEvent("poe2-capture-change", { detail: { reason: "jewel-orphans" } }));
+      }
+    }
   }
   window.addEventListener("poe2-capture-change", publishJewelRules);
   window.addEventListener("poe2-replay-scrub", publishJewelRules);
