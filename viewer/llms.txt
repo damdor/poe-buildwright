@@ -40,6 +40,12 @@ share links).
    reference names that appear in them — community/wiki names often
    differ from the game data.
 
+   SPEED: you rarely need everything. A solid build needs nodes.json
+   (~340KB) + skill_catalogue.json (~1MB). Fetch bases/mods only when
+   composing rare gear, jewels.json only when socketing jewels, and
+   support_compat.json (~1MB) only if validate flags support
+   incompatibilities — /agent/validate re-checks all of it anyway.
+
    /assets/agent/nodes.json
      .classes[]  → {name, start_id, ascendancies[]} — the authoritative
                    class list AND which ascendancies belong to each
