@@ -532,8 +532,11 @@ fn run() -> Result<(), String> {
                     radii_set.insert(*r + *a);
                 }
             }
-            for (_, _, _, r) in &rings {
+            for (_, outer, _, r) in &rings {
                 radii_set.insert(*r);
+                // The disc bounded by the DRAWN circle — ring uniques'
+                // allocation zone matches what the player sees.
+                radii_set.insert(*outer);
             }
             // Annulus bands ("Only affects Passives in <X> Ring"):
             // nodes BETWEEN inner and outer, keyed "inner-outer".

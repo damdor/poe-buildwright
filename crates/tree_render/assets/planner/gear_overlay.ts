@@ -563,10 +563,10 @@ import type { Item } from "../../../../types/poe2.d.ts";
       const u = uniques.find(x => x.name === (it.uniqueName || it.name));
       if (u && /can be Allocated without being connected/i.test(u.latest_stats || "")) {
         const sock = socketById.get(it.socket);
-        // The DISC follows the item's ROLLED ring (its mods), not the
-        // catalogue's latest variant.
-        const rn = ringNameForJewel(it);
-        const disc = rn ? (jewelData?.rings[rn]?.radius ?? 0) : radiusForJewel(it);
+        // Allocation zone = the full disc bounded by the DRAWN circle
+        // (the rolled ring's outer). What the player sees is what
+        // allocates — nothing beyond the line.
+        const disc = radiusForJewel(it);
         if (sock && disc > 0) {
           const ids = (nodesInRadius(sock, disc, 0) ?? []).map(String);
           freeAlloc.push(...ids);
