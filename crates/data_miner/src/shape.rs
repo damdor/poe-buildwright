@@ -1304,9 +1304,11 @@ fn mod_domain(v: i32) -> String {
         3 => "monster",
         4 => "chest",
         5 => "area",
-        9 => "crafted",
-        10 => "jewel",
-        11 => "atlas",
+        // PoE2 shifted these vs PoE1: verified 4.5.4.3 — domain 10
+        // carries the *Crafted bench mods, domain 11 carries every
+        // Jewel* mod (incl. JewelRadiusImplicit, a jewel implicit).
+        10 => "crafted",
+        11 => "jewel",
         13 => "abyss_jewel",
         14 => "map_device",
         34 => "tincture",
@@ -2078,3 +2080,125 @@ pub const GRANTS_TABLES: &[&str] = &[
     "ModGrantedSkills",
     "SkillGems",
 ];
+
+/// Jewels: the radius geometry + jewel item radii, everything the
+/// planner/agent jewel support needs from the dat side. Socket
+/// POSITIONS are not here — they live in the shaped tree (nodes.tsv
+/// kind=jewel); tree_render joins the two when emitting
+/// assets/agent/jewels.json.
+///
+/// Output TSV (`tree/jewels.tsv`), one `kind` per row:
+///   ring        name outer inner radius   — PassiveJewelRadii, tree units
+///   base        name radius              — jewel bases with a radius
+///                                           implicit (Time-Lost: 1000)
+///   base        name 0                   — radius-less jewel bases
+///   radius_add  name add                 — rollable "+N to radius" mods
+///                                           (Medium +150, Large +300)
+pub fn shape_jewels(ts: &TableSet) -> Result<String, ShapeError> {
+    let mut out = String::with_capacity(2048);
+    out.push_str("kind\tname\ta\tb\tc\n");
+
+    // Rings.
+    let rad = ts
+        .dat("PassiveJewelRadii")
+        .ok_or(ShapeError::MissingTable("PassiveJewelRadii"))?;
+    let rs = ts
+        .schema("PassiveJewelRadii")
+        .ok_or(ShapeError::MissingTable("PassiveJewelRadii"))?;
+    let rcol = |n: &'static str| rs.column(n).ok_or(ShapeError::MissingColumn("PassiveJewelRadii", n));
+    let (r_id, r_out, r_in, r_r) = (rcol("ID")?, rcol("RingOuterRadius")?, rcol("RingInnerRadius")?, rcol("Radius")?);
+    for row in 0..rad.row_count() {
+        let fields = [
+            "ring".to_string(),
+            rad.string(row, r_id).unwrap_or_default(),
+            rad.i32(row, r_out).unwrap_or(0).to_string(),
+            rad.i32(row, r_in).unwrap_or(0).to_string(),
+            rad.i32(row, r_r).unwrap_or(0).to_string(),
+        ];
+        push_row(&mut out, &fields);
+    }
+
+    // Mod → local_jewel_effect_base_radius value (implicits carry the
+    // base radius; JewelRadius*Size mods carry rollable "+N" adds).
+    let mods = ts.dat("Mods").ok_or(ShapeError::MissingTable("Mods"))?;
+    let ms = ts.schema("Mods").ok_or(ShapeError::MissingTable("Mods"))?;
+    let m_id = ms.column("Id").ok_or(ShapeError::MissingColumn("Mods", "Id"))?;
+    let stat_ids = ts.id_list("Stats");
+    let mut radius_of_mod: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
+    for i in 1..=4usize {
+        let (Some(cs), Some(cv)) = (
+            ms.column(&format!("Stat{i}")),
+            ms.column(&format!("Stat{i}Value")),
+        ) else {
+            continue;
+        };
+        for row in 0..mods.row_count() {
+            let is_radius_stat = mods
+                .foreign(row, cs)
+                .ok()
+                .flatten()
+                .and_then(|sr| stat_ids.get(sr as usize))
+                .is_some_and(|sid| sid == "local_jewel_effect_base_radius");
+            if is_radius_stat {
+                if let Ok(v) = mods.i32(row, cv) {
+                    radius_of_mod.insert(row, v);
+                }
+            }
+        }
+    }
+
+    // Jewel bases: ItemClass "Jewel"; base radius from Implicit_Mods.
+    let bit = ts.dat("BaseItemTypes").ok_or(ShapeError::MissingTable("BaseItemTypes"))?;
+    let bs = ts.schema("BaseItemTypes").ok_or(ShapeError::MissingTable("BaseItemTypes"))?;
+    let bcol = |n: &'static str| bs.column(n).ok_or(ShapeError::MissingColumn("BaseItemTypes", n));
+    let (b_id, b_name, b_class, b_impl) = (bcol("Id")?, bcol("Name")?, bcol("ItemClass")?, bcol("Implicit_Mods")?);
+    let class_ids = ts.id_list("ItemClasses");
+    for row in 0..bit.row_count() {
+        let is_jewel = bit
+            .foreign(row, b_class)
+            .ok()
+            .flatten()
+            .and_then(|c| class_ids.get(c as usize))
+            .is_some_and(|c| c == "Jewel");
+        if !is_jewel {
+            continue;
+        }
+        let id = bit.string(row, b_id).unwrap_or_default();
+        if id.contains("Unique") {
+            continue; // unique-only base variants: not player bases
+        }
+        let radius: i32 = array_rows(&bit, row, b_impl)
+            .into_iter()
+            .filter_map(|m| radius_of_mod.get(&m).copied())
+            .max()
+            .unwrap_or(0);
+        let fields = [
+            "base".to_string(),
+            bit.string(row, b_name).unwrap_or_default(),
+            radius.to_string(),
+            String::new(),
+            String::new(),
+        ];
+        push_row(&mut out, &fields);
+    }
+
+    // Rollable radius increases (suffix mods on Time-Lost jewels).
+    for (row, add) in &radius_of_mod {
+        let id = mods.string(*row, m_id).unwrap_or_default();
+        let stripped = id.strip_prefix("Crafted").unwrap_or(&id);
+        if let Some(size) = stripped.strip_prefix("JewelRadius").and_then(|s| s.strip_suffix("Size")) {
+            let fields = [
+                "radius_add".to_string(),
+                size.to_string(),
+                add.to_string(),
+                String::new(),
+                String::new(),
+            ];
+            push_row(&mut out, &fields);
+        }
+    }
+    Ok(out)
+}
+
+/// Tables `shape_jewels` needs.
+pub const JEWELS_TABLES: &[&str] = &["PassiveJewelRadii", "BaseItemTypes", "ItemClasses", "Mods", "Stats"];

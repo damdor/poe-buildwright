@@ -82,6 +82,9 @@ export interface Item {
   base?: string;
   rarity?: string;
   mods?: string[];
+  // Jewels only: the tree node id of the jewel socket this jewel sits
+  // in (kind=jewel node). Unset = jewel exists but isn't placed yet.
+  socket?: number;
   // Per-allocation level stamp + level interval (for items the author
   // marks as "swap in at level L"). Mirrors Allocation/Skill semantics.
   level?: number;
@@ -406,6 +409,9 @@ declare global {
 
   interface Window {
     PoE2Plan?: PoE2PlanAPI;
+    // Jewel socketing bridge: pathfind consults this before treating
+    // a click on an allocated jewel-socket node as (de)allocation.
+    PoE2Jewels?: { handleSocketClick: (nodeId: string, cx: number, cy: number) => boolean };
     PoE2SliderDebug?: PoE2SliderDebugAPI;
     PoE2SliderExit?: () => void;
     PoE2SliderExitRestore?: () => void;

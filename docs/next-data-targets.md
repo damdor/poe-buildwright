@@ -117,3 +117,25 @@ Verification at 4.5.4.3, decoder vs the old ooz backend:
 
 Jewels (Session B) are UNBLOCKED. `data/curated/spirit_extras.json`
 can be retired once the full 4.5.4.3 rebake ships.
+
+## Session C: unique-jewel mods & rules (the "advanced" jewel pass)
+
+Jewel v1 (shipped): sockets, placement UX, GGG art, radii, agent
+radius reports. What's deliberately NOT in it — unique jewels
+currently carry no mods, and several need them to matter:
+
+| Unique | What it needs |
+|---|---|
+| Split Personality | rolled variant = which class START it lets you allocate from → planner needs an extra pathfinding root while socketed (precedent: Pathfinder's altStartClass handling in pathfind.ts) |
+| Controlled Metamorphosis | "Passives in Radius can be Allocated without being connected" → radius-scoped free allocation |
+| Against the Darkness / "near keystone X" rolls | variant = which keystone; per-variant stat lines |
+| Voices | allocates the 5 voices_jewel_slot sockets (PassiveJewelSlots ProxySlot rows) |
+| Timeless (Heroic Tragedy / Undying Hate) | AlternateTree* tables: nodes in radius are REWRITTEN (seed-based); huge, needs its own design |
+| Grand Spectrum | per-socketed-count scaling (3 variants already in catalogue) |
+
+Data sources already in hand: items/uniques_variants.tsv (per-variant
+stats for PoB-known uniques), PassiveJewelSlots (proxy/replaces
+mechanics), AlternateTreeExtra* + AlternatePassiveSkills/Additions
+(timeless rewrites), UniqueJewelLimits (equip limits, 12 rows). The
+15 game-only uniques (no PoB data yet) get variants when the PoB pin
+catches up — re-run `bw uniques` then.

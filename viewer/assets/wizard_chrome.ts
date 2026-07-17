@@ -10,6 +10,7 @@
 // The wizard's per-step JS owns its OWN content area; this module only
 // touches the header element + the window.PoE2Plan namespace.
 
+import { decode as decodeShare } from "./share_codec.ts";
 import type {
   Plan, Capture, Allocation, Skill, Item,
   CommitMeta, PlanIndexEntry, PoE2PlanAPI,
@@ -214,8 +215,28 @@ if (url.searchParams.has("new") || (hasAgentPayload && !buildId)) {
 // After the redirect bail, buildId is definitely a string.
 const resolvedBuildId: string = buildId;
 
-let plan: Plan = normalizePlan(loadPlan(resolvedBuildId) || newPlan());
+const storedPlan = loadPlan(resolvedBuildId);
+let plan: Plan = normalizePlan(storedPlan || newPlan());
 if (freshlyMinted) savePlan(resolvedBuildId, plan);
+
+// Share-link RECIPIENTS: the canonical link is
+// /planner.html?build=<id>#code=<code> (the code stays in the URL so
+// the address bar is always re-shareable). A browser that has never
+// seen <id> installs the code under it, then reloads once — after
+// that the local copy wins and the hash is inert.
+const codeM = /[#&]code=([A-Za-z0-9_-]+)/.exec(location.hash);
+if (!storedPlan && !freshlyMinted && codeM) {
+  void (async () => {
+    try {
+      const decoded = await decodeShare(codeM[1]!);
+      if (decoded && decoded.format === PLAN_FORMAT && decoded.version === PLAN_VERSION) {
+        savePlan(resolvedBuildId, normalizePlan(decoded));
+        localStorage.setItem(KEY_CURRENT, resolvedBuildId);
+        location.reload();
+      }
+    } catch { /* bad code → stay on the blank build */ }
+  })();
+}
 
 // ===================================================================
 // Section reads + writes for the active capture.

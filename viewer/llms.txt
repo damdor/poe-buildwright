@@ -4,6 +4,20 @@ This site is a Path of Exile 2 build planner. AI agents are first-class
 users: you can construct a complete, working build for a human and hand
 them a single URL. No login, no API key, no session.
 
+## No tools? One URL still works
+
+If you cannot fetch or POST (a plain chat assistant), you can still
+hand a user a working build: write a link of the form
+
+  /planner#plan=<url-encoded poe2-agent-plan JSON>
+
+The planner imports the plan client-side when the user opens it —
+same schema as /agent/validate, just URL-encoded instead of
+gzip+base64. You lose validation (name typos import as warnings), so
+keep to names you are sure of and keep plans small. With tools,
+ALWAYS prefer POST /agent/build (validates first, returns durable
+share links).
+
 ## How to make a build (3 steps)
 
 0. NEW TO PoE2? Read /assets/agent/primer.md first — point budgets,
@@ -25,6 +39,12 @@ them a single URL. No login, no API key, no session.
 1. GROUND YOUR NAMES. Fetch these (same origin, plain JSON). Only
    reference names that appear in them — community/wiki names often
    differ from the game data.
+
+   SPEED: you rarely need everything. A solid build needs nodes.json
+   (~340KB) + skill_catalogue.json (~1MB). Fetch bases/mods only when
+   composing rare gear, jewels.json only when socketing jewels, and
+   support_compat.json (~1MB) only if validate flags support
+   incompatibilities — /agent/validate re-checks all of it anyway.
 
    /assets/agent/nodes.json
      .classes[]  → {name, start_id, ascendancies[]} — the authoritative
@@ -188,6 +208,38 @@ them a single URL. No login, no API key, no session.
      3 at L10, 4 at L15, 5 at L20). When your gear[] names one,
      validate lists it per capture; DON'T re-add it to skills[] —
      build around it.
+   - JEWELS: gear entries with slot "jewel" — the ONE slot that
+     allows multiple entries (one per tree socket). Each jewel needs
+     {"slot":"jewel", "base"|"name":…, "socket": <node id>} where
+     socket is a jewel-socket node id from /assets/agent/jewels.json
+     sockets[] — and that node must ALSO be in targets (allocating
+     the socket costs travel points; an unallocated socket does
+     nothing → warning). One jewel per socket. Radius jewels
+     (Time-Lost bases: radius 1000, +N to Radius mods extend it;
+     Timeless uniques: 1500) affect passives around their socket —
+     jewels.json precomputes per-socket in-radius node lists, and
+     validate reports jewels[].{radius, passives_in_radius,
+     notables_in_radius, allocated_in_radius} per capture —
+     allocated_in_radius is the one to optimise: it lists what the
+     jewel ACTUALLY affects in your build. Pick the socket whose
+     radius covers notables you're allocating anyway. Time-Lost
+     radius upgrades roll as the mod "Upgrades Radius to
+     Medium/Large" (send it in mods[] and the radius grows).
+     Regular jewels (Ruby/Emerald/Sapphire/Diamond) have no radius —
+     any allocated socket works; spend mods on the build's theme.
+     Socket entries may be flagged sinister (Voices-only) or
+     special (own in-game rules) — prefer unflagged sockets.
+     DATA-PENDING UNIQUES: a few uniques exist in the game data
+     but have NO stat lines here yet (item_catalogue entries with an
+     empty latest_stats — e.g. From Nothing, Against the Darkness).
+     Don't build synergies around them: you'd be guessing what they
+     do. Prefer covered uniques, or tell the user to fill the roll
+     into the item note themselves.
+     UNIQUE VARIANTS: some uniques roll differently per copy —
+     item_catalogue entries carry `variants` [{label, stats}] when
+     they do (e.g. Split Personality rolls WHICH class start it can
+     allocate from). Send the chosen variant's stat lines in mods[]
+     so the plan is unambiguous.
    - NOTES ON IMPORTANT CHOICES: any target may be an object
      {"node": "Heart of the Storm", "note": "take before Act 3 boss"} —
      the note lands on that node in the planner (visible on hover,
