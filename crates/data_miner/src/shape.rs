@@ -2182,6 +2182,56 @@ pub fn shape_jewels(ts: &TableSet) -> Result<String, ShapeError> {
         push_row(&mut out, &fields);
     }
 
+    // Timeless keystone conversions — the DETERMINISTIC part of the
+    // timeless rewrite: ConquerorIndex keys the jewel's rolled
+    // conqueror to its replacement keystone (ConquerorVersion 0 =
+    // current; higher = legacy dupes). Seeded small/notable rewrites
+    // stay out of scope (docs/next-data-targets.md).
+    if let (Some(apd), Some(aps)) = (ts.dat("AlternatePassiveSkills"), ts.schema("AlternatePassiveSkills")) {
+        let ac = |n: &'static str| aps.column(n);
+        if let (Some(c_v), Some(c_n), Some(c_t), Some(c_ci), Some(c_cv), Some(c_st), Some(c_ic)) = (
+            ac("AlternateTreeVersion"), ac("Name"), ac("PassiveType"),
+            ac("ConquerorIndex"), ac("ConquerorVersion"), ac("Stats"), ac("DDSIcon"),
+        ) {
+            let ver_ids = ts.id_list("AlternateTreeVersions");
+            for row in 0..apd.row_count() {
+                // PassiveType is a u32 ARRAY (4-byte elements — not
+                // foreignrow); keystones are [4].
+                let is_keystone = apd
+                    .array_ref(row, c_t)
+                    .ok()
+                    .and_then(|(cnt, off)| (cnt > 0).then(|| {
+                        apd.var()
+                            .get(off..off + 4)
+                            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+                    }).flatten())
+                    == Some(4);
+                if !is_keystone || apd.i32(row, c_cv).unwrap_or(0) != 0 {
+                    continue;
+                }
+                let faction = apd
+                    .foreign(row, c_v)
+                    .ok()
+                    .flatten()
+                    .and_then(|r| ver_ids.get(r as usize).cloned())
+                    .unwrap_or_default();
+                // Stat TEXT needs the csd renderer — deferred; name +
+                // icon are the build-enabling pieces (docs).
+                let _ = c_st;
+                let stat = String::new();
+                let fields = [
+                    "timeless".to_string(),
+                    apd.string(row, c_n).unwrap_or_default(),
+                    faction,
+                    apd.i32(row, c_ci).unwrap_or(0).to_string(),
+                    stat,
+                    apd.string(row, c_ic).unwrap_or_default(),
+                ];
+                push_row(&mut out, &fields);
+            }
+        }
+    }
+
     // Rollable radius increases (suffix mods on Time-Lost jewels).
     for (row, add) in &radius_of_mod {
         let id = mods.string(*row, m_id).unwrap_or_default();
@@ -2201,4 +2251,4 @@ pub fn shape_jewels(ts: &TableSet) -> Result<String, ShapeError> {
 }
 
 /// Tables `shape_jewels` needs.
-pub const JEWELS_TABLES: &[&str] = &["PassiveJewelRadii", "BaseItemTypes", "ItemClasses", "Mods", "Stats"];
+pub const JEWELS_TABLES: &[&str] = &["PassiveJewelRadii", "BaseItemTypes", "ItemClasses", "Mods", "Stats", "AlternatePassiveSkills", "AlternateTreeVersions"];

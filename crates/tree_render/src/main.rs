@@ -509,6 +509,8 @@ fn run() -> Result<(), String> {
             let mut rings: Vec<(String, i64, i64, i64)> = Vec::new(); // name, outer, inner, radius
             let mut bases: Vec<(String, i64)> = Vec::new();
             let mut adds: Vec<(String, i64)> = Vec::new();
+            // (keystone name, faction, conqueror index)
+            let mut timeless: Vec<(String, String, i64)> = Vec::new();
             for line in raw.lines().skip(1) {
                 let c: Vec<&str> = line.split('\t').collect();
                 if c.len() < 3 {
@@ -519,6 +521,11 @@ fn run() -> Result<(), String> {
                     "ring" => rings.push((c[1].to_string(), num(2), num(3), num(4))),
                     "base" => bases.push((c[1].to_string(), num(2))),
                     "radius_add" => adds.push((c[1].to_string(), num(2))),
+                    "timeless" => timeless.push((
+                        c[1].to_string(),
+                        c[2].to_string(),
+                        num(3),
+                    )),
                     _ => {}
                 }
             }
@@ -649,6 +656,24 @@ fn run() -> Result<(), String> {
             // stat (1000); the keystone ITSELF is not allocatable
             // (verified in-game behavior), so keystones are excluded
             // from the lists.
+            // Timeless keystone conversions: deterministic per rolled
+            // conqueror (ConquerorIndex); art ships as TK_<Name>.png.
+            out.push_str("\"timeless_keystones\":[");
+            let san = |n: &str| -> String {
+                n.chars().map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' }).collect()
+            };
+            let mut tfirst = true;
+            for (name, faction, idx) in &timeless {
+                if !tfirst {
+                    out.push(',');
+                }
+                tfirst = false;
+                out.push_str(&format!(
+                    "{{\"name\":{},\"faction\":{},\"conqueror_index\":{idx},\"icon\":\"/assets/sprites/TK_{}.png\"}}",
+                    text::json_str(name), text::json_str(faction), san(name),
+                ));
+            }
+            out.push_str("],");
             out.push_str("\"keystones\":{");
             let kr = 1000i64;
             let mut kfirst = true;
