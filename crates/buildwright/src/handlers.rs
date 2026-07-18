@@ -1623,6 +1623,20 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 },
             ));
         }
+        // Timeless replacement-keystone icons (from the shaped
+        // tree/jewels.tsv timeless rows) → TK_<Name>.png.
+        if let Ok(raw) = std::fs::read_to_string(dir.join("tree/jewels.tsv")) {
+            for line in raw.lines().skip(1) {
+                let c: Vec<&str> = line.split('\t').collect();
+                if c.first() != Some(&"timeless") || c.len() < 6 || c[5].is_empty() {
+                    continue;
+                }
+                // SkillIcons live at their literal lowercased path
+                // (no textures/interface prefix, unlike UIImages).
+                let vpath = c[5].to_ascii_lowercase();
+                jobs.push((format!("TK_{}.png", sanitize(c[1])), vpath));
+            }
+        }
         if let Ok((jh, jrows)) = read_tsv(&dir.join("dat/PassiveJewelUniqueArt.tsv")) {
             let col = |n: &str| jh.iter().position(|h| h == n);
             if let (Some(c_name), Some(c_art)) = (col("Name"), col("JewelArt")) {
