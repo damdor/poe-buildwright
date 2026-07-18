@@ -680,11 +680,11 @@ pub fn shape_asc_overrides(
     let ov = ts
         .dat("AscendancyPassiveSkillOverrides")
         .ok_or("AscendancyPassiveSkillOverrides missing")?;
-    let ovs = ts.schema("AscendancyPassiveSkillOverrides").unwrap();
+    let ovs = ts.schema("AscendancyPassiveSkillOverrides").ok_or("AscendancyPassiveSkillOverrides schema missing")?;
     let ps = ts.dat("PassiveSkills").ok_or("PassiveSkills missing")?;
-    let pss = ts.schema("PassiveSkills").unwrap();
+    let pss = ts.schema("PassiveSkills").ok_or("PassiveSkills schema missing")?;
     let asc = ts.dat("Ascendancy").ok_or("Ascendancy missing")?;
-    let ascs = ts.schema("Ascendancy").unwrap();
+    let ascs = ts.schema("Ascendancy").ok_or("Ascendancy schema missing")?;
     let col = |s: &TableSchema, n: &str, t: &str| -> Result<usize, String> {
         s.column(n).ok_or_else(|| format!("{t}.{n} missing"))
     };
@@ -710,7 +710,7 @@ pub fn shape_asc_overrides(
     // paths, not names).
     let char_names: Vec<String> = {
         let ch = ts.dat("Characters").ok_or("Characters missing")?;
-        let chs = ts.schema("Characters").unwrap();
+        let chs = ts.schema("Characters").ok_or("Characters schema missing")?;
         let c_n = col(chs, "Name", "Characters")?;
         (0..ch.row_count())
             .map(|r| ch.string(r, c_n).unwrap_or_default())
@@ -1967,8 +1967,8 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
 
     // ItemSpirit: BaseItemType row → SpiritGranted.
     let mut spirit: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
-    if let (Some(isd), Some(iss)) = (ts.dat("ItemSpirit"), ts.schema("ItemSpirit")) {
-        if let (Some(c_b), Some(c_s)) = (iss.column("BaseItemType"), iss.column("SpiritGranted")) {
+    if let (Some(isd), Some(iss)) = (ts.dat("ItemSpirit"), ts.schema("ItemSpirit"))
+        && let (Some(c_b), Some(c_s)) = (iss.column("BaseItemType"), iss.column("SpiritGranted")) {
             for row in 0..isd.row_count() {
                 if let Ok(Some(bit_row)) = isd.foreign(row, c_b) {
                     let sp = isd.i32(row, c_s).unwrap_or(0);
@@ -1978,7 +1978,6 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
                 }
             }
         }
-    }
 
     // ModGrantedSkills: Mod row → granted gem's display name
     // (SkillGems row → its BaseItemType → Name).
@@ -1988,8 +1987,8 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
         ts.schema("ModGrantedSkills"),
         ts.dat("SkillGems"),
         ts.schema("SkillGems"),
-    ) {
-        if let (Some(c_mod), Some(c_skill), Some(c_sbit)) = (
+    )
+        && let (Some(c_mod), Some(c_skill), Some(c_sbit)) = (
             mgs.column("Mod"),
             mgs.column("Skill"),
             sgs.column("BaseItemType"),
@@ -2000,16 +1999,13 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
                 else {
                     continue;
                 };
-                if let Ok(Some(gbit)) = sgd.foreign(sg_row as usize, c_sbit) {
-                    if let Ok(name) = bit.string(gbit as usize, c_name) {
-                        if !name.is_empty() {
+                if let Ok(Some(gbit)) = sgd.foreign(sg_row as usize, c_sbit)
+                    && let Ok(name) = bit.string(gbit as usize, c_name)
+                        && !name.is_empty() {
                             mod_grants.insert(mod_row as usize, name);
                         }
-                    }
-                }
             }
         }
-    }
 
     // ItemInherentSkills: BaseItemType row → SkillsGranted (SkillGems
     // row array) → each gem's display name. This is how base sceptres
@@ -2022,8 +2018,8 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
         ts.schema("ItemInherentSkills"),
         ts.dat("SkillGems"),
         ts.schema("SkillGems"),
-    ) {
-        if let (Some(c_b), Some(c_sk), Some(c_sbit)) = (
+    )
+        && let (Some(c_b), Some(c_sk), Some(c_sbit)) = (
             iis.column("BaseItemType"),
             iis.column("SkillsGranted"),
             sgs.column("BaseItemType"),
@@ -2045,7 +2041,6 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
                 }
             }
         }
-    }
 
     let mut out = String::with_capacity(4096);
     out.push_str("base_id\tname\tspirit\tgrants\n");
@@ -2139,11 +2134,10 @@ pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) ->
                 .flatten()
                 .and_then(|sr| stat_ids.get(sr as usize))
                 .is_some_and(|sid| sid == "local_jewel_effect_base_radius");
-            if is_radius_stat {
-                if let Ok(v) = mods.i32(row, cv) {
+            if is_radius_stat
+                && let Ok(v) = mods.i32(row, cv) {
                     radius_of_mod.insert(row, v);
                 }
-            }
         }
     }
 

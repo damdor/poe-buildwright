@@ -25,11 +25,10 @@ fn resolve_frame_url(
     if let Some(s) = sprite_lookup(sprites, name) {
         return Some(format!("/assets/sprites/{}", s.png));
     }
-    if let Some(alias) = portrait_frame_alias(name, kind) {
-        if let Some(s) = sprite_lookup(sprites, &alias) {
+    if let Some(alias) = portrait_frame_alias(name, kind)
+        && let Some(s) = sprite_lookup(sprites, &alias) {
             return Some(format!("/assets/sprites/{}", s.png));
         }
-    }
     None
 }
 
@@ -367,8 +366,8 @@ pub(crate) fn build_tree_data(
         // Renderer skips constrained nodes in hover / search / paths
         // unless state.asc matches uc.a — see isLocked() in the embedded
         // JS. Empty for the ~99% of nodes with no constraint.
-        if !n.unlock_constraint.is_empty() {
-            if let Some((asc, ids_csv)) = n.unlock_constraint.split_once(':') {
+        if !n.unlock_constraint.is_empty()
+            && let Some((asc, ids_csv)) = n.unlock_constraint.split_once(':') {
                 let _ = write!(out, r#","uc":{{"a":{},"n":["#, json_str(asc));
                 let mut first_uc = true;
                 for id_part in ids_csv.split(',').filter(|s| !s.is_empty()) {
@@ -380,7 +379,6 @@ pub(crate) fn build_tree_data(
                 }
                 out.push_str("]}");
             }
-        }
         if !n.stats.is_empty() {
             let _ = write!(out, r#","s":{}"#, json_str(&n.stats));
         }

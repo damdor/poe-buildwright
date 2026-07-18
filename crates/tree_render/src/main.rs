@@ -616,7 +616,7 @@ fn run() -> Result<(), String> {
                 }
                 out.push_str(",\"in_radius\":{");
                 let mut rfirst = true;
-                let mut emit_list = |key: String, lo2: f64, hi2: f64, out: &mut String, rfirst: &mut bool| {
+                let emit_list = |key: String, lo2: f64, hi2: f64, out: &mut String, rfirst: &mut bool| {
                     let mut ids: Vec<u32> = Vec::new();
                     for m in &nodes {
                         if m.id == n.id || !affectable(m) {

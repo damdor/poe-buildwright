@@ -450,9 +450,10 @@ fn edge_id(e: &json::Value, k: &str) -> Option<i64> {
 }
 
 /// Renderer connection orbit, matching PoB's `passivetree_ggg.lua` exactly:
-///   * no `orbit` field                    ⇒ 0 (straight line)
-///   * `orbit == 0` and no `orbitX/orbitY`  ⇒ i32::MAX (hidden/proxy)
-///   * otherwise                           ⇒ `(orbit + 1) * arcDirection`
+/// * no `orbit` field ⇒ 0 (straight line)
+/// * `orbit == 0` and no `orbitX/orbitY` ⇒ i32::MAX (hidden/proxy)
+/// * otherwise ⇒ `(orbit + 1) * arcDirection`
+///
 /// where the radius index is `orbit + 1` (GGG stores it one less) and
 /// `arcDirection` is `cross > 0 ? -1 : 1` for the from→target sweep about
 /// the arc centre. The (a,b) order MUST be source→target (data.json lists
