@@ -31,7 +31,7 @@ fn main() -> ExitCode {
     }
 
     let mut files = Vec::new();
-    if let Err(e) = collect_bundles(&bundles2, &bundles2, &mut files) {
+    if let Err(e) = collect_bundles(&bundles2, &mut files) {
         eprintln!("walk failed: {e}");
         return ExitCode::from(1);
     }
@@ -90,13 +90,13 @@ fn main() -> ExitCode {
     }
 }
 
-fn collect_bundles(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+fn collect_bundles(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         let ft = entry.file_type()?;
         if ft.is_dir() {
-            collect_bundles(root, &path, out)?;
+            collect_bundles(&path, out)?;
         } else if ft.is_file() && is_bundle_file(&path) {
             out.push(path);
         }
