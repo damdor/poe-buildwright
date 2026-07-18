@@ -2094,7 +2094,7 @@ pub const GRANTS_TABLES: &[&str] = &[
 ///   base        name 0                   — radius-less jewel bases
 ///   radius_add  name add                 — rollable "+N to radius" mods
 ///                                           (Medium +150, Large +300)
-pub fn shape_jewels(ts: &TableSet) -> Result<String, ShapeError> {
+pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) -> Result<String, ShapeError> {
     let mut out = String::with_capacity(2048);
     out.push_str("kind\tname\ta\tb\tc\n");
 
@@ -2215,10 +2215,28 @@ pub fn shape_jewels(ts: &TableSet) -> Result<String, ShapeError> {
                     .flatten()
                     .and_then(|r| ver_ids.get(r as usize).cloned())
                     .unwrap_or_default();
-                // Stat TEXT needs the csd renderer — deferred; name +
-                // icon are the build-enabling pieces (docs).
-                let _ = c_st;
-                let stat = String::new();
+                // Stats is a FOREIGNROW array into Stats; values ride
+                // in Stat1..Stat6. Rendered through the same csd chain
+                // as tree nodes, so the text matches in-game wording.
+                let stat_rows = array_rows(&apd, row, c_st);
+                let stat_ids = ts.id_list("Stats");
+                let pairs: Vec<(String, i64)> = stat_rows
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, sr)| {
+                        let id = stat_ids.get(*sr)?.clone();
+                        let v = ac(match i {
+                            0 => "Stat1", 1 => "Stat2", 2 => "Stat3",
+                            3 => "Stat4", 4 => "Stat5", _ => "Stat6",
+                        })
+                        .and_then(|c| apd.i32(row, c).ok())
+                        .unwrap_or(1) as i64;
+                        Some((id, v))
+                    })
+                    .collect();
+                let stat = sd
+                    .map(|d| d.render(&pairs).join(" · "))
+                    .unwrap_or_default();
                 let fields = [
                     "timeless".to_string(),
                     apd.string(row, c_n).unwrap_or_default(),
