@@ -414,11 +414,14 @@ import type { Item } from "../../../../types/poe2.d.ts";
     rings: Record<string, { outer: number; inner: number; radius: number }>;
     bases: Record<string, { radius: number }>;
     radius_rolls: Record<string, number>;
-    uniques?: Record<string, { radius?: number; ring?: string }>;
+    uniques?: Record<string, { radius?: number; ring?: string; faction?: string; conquerors?: Record<string, number> }>;
     sockets: JewelSocket[];
     /** Keystone-proximity lists (From Nothing): nodes within radius
      *  1000 of each keystone, the keystone itself excluded. */
     keystones?: Record<string, { id: number; x: number; y: number; in_radius: number[] }>;
+    /** Timeless conversions: faction + conqueror_index → replacement
+     *  keystone (name, csd-rendered stats, icon). */
+    timeless_keystones?: { name: string; faction: string; conqueror_index: number; stats: string; icon: string }[];
   }
   let jewelData: JewelData | null = null;
   const socketById = new Map<number, JewelSocket>();
@@ -684,6 +687,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
   function syncJewelOverlays(): void {
     if (!jewelOverlay || !jewelData) return;
     syncSinisterGlow();
+    syncConversions();
     const items = shownItems().filter(it => (it.slot ?? "") === "jewel");
     const wanted = new Map<number, Item>();
     for (const it of items) {
@@ -740,6 +744,19 @@ import type { Item } from "../../../../types/poe2.d.ts";
         el.style.height = d + "px";
         el.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
           (sk.y * sc + state.ty - d / 2) + "px, 0)";
+      }
+    }
+    if (convEls.size && jewelData?.keystones) {
+      const sc = state.scale;
+      const byId = new Map(Object.values(jewelData.keystones).map(k => [String(k.id), k]));
+      for (const [nid, el] of convEls) {
+        const ks = byId.get(nid);
+        if (!ks) continue;
+        const d = 68 * sc;   // keystone icon footprint, tree units
+        el.style.width = d + "px";
+        el.style.height = d + "px";
+        el.style.transform = "translate3d(" + (ks.x * sc + state.tx - d / 2) + "px, " +
+          (ks.y * sc + state.ty - d / 2) + "px, 0)";
       }
     }
     if (artEls.size || ringEls.size) {
@@ -915,6 +932,15 @@ import type { Item } from "../../../../types/poe2.d.ts";
       openPicker(id, cx, cy);
       return true;
     },
+    // Tree tooltip: a converted keystone says what it becomes.
+    conversionForKeystone: (nodeId: string): { title: string; lines: string[] } | null => {
+      const conv = convCache.get(nodeId) ?? convertedKeystones().get(nodeId);
+      if (!conv) return null;
+      return {
+        title: "Becomes " + conv.name + " (" + conv.jewel + " — " + conv.conqueror + ")",
+        lines: conv.stats ? conv.stats.split(" · ") : ["(stat text pending)"],
+      };
+    },
     // Tree tooltip: what's in this socket / what state is it in.
     infoForSocket: (nodeId: string): { title: string; lines: string[] } | null => {
       const id = Number(nodeId);
@@ -945,6 +971,73 @@ import type { Item } from "../../../../types/poe2.d.ts";
       return null;
     },
   };
+
+  // --- Timeless conversions: keystones in a socketed timeless
+  // jewel's radius BECOME the faction keystone keyed by the rolled
+  // conqueror. Everything resolves from jewels.json per bake:
+  // faction + conqueror indices on the unique, replacement
+  // name/stats/icon in timeless_keystones, geometry from keystone
+  // and socket positions. ---
+  interface TimelessConv { name: string; stats: string; icon: string; jewel: string; conqueror: string }
+  function timelessConversionFor(it: Item): TimelessConv | null {
+    if (!jewelData) return null;
+    const uname = it.uniqueName || it.name;
+    const u = uname ? jewelData.uniques?.[uname] : undefined;
+    if (!u?.faction || !u.conquerors) return null;
+    // The rolled conqueror rides in the item's variant mods.
+    const modText = (it.mods ?? []).join(" ");
+    const conq = Object.keys(u.conquerors).find(c => modText.includes(c));
+    if (!conq) return null;
+    const idx = u.conquerors[conq]!;
+    const tk = jewelData.timeless_keystones?.find(
+      t => t.faction === u.faction && t.conqueror_index === idx);
+    return tk ? { name: tk.name, stats: tk.stats, icon: tk.icon, jewel: uname!, conqueror: conq } : null;
+  }
+  /** node id (string) → conversion, for every keystone inside a
+   *  socketed+allocated timeless jewel's radius. */
+  function convertedKeystones(): Map<string, TimelessConv> {
+    const out = new Map<string, TimelessConv>();
+    if (!jewelData?.keystones) return out;
+    for (const it of shownItems()) {
+      if ((it.slot ?? "") !== "jewel" || it.socket == null) continue;
+      if (!state.selected.has(String(it.socket))) continue;
+      const conv = timelessConversionFor(it);
+      if (!conv) continue;
+      const sock = socketById.get(it.socket);
+      const r = radiusForJewel(it);
+      if (!sock || r <= 0) continue;
+      const rr = r * r;
+      for (const kn in jewelData.keystones) {
+        const ks = jewelData.keystones[kn]!;
+        const dx = ks.x - sock.x, dy = ks.y - sock.y;
+        if (dx * dx + dy * dy <= rr) out.set(String(ks.id), conv);
+      }
+    }
+    return out;
+  }
+  // Replacement-keystone art overlaid on converted keystones.
+  const convEls = new Map<string, HTMLImageElement>();
+  let convCache = new Map<string, TimelessConv>();
+  function syncConversions(): void {
+    if (!jewelOverlay) return;
+    convCache = convertedKeystones();
+    for (const [nid, el] of convEls) {
+      if (!convCache.has(nid)) { el.remove(); convEls.delete(nid); }
+    }
+    for (const [nid, conv] of convCache) {
+      let img = convEls.get(nid);
+      if (!img) {
+        img = document.createElement("img");
+        img.className = "jewel-in-socket";   // same camera-synced style
+        img.alt = "";
+        img.addEventListener("error", () => { img!.style.display = "none"; });
+        jewelOverlay.appendChild(img);
+        convEls.set(nid, img);
+      }
+      if (!img.src.endsWith(conv.icon)) { img.src = conv.icon; img.style.display = ""; }
+      img.title = "Becomes " + conv.name;
+    }
+  }
 
   // --- Locate ping: pan to a jewel's socket + one glow breath ---
   function pingSocket(socketId: number): void {
