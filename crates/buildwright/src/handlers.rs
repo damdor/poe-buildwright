@@ -442,6 +442,7 @@ const DEFAULT_TABLES: &[&str] = &[
     // Item-granted skills + the spirit economy (docs/next-data-targets.md).
     "ItemSpirit",
     "ItemInherentSkills",
+    "UniqueStashLayout",
     "ModGrantedSkills",
     "GrantedSkillSocketNumbers",
 ];
