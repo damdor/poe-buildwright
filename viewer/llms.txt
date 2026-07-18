@@ -237,8 +237,15 @@ share links).
      - Controlled Metamorphosis: passives inside its ring allocate
        WITHOUT connection (cost 1 each); they never connect anything
        else to your tree.
-     - Voices: while socketed in an allocated socket, the sinister
-       sockets count as allocated (jewels placed there stop warning).
+     - Voices: while socketed in an allocated socket, its ROLL
+       ("Allocates N Sinister Jewel sockets", send in mods[]) makes
+       the N sinister sockets NEAREST its own socket count as
+       allocated; others warn jewel.sinister_not_activated.
+     - From Nothing: rolls a KEYSTONE ("Passives in Radius of <K>
+       can be Allocated without being connected", send in mods[]) —
+       passives within 1000 of that keystone allocate connection-
+       free at cost 1; the keystone ITSELF cannot be allocated.
+       Keystone lists ship in jewels.json `keystones`.
      DATA-PENDING UNIQUES: a few uniques exist in the game data
      but have NO stat lines here yet (item_catalogue entries with an
      empty latest_stats — e.g. From Nothing, Against the Darkness).

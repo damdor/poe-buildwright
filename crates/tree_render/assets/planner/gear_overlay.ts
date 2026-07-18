@@ -416,6 +416,9 @@ import type { Item } from "../../../../types/poe2.d.ts";
     radius_rolls: Record<string, number>;
     uniques?: Record<string, { radius?: number; ring?: string }>;
     sockets: JewelSocket[];
+    /** Keystone-proximity lists (From Nothing): nodes within radius
+     *  1000 of each keystone, the keystone itself excluded. */
+    keystones?: Record<string, { id: number; x: number; y: number; in_radius: number[] }>;
   }
   let jewelData: JewelData | null = null;
   const socketById = new Map<number, JewelSocket>();
@@ -484,6 +487,21 @@ import type { Item } from "../../../../types/poe2.d.ts";
     const u = it.uniqueName || it.name;
     return (u ? jewelData.uniques?.[u]?.ring : null) ?? null;
   }
+  // Where a jewel's effect circle sits: socket-centered by default;
+  // keystone-centered for "Radius of <Keystone>" rules (From Nothing).
+  function ringSpecFor(it: Item): { x: number; y: number; r: number } | null {
+    if (!jewelData || it.socket == null) return null;
+    for (const m of it.mods ?? []) {
+      const km = /Passives in Radius of (.+?) can be Allocated/i.exec(m);
+      if (km) {
+        const ks = jewelData.keystones?.[km[1]!.trim()];
+        return ks ? { x: ks.x, y: ks.y, r: 1000 } : null;
+      }
+    }
+    const sock = socketById.get(it.socket);
+    const r = radiusForJewel(it);
+    return sock && r > 0 ? { x: sock.x, y: sock.y, r } : null;
+  }
   function radiusForJewel(it: Item): number {
     if (!jewelData) return 0;
     const u = it.uniqueName || it.name;
@@ -526,12 +544,38 @@ import type { Item } from "../../../../types/poe2.d.ts";
   const socketAllocated = (id: number): boolean => {
     if (state.selected.has(String(id))) return true;
     const sk = socketById.get(id);
-    return !!(sk?.sinister && voicesActive());
+    return !!(sk?.sinister && activeSinisterIds().has(id));
   };
-  function voicesActive(): boolean {
-    return shownItems().some(it => (it.slot ?? "") === "jewel"
+  function voicesItem(): Item | undefined {
+    return shownItems().find(it => (it.slot ?? "") === "jewel"
       && (it.name || it.uniqueName) === "Voices"
       && it.socket != null && state.selected.has(String(it.socket)));
+  }
+  function voicesActive(): boolean { return !!voicesItem(); }
+  // The roll decides HOW MANY sinister sockets activate (2/3/4).
+  // Which ones: the N nearest to the Voices socket — deterministic;
+  // the game data carries no explicit mapping (assumption, noted).
+  function voicesCount(it: Item | undefined): number {
+    for (const m of it?.mods ?? []) {
+      const mm = /Allocates (\d+) Sinister/i.exec(m);
+      if (mm) return Number(mm[1]);
+    }
+    const u = uniques.find(x => x.name === "Voices");
+    const mm = /Allocates (\d+) Sinister/i.exec(u?.latest_stats || "");
+    return mm ? Number(mm[1]) : 0;
+  }
+  function activeSinisterIds(): Set<number> {
+    const v = voicesItem();
+    if (!v || !jewelData) return new Set();
+    const home = socketById.get(v.socket!);
+    if (!home) return new Set();
+    const n = voicesCount(v);
+    const sins = jewelData.sockets
+      .filter(sk => sk.sinister)
+      .map(sk => ({ id: sk.id, d: (sk.x - home.x) ** 2 + (sk.y - home.y) ** 2 }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, n);
+    return new Set(sins.map(x => x.id));
   }
 
   // ---------------------------------------------------------------
@@ -545,6 +589,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
   //   Voices                   → sinister sockets activate
   // ---------------------------------------------------------------
   const ALT_START_RE = /from the (\w+)'s starting point/i;
+  const KEYSTONE_RE = /Passives in Radius of (.+?) can be Allocated/i;
   function publishJewelRules(): void {
     const starts: string[] = [];
     const freeAlloc: string[] = [];
@@ -555,6 +600,20 @@ import type { Item } from "../../../../types/poe2.d.ts";
       for (const m of it.mods ?? []) {
         const sm = ALT_START_RE.exec(m);
         if (sm) starts.push(sm[1]!);
+      }
+      // From Nothing: free allocation around the ROLLED keystone
+      // (radius 1000, keystone itself excluded — it can't be
+      // allocated). Tied to this jewel's socket for lifecycle.
+      for (const m of it.mods ?? []) {
+        const km = KEYSTONE_RE.exec(m);
+        if (!km) continue;
+        const ks = jewelData?.keystones?.[km[1]!.trim()];
+        if (ks) {
+          const ids = ks.in_radius.map(String);
+          freeAlloc.push(...ids);
+          freeAllocBySocket[String(it.socket)] =
+            (freeAllocBySocket[String(it.socket)] ?? []).concat(ids);
+        }
       }
       // Metamorphosis: free allocation covers the full DISC of the
       // ring's Radius field ("Passives in Radius can be Allocated…"),
@@ -606,9 +665,10 @@ import type { Item } from "../../../../types/poe2.d.ts";
   const sinisterGlowEls = new Map<number, HTMLElement>();
   function syncSinisterGlow(): void {
     if (!jewelOverlay || !jewelData) return;
-    const on = voicesActive();
+    const active = activeSinisterIds();
     for (const sk of jewelData.sockets) {
       if (!sk.sinister) continue;
+      const on = active.has(sk.id);
       let el = sinisterGlowEls.get(sk.id);
       if (on && !el) {
         el = document.createElement("div");
@@ -636,7 +696,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
     }
     for (const [sid, el] of ringEls) {
       const it = wanted.get(sid);
-      if (!it || radiusForJewel(it) <= 0) { el.remove(); ringEls.delete(sid); }
+      if (!it || !ringSpecFor(it)) { el.remove(); ringEls.delete(sid); }
     }
     for (const [sid, it] of wanted) {
       let img = artEls.get(sid);
@@ -662,8 +722,7 @@ import type { Item } from "../../../../types/poe2.d.ts";
         applyArtChain(img, jewelArtChain(it));
       }
       img.title = it.name || it.base || "jewel";
-      const r = radiusForJewel(it);
-      if (r > 0 && !ringEls.get(sid)) {
+      if (ringSpecFor(it) && !ringEls.get(sid)) {
         const ring = document.createElement("div");
         ring.className = "jewel-ring-art";
         jewelOverlay.appendChild(ring);
@@ -695,14 +754,14 @@ import type { Item } from "../../../../types/poe2.d.ts";
       }
       const items = shownItems().filter(it => (it.slot ?? "") === "jewel");
       for (const [sid, el] of ringEls) {
-        const sk = socketById.get(sid)!;
         const it = items.find(i => i.socket === sid);
-        if (!it) continue;
-        const d = 2 * radiusForJewel(it) * sc;
+        const spec = it ? ringSpecFor(it) : null;
+        if (!spec) continue;
+        const d = 2 * spec.r * sc;
         el.style.width = d + "px";
         el.style.height = d + "px";
-        el.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
-          (sk.y * sc + state.ty - d / 2) + "px, 0)";
+        el.style.transform = "translate3d(" + (spec.x * sc + state.tx - d / 2) + "px, " +
+          (spec.y * sc + state.ty - d / 2) + "px, 0)";
       }
     }
     requestAnimationFrame(tickJewelOverlays);
@@ -875,9 +934,11 @@ import type { Item } from "../../../../types/poe2.d.ts";
       if (sk.sinister) {
         return {
           title: "Sinister socket",
-          lines: [voicesActive()
+          lines: [activeSinisterIds().has(id)
             ? "Active via Voices — click to socket a jewel"
-            : "Only active while a Voices jewel is socketed"],
+            : voicesActive()
+              ? "Not among the " + voicesCount(voicesItem()) + " sockets this Voices roll activates"
+              : "Only active while a Voices jewel is socketed"],
         };
       }
       if (socketAllocated(id)) return { title: "Empty jewel socket", lines: ["Click to socket a jewel"] };
@@ -930,8 +991,8 @@ import type { Item } from "../../../../types/poe2.d.ts";
     const jl = shownItems().filter(it => (it.slot ?? "") === "jewel");
     const it = jl[Number(row.dataset.jewelIdx)];
     if (it && it.socket != null) {
-      const sock = socketById.get(it.socket);
-      if (sock) showPreviewRing(sock.x, sock.y, radiusForJewel(it));
+      const spec = ringSpecFor(it);
+      if (spec) showPreviewRing(spec.x, spec.y, spec.r);
     }
   });
   listEl.addEventListener("mouseout", e => {
@@ -1041,10 +1102,19 @@ import type { Item } from "../../../../types/poe2.d.ts";
   const variantSel = document.createElement("select");
   variantWrap.appendChild(variantSel);
   popInput.parentElement?.insertAdjacentElement("afterend", variantWrap);
+  const FN_LINE = (k: string): string =>
+    "Passives in Radius of " + k + " can be Allocated without being connected to your tree";
   function currentVariants(): { label: string; stats: string }[] {
     if (!draftUnique) return [];
     const u = uniques.find(x => x.name === draftUnique);
-    return u?.variants ?? [];
+    if (u?.variants?.length) return u.variants;
+    // From Nothing rolls WHICH keystone — the domain is every
+    // keystone on the tree (our own data), so the picker exists even
+    // while the unique's stats are pending upstream.
+    if (draftUnique === "From Nothing" && jewelData?.keystones) {
+      return Object.keys(jewelData.keystones).sort().map(k => ({ label: k, stats: FN_LINE(k) }));
+    }
+    return [];
   }
   // Uniques the data doesn't cover yet (stats pending the PoB pin —
   // e.g. From Nothing) still ROLL — a hint steers those rolls into
