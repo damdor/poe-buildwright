@@ -1022,7 +1022,17 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let tsv = match dataset.as_str() {
         "bases" => data_miner::shape::shape_bases(&ts).map_err(|e| e.to_string())?,
         "grants" => data_miner::shape::shape_item_grants(&ts).map_err(|e| e.to_string())?,
-        "jewels" => data_miner::shape::shape_jewels(&ts).map_err(|e| e.to_string())?,
+        "jewels" => {
+            // Keystone stat text renders through the same csd chain
+            // the tree uses (best-effort — names/icons still ship if
+            // the chain is unavailable).
+            let mut sd = data_miner::csd::StatDescriptions::new();
+            let mut seen = std::collections::HashSet::new();
+            for path in data_miner::shape::TREE_STAT_CSD {
+                let _ = load_csd_chain(&client, &index, path, &mut seen, &mut sd);
+            }
+            data_miner::shape::shape_jewels(&ts, Some(&sd)).map_err(|e| e.to_string())?
+        }
         "gems" => data_miner::shape::shape_gems(&ts).map_err(|e| e.to_string())?,
         "active_skills" => {
             data_miner::shape::shape_active_skills(&ts).map_err(|e| e.to_string())?

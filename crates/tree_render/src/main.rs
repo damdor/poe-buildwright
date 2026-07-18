@@ -509,8 +509,8 @@ fn run() -> Result<(), String> {
             let mut rings: Vec<(String, i64, i64, i64)> = Vec::new(); // name, outer, inner, radius
             let mut bases: Vec<(String, i64)> = Vec::new();
             let mut adds: Vec<(String, i64)> = Vec::new();
-            // (keystone name, faction, conqueror index)
-            let mut timeless: Vec<(String, String, i64)> = Vec::new();
+            // (keystone name, faction, conqueror index, stat text)
+            let mut timeless: Vec<(String, String, i64, String)> = Vec::new();
             for line in raw.lines().skip(1) {
                 let c: Vec<&str> = line.split('\t').collect();
                 if c.len() < 3 {
@@ -525,6 +525,7 @@ fn run() -> Result<(), String> {
                         c[1].to_string(),
                         c[2].to_string(),
                         num(3),
+                        c.get(4).unwrap_or(&"").to_string(),
                     )),
                     _ => {}
                 }
@@ -663,14 +664,14 @@ fn run() -> Result<(), String> {
                 n.chars().map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' }).collect()
             };
             let mut tfirst = true;
-            for (name, faction, idx) in &timeless {
+            for (name, faction, idx, stats) in &timeless {
                 if !tfirst {
                     out.push(',');
                 }
                 tfirst = false;
                 out.push_str(&format!(
-                    "{{\"name\":{},\"faction\":{},\"conqueror_index\":{idx},\"icon\":\"/assets/sprites/TK_{}.png\"}}",
-                    text::json_str(name), text::json_str(faction), san(name),
+                    "{{\"name\":{},\"faction\":{},\"conqueror_index\":{idx},\"stats\":{},\"icon\":\"/assets/sprites/TK_{}.png\"}}",
+                    text::json_str(name), text::json_str(faction), text::json_str(stats), san(name),
                 ));
             }
             out.push_str("],");
