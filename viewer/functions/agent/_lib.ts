@@ -122,6 +122,9 @@ export interface CapReport {
   jewels?: {
     name?: string; socket: number; socket_name?: string; radius?: number;
     passives_in_radius?: number; notables_in_radius?: string[];
+    /** Timeless jewels: keystones inside the radius and what each
+     *  BECOMES under the rolled conqueror (name + full stat text). */
+    keystones_in_radius_become?: { keystone: string; becomes: string; stats: string }[];
     /** In-radius passives that are ALLOCATED this capture — what the
      *  jewel actually affects in this build. */
     allocated_in_radius?: string[];
@@ -311,9 +314,10 @@ export async function runValidation(
     rings?: Record<string, { outer: number; inner: number; radius: number }>;
     bases?: Record<string, { radius: number }>;
     radius_rolls?: Record<string, number>;
-    uniques?: Record<string, { radius?: number; ring?: string }>;
+    uniques?: Record<string, { radius?: number; ring?: string; faction?: string; conquerors?: Record<string, number> }>;
     sockets?: JewelSocketData[];
     keystones?: Record<string, { id: number; x: number; y: number; in_radius: number[] }>;
+    timeless_keystones?: { name: string; faction: string; conqueror_index: number; stats: string; icon: string }[];
   }
   let jd: JewelsData = {};
   try {
@@ -936,6 +940,34 @@ export async function runValidation(
         if (sock.name) entry.socket_name = sock.name;
         // Surface the pathing rule the jewel grants, so agents know
         // WHY an alt-start or a disconnected allocation validated.
+        // Timeless: resolve faction (unique data) + rolled conqueror
+        // (item mods) → replacement keystone; list every keystone the
+        // radius covers with what it becomes.
+        const uj = g.name ? jd.uniques?.[g.name] : undefined;
+        if (uj?.faction && uj.conquerors && jd.keystones && r > 0) {
+          const modText = (g.mods ?? []).join(" ");
+          const conq = Object.keys(uj.conquerors).find(c2 => modText.includes(c2));
+          const tk = conq ? jd.timeless_keystones?.find(
+            t => t.faction === uj.faction && t.conqueror_index === uj.conquerors![conq]!) : undefined;
+          if (conq && tk) {
+            entry.rule = "timeless:" + uj.faction + ":" + conq;
+            const rr = r * r;
+            const become: { keystone: string; becomes: string; stats: string }[] = [];
+            for (const kn in jd.keystones) {
+              const ks = jd.keystones[kn]!;
+              const dx = ks.x - (sock.x ?? 0), dy = ks.y - (sock.y ?? 0);
+              if (dx * dx + dy * dy <= rr) become.push({ keystone: kn, becomes: tk.name, stats: tk.stats });
+            }
+            if (become.length) entry.keystones_in_radius_become = become;
+          } else if (!conq) {
+            diagnostics.push({
+              code: "jewel.timeless_conqueror_unstated", severity: "warning",
+              message: "capture " + (i + 1) + ": '" + label + "' — state the rolled conqueror in mods[] (" +
+                Object.keys(uj.conquerors).join("/") + ") to resolve keystone conversions",
+              capture: i + 1, jewel: label,
+            });
+          }
+        }
         const startMod = (g.mods ?? []).map(m => ALT_START_RE.exec(m)).find(Boolean);
         if (startMod) entry.rule = "alt_start:" + startMod[1];
         else if ((g.mods ?? []).some(m => /without being connected/i.test(m)) || /Metamorphosis/.test(label)) entry.rule = "free_alloc_in_ring";

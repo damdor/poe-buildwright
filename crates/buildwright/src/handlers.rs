@@ -3613,8 +3613,17 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             // agents can pick WHICH roll ("Split Personality: Warrior"
             // = allocate from the Warrior start).
             if let Some(vlist) = variants_by_name.get(&name) {
-                let labels: std::collections::BTreeSet<&str> =
-                    vlist.iter().map(|(l, _)| l.as_str()).collect();
+                // FIRST-APPEARANCE order = variant_index order (the
+                // TSV is index-sorted). Ordinal position is load-
+                // bearing: timeless conqueror rolls map to
+                // ConquerorIndex by position, so alphabetizing here
+                // would scramble the keystone conversions.
+                let mut labels: Vec<&str> = Vec::new();
+                for (l, _) in vlist {
+                    if !labels.contains(&l.as_str()) {
+                        labels.push(l.as_str());
+                    }
+                }
                 if labels.len() > 1 {
                     let arr: Vec<json::Value> = labels
                         .iter()

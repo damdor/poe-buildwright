@@ -263,6 +263,14 @@ export function showTooltip(id: string, cx: number, cy: number): void {
   // Jewel sockets: show WHAT sits in them (name + mod lines + any
   // pathing rule), or the socket's state — gear_overlay owns the
   // jewel model and serves it over the PoE2Jewels bridge.
+  if (n.k === 'keystone') {
+    const conv = window.PoE2Jewels?.conversionForKeystone?.(String(id));
+    if (conv) {
+      html += '<div class="tt-note-section"><div class="tt-note-head">' + esc(conv.title) + '</div>';
+      for (const line of conv.lines) html += '<div class="tt-mod">' + esc(line) + '</div>';
+      html += '</div>';
+    }
+  }
   if (n.k === 'jewel') {
     const info = window.PoE2Jewels?.infoForSocket?.(String(id));
     if (info) {

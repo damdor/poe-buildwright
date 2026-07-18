@@ -226,12 +226,30 @@ try {
   const jewelsPath = "viewer/assets/agent/jewels.json";
   const jw = JSON.parse(readFileSync(jewelsPath, "utf-8"));
   const uniques = {};
+  // Faction ids come from the mined timeless_keystones themselves, so
+  // a future faction (or rename) flows through without code changes.
+  const factions = [...new Set((jw.timeless_keystones ?? []).map(t => t.faction))];
+  const factionOf = (text) => {
+    const m = /Conquered by the (\w+)/.exec(text);
+    if (!m) return null;
+    const w = m[1];
+    return factions.find(f => f.startsWith(w) || w.startsWith(f)) ?? null;
+  };
   for (const u of itemCat.uniques ?? []) {
     if (u.slot !== "jewel") continue;
     const text = u.latest_stats || "";
     const ringM = /in (\w[\w]*) Ring/.exec(text);
     if (ringM && jw.rings[ringM[1]]) uniques[u.name] = { ring: ringM[1] };
     else if (u.base === "Timeless Jewel") uniques[u.name] = { radius: 1500 };
+    // Timeless: faction + conqueror→index (variant ORDER is index
+    // order — preserved by the catalogue emitter on purpose).
+    const fac = factionOf(text);
+    if (fac) {
+      const e = uniques[u.name] ?? (uniques[u.name] = {});
+      e.faction = fac;
+      e.conquerors = {};
+      (u.variants ?? []).forEach((v, i) => { e.conquerors[v.label] = i + 1; });
+    }
   }
   jw.uniques = uniques;
   writeFileSync(jewelsPath, JSON.stringify(jw));

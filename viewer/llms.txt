@@ -241,6 +241,14 @@ share links).
        ("Allocates N Sinister Jewel sockets", send in mods[]) makes
        the N sinister sockets NEAREST its own socket count as
        allocated; others warn jewel.sinister_not_activated.
+     - Timeless jewels (Heroic Tragedy, Undying Hate): keystones in
+       radius BECOME the faction keystone keyed by the rolled
+       conqueror — send the roll line naming the conqueror in
+       mods[] (the variant stats). validate reports
+       jewels[].keystones_in_radius_become with the replacement's
+       full stat text; jewels.json timeless_keystones is the table.
+       Seeded small/notable rewrites are NOT modeled — don't claim
+       specific outcomes for non-keystone nodes in radius.
      - From Nothing: rolls a KEYSTONE ("Passives in Radius of <K>
        can be Allocated without being connected", send in mods[]) —
        passives within 1000 of that keystone allocate connection-

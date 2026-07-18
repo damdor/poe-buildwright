@@ -416,6 +416,9 @@ declare global {
       /** Tooltip payload for a jewel-socket node: the socketed jewel's
        *  name/mods/rule, or the socket's state (empty / sinister). */
       infoForSocket?: (nodeId: string) => { title: string; lines: string[] } | null;
+      /** Timeless conversion for a keystone node inside a socketed
+       *  timeless jewel's radius ("becomes X"), or null. */
+      conversionForKeystone?: (nodeId: string) => { title: string; lines: string[] } | null;
     };
     // Jewel-granted pathing rules for the ACTIVE capture, published
     // by gear_overlay and consumed by pathfind: extra class-start
