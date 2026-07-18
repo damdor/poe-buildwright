@@ -641,7 +641,43 @@ fn run() -> Result<(), String> {
                 }
                 out.push_str("}}");
             }
-            out.push_str("]}\n");
+            out.push_str("],");
+            // Keystone-proximity lists (From Nothing: "Passives in
+            // Radius of <Keystone> can be Allocated without being
+            // connected"). Radius = the mined
+            // JewelUniqueAllocateDisconnectedPassivesAroundKeystone
+            // stat (1000); the keystone ITSELF is not allocatable
+            // (verified in-game behavior), so keystones are excluded
+            // from the lists.
+            out.push_str("\"keystones\":{");
+            let kr = 1000i64;
+            let mut kfirst = true;
+            for n in &nodes {
+                if n.kind != "keystone" || n.name.is_empty() || !n.ascendancy.is_empty() {
+                    continue;
+                }
+                let mut ids: Vec<u32> = Vec::new();
+                let rr = (kr * kr) as f64;
+                for m in &nodes {
+                    if m.id == n.id || m.kind == "keystone" || !affectable(m) {
+                        continue;
+                    }
+                    let (dx, dy) = (m.x - n.x, m.y - n.y);
+                    if dx * dx + dy * dy <= rr {
+                        ids.push(m.id);
+                    }
+                }
+                if !kfirst {
+                    out.push(',');
+                }
+                kfirst = false;
+                let list: Vec<String> = ids.iter().map(u32::to_string).collect();
+                out.push_str(&format!(
+                    "{}:{{\"id\":{},\"x\":{:.1},\"y\":{:.1},\"in_radius\":[{}]}}",
+                    text::json_str(&n.name), n.id, n.x, n.y, list.join(","),
+                ));
+            }
+            out.push_str("}}\n");
             let jewels_path = agent_dir.join("jewels.json");
             fs::write(&jewels_path, out)
                 .map_err(|e| format!("writing {}: {e}", jewels_path.display()))?;

@@ -306,13 +306,14 @@ export async function runValidation(
     return null;
   };
 
-  interface JewelSocketData { id: number; name?: string; sinister?: boolean; special?: boolean; in_radius: Record<string, number[]> }
+  interface JewelSocketData { id: number; x?: number; y?: number; name?: string; sinister?: boolean; special?: boolean; in_radius: Record<string, number[]> }
   interface JewelsData {
     rings?: Record<string, { outer: number; inner: number; radius: number }>;
     bases?: Record<string, { radius: number }>;
     radius_rolls?: Record<string, number>;
     uniques?: Record<string, { radius?: number; ring?: string }>;
     sockets?: JewelSocketData[];
+    keystones?: Record<string, { id: number; x: number; y: number; in_radius: number[] }>;
   }
   let jd: JewelsData = {};
   try {
@@ -328,6 +329,7 @@ export async function runValidation(
   // Active only while the jewel's socket is allocated — or listed in
   // the same capture's targets (list the socket in targets!).
   const ALT_START_RE = /from the (\w+)'s starting point/i;
+  const KEYSTONE_RE = /Passives in Radius of (.+?) can be Allocated/i;
   // Start-position names → the hub is shared with a PoE2 class
   // (mined class_start rows: Shadow|Monk, Marauder|Warrior,
   // Duelist|Mercenary, Templar|Druid).
@@ -384,6 +386,19 @@ export async function runValidation(
         const cls = START_CLASS[nm.toLowerCase()] ?? nm;
         const hubId = graph.classes[cls] ?? graph.classes[nm];
         if (hubId != null) extraRoots.add(String(hubId));
+      }
+      // From Nothing: free allocation around the ROLLED keystone
+      // (radius 1000; the keystone itself is excluded at emit — it
+      // can't be allocated). Lifecycle-tied to this jewel's socket.
+      for (const m of g.mods ?? []) {
+        const km = KEYSTONE_RE.exec(m);
+        if (!km) continue;
+        const ks = jd.keystones?.[km[1]!.trim()];
+        if (ks) {
+          const ids = ks.in_radius.map(String);
+          for (const id of ids) freeAlloc.add(id);
+          freeAllocBySocket[sid] = (freeAllocBySocket[sid] ?? []).concat(ids);
+        }
       }
       // Metamorphosis-style: identified by its stat text in the plan's
       // mods OR by the unique's known radius data.
@@ -823,10 +838,32 @@ export async function runValidation(
       const allocated = new Set(capDetails[i]?.allocated ?? []);
       // Voices: sinister sockets count as allocated while a Voices
       // jewel sits in an allocated socket.
-      const voicesOn = jl.some(x => (x.name ?? "") === "Voices"
+      const voicesJewel = jl.find(x => (x.name ?? "") === "Voices"
         && typeof x.socket === "number" && allocated.has(String(x.socket)));
+      const voicesOn = !!voicesJewel;
+      // The roll decides HOW MANY sinister sockets activate (2/3/4);
+      // which ones: the N nearest to the Voices socket (deterministic
+      // assumption — the data carries no explicit mapping).
+      const activeSinister = new Set<number>();
+      if (voicesJewel) {
+        let n = 0;
+        for (const m of voicesJewel.mods ?? []) {
+          const mm = /Allocates (\d+) Sinister/i.exec(m);
+          if (mm) { n = Number(mm[1]); break; }
+        }
+        if (!n) n = 4;   // latest roll as fallback when unstated
+        const home = sockById.get(voicesJewel.socket!);
+        if (home) {
+          (jd.sockets ?? [])
+            .filter(s2 => s2.sinister)
+            .map(s2 => ({ id: s2.id, d: ((s2.x ?? 0) - (home.x ?? 0)) ** 2 + ((s2.y ?? 0) - (home.y ?? 0)) ** 2 }))
+            .sort((a, b) => a.d - b.d)
+            .slice(0, n)
+            .forEach(s2 => activeSinister.add(s2.id));
+        }
+      }
       const socketCounts = (sock2: JewelSocketData, sid2: string): boolean =>
-        allocated.has(sid2) || (!!sock2.sinister && voicesOn);
+        allocated.has(sid2) || (!!sock2.sinister && activeSinister.has(Number(sid2)));
       const seen = new Map<number, string>();
       const jr: NonNullable<CapReport["jewels"]> = [];
       for (const g of jl) {
@@ -869,6 +906,14 @@ export async function runValidation(
             capture: i + 1, socket: g.socket,
           });
           continue;
+        }
+        if (sock.sinister && voicesOn && !activeSinister.has(g.socket)) {
+          diagnostics.push({
+            code: "jewel.sinister_not_activated", severity: "warning",
+            message: "capture " + (i + 1) + ": socket " + g.socket +
+              " is sinister but this Voices roll only activates the " + activeSinister.size + " sockets nearest its own",
+            capture: i + 1, socket: g.socket,
+          });
         }
         if (sock.sinister && !voicesOn) {
           diagnostics.push({
