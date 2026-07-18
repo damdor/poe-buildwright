@@ -186,11 +186,18 @@ DEPLOY_URL=$(grep -oE 'https://[a-z0-9]+\.[a-z0-9-]+\.pages\.dev' "$DEPLOY_LOG" 
 rm -f "$DEPLOY_LOG"
 if [ -n "$DEPLOY_URL" ]; then
   echo "==> Smoke-testing agent surface on $DEPLOY_URL"
-  # First Functions activation on a fresh deployment can lag a few
-  # seconds; settle, and give the routing checks one retry.
+  # First Functions activation on a fresh deployment routinely lags
+  # 30-90s (observed on every deploy this month) — poll up to 2min
+  # before judging, so the verdict below means something.
   sleep 8
-  vt=$(curl -s -o /dev/null -w "%{content_type}" "$DEPLOY_URL/agent/validate")
-  case "$vt" in application/json*) : ;; *) echo "    (functions not ready yet — retrying in 15s)"; sleep 15;; esac
+  tries=0
+  while [ $tries -lt 8 ]; do
+    vt=$(curl -s -o /dev/null -w "%{content_type}" "$DEPLOY_URL/agent/validate")
+    case "$vt" in application/json*) break ;; esac
+    tries=$((tries + 1))
+    echo "    (functions not ready yet — retry $tries/8 in 15s)"
+    sleep 15
+  done
   fail=0
   classes=$(curl -sf "$DEPLOY_URL/assets/agent/nodes.json" | "$NODE_BIN" -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).classes.length))' 2>/dev/null || echo 0)
   if [ "$classes" -lt 6 ]; then echo "FAIL: nodes.json has $classes classes (fixture data or missing)"; fail=1; else echo "  ok: nodes.json ($classes classes)"; fi
