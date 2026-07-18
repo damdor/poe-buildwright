@@ -139,3 +139,36 @@ mechanics), AlternateTreeExtra* + AlternatePassiveSkills/Additions
 (timeless rewrites), UniqueJewelLimits (equip limits, 12 rows). The
 15 game-only uniques (no PoB data yet) get variants when the PoB pin
 catches up — re-run `bw uniques` then.
+
+## Timeless-jewel rewrites: investigated (2026-07-18), seeds opted out
+
+Tables mined clean at the current patch. What they settle:
+
+- **Outcome pools are fully first-party**: AlternatePassiveSkills
+  (231 rows across 7 factions — Kalguuran = Heroic Tragedy,
+  Abyss = Undying Hate) + AlternatePassiveAdditions (95) +
+  AlternateTreeVersions (per-faction policy: which node classes get
+  REPLACED vs AUGMENTED, spawn weights).
+- **Keystone replacement is deterministic, no seed**: ConquerorIndex
+  keys the rolled conqueror variant to the replacement keystone
+  (e.g. Karui index 1 → Strength of Blood). "Keystones in radius
+  become X" is table-derivable per variant — a cheap future add for
+  tooltip + agent report.
+- **Small/notable rewrites are seed-driven** (the "Remembrancing
+  (100-8000)" roll) through the game's internal PRNG — in code, not
+  tables. PoE1's took the community years and dedicated sites;
+  PoE2's variant is unverified, and porting PoE1's algorithm would
+  be a guess with no ground truth to validate against.
+
+DECISION: opt out of per-seed computation (owner's call). Shipped
+behavior stands: timeless jewels socket normally and show their
+1500 radius. Revisit if the community cracks the PoE2 PRNG — the
+pool tables are already mined and waiting.
+
+## Housekeeping: GGG rolled CDN 4.5.4.4
+
+Noticed during the timeless mine (banner: "cdn 4.5.4.4"). With the
+official decoder this is routine now: bw update-native → verify →
+tree-diff parity → deploy. The investigation tables above were
+pulled from 4.5.4.4 into the 4.5.4.3_native dir — harmless for
+analysis, but do a clean full re-mine when refreshing.
