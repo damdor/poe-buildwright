@@ -2211,7 +2211,7 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         std::collections::BTreeMap::new();
     for row in 0..sspl.row_count() {
         let lvl = sspl.i32(row, c_lvl).unwrap_or(0);
-        if lvl < 1 || lvl > MAX_LEVEL {
+        if !(1..=MAX_LEVEL).contains(&lvl) {
             continue;
         }
         let eids: Vec<&String> = rows_of(&sspl, row, c_ge)
@@ -2279,12 +2279,13 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         }
     }
 
-    // Cost / reservation / cooldown ladders.
-    let mut costs: std::collections::BTreeMap<String, std::collections::BTreeMap<i64, (i64, i64, i64, i64)>> =
-        std::collections::BTreeMap::new();
+    // Cost / reservation / cooldown ladders:
+    // effect id → level → (cost, reservation, cooldown, cost multiplier).
+    type CostLadder = std::collections::BTreeMap<i64, (i64, i64, i64, i64)>;
+    let mut costs: std::collections::BTreeMap<String, CostLadder> = std::collections::BTreeMap::new();
     for row in 0..gepl.row_count() {
         let lvl = gepl.i32(row, g_lvl).unwrap_or(0);
-        if lvl < 1 || lvl > MAX_LEVEL {
+        if !(1..=MAX_LEVEL).contains(&lvl) {
             continue;
         }
         let Ok(Some(ger)) = gepl.foreign(row, g_ge) else { continue };
@@ -2376,8 +2377,8 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     // Granted-skill support sockets: item-granted skills socket
     // supports for free; how many depends on the granted level.
-    if let (Some(gssn), Some(gssn_s)) = (ts.dat("GrantedSkillSocketNumbers"), ts.schema("GrantedSkillSocketNumbers")) {
-        if let (Some(c_l), Some(c_n)) = (gssn_s.column("Level"), gssn_s.column("Sockets")) {
+    if let (Some(gssn), Some(gssn_s)) = (ts.dat("GrantedSkillSocketNumbers"), ts.schema("GrantedSkillSocketNumbers"))
+        && let (Some(c_l), Some(c_n)) = (gssn_s.column("Level"), gssn_s.column("Sockets")) {
             let mut sm = json::Map::new();
             for row in 0..gssn.row_count() {
                 let l = gssn.i32(row, c_l).unwrap_or(0);
@@ -2388,7 +2389,6 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 out.insert("granted_skill_sockets".into(), json::Value::Object(sm));
             }
         }
-    }
     out.insert("count".into(), json::Value::Integer(eff_map.len() as i64));
     out.insert("effects".into(), json::Value::Object(eff_map));
     let path = ctx.root.join("viewer/assets/skill_stats.json");
@@ -2784,8 +2784,11 @@ pub fn verify(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
 
     // 2. Rollup consistency.
-    if let Some(want) = man.get("rollup").and_then(|v| v.as_str()) {
-        let got = hash::sha256_hex(json::emit(man.get("datasets").unwrap()).as_bytes());
+    if let (Some(want), Some(datasets)) = (
+        man.get("rollup").and_then(|v| v.as_str()),
+        man.get("datasets"),
+    ) {
+        let got = hash::sha256_hex(json::emit(datasets).as_bytes());
         if got == want {
             ui::ok(s, "rollup matches datasets");
         } else {
@@ -3035,9 +3038,9 @@ pub fn tree_diff(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let (na, nb) = (load(a)?, load(b)?);
     let a_ids: BTreeSet<&String> = na.keys().collect();
     let b_ids: BTreeSet<&String> = nb.keys().collect();
-    let shared: Vec<&String> = a_ids.intersection(&b_ids).map(|s| *s).collect();
-    let only_a: Vec<&String> = a_ids.difference(&b_ids).map(|s| *s).collect();
-    let only_b: Vec<&String> = b_ids.difference(&a_ids).map(|s| *s).collect();
+    let shared: Vec<&String> = a_ids.intersection(&b_ids).copied().collect();
+    let only_a: Vec<&String> = a_ids.difference(&b_ids).copied().collect();
+    let only_b: Vec<&String> = b_ids.difference(&a_ids).copied().collect();
     let moved: Vec<&String> = shared
         .iter()
         .filter(|id| {
@@ -3477,7 +3480,7 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 .is_none_or(|a| a.is_empty());
             (id.contains("UniqueSkillGem"), types_empty, id.to_string())
         };
-        gems.sort_by(|a, b| pref(a).cmp(&pref(b)));
+        gems.sort_by_key(|a| pref(a));
         let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
         gems.retain(|g| {
             let key = (
@@ -3568,8 +3571,8 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // Per-variant stat lines (variant label → lines), current-era only.
     let mut variants_by_name: std::collections::HashMap<String, Vec<(String, String)>> =
         std::collections::HashMap::new();
-    if let Ok((vh, vvrows)) = read_tsv(&parsed.join("items/uniques_variants.tsv")) {
-        if let (Some(v_n), Some(v_l), Some(v_s)) =
+    if let Ok((vh, vvrows)) = read_tsv(&parsed.join("items/uniques_variants.tsv"))
+        && let (Some(v_n), Some(v_l), Some(v_s)) =
             (idx(&vh, "name"), idx(&vh, "variant_label"), idx(&vh, "stat"))
         {
             for r in &vvrows {
@@ -3582,7 +3585,6 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 variants_by_name.entry(n.clone()).or_default().push((l.clone(), st.clone()));
             }
         }
-    }
     if let Ok((uh, urows)) = read_tsv(&parsed.join("items/uniques.tsv")) {
         let uc = |n: &str| idx(&uh, n);
         let bases = read_tsv(&parsed.join("items/bases.tsv")).ok();
