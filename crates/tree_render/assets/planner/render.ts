@@ -120,23 +120,32 @@ export function render(): void {
       pushSprite(arr, 0, 0, panel.w, panel.h, [1, 1, 1, 1], false);
     });
   }
-  // In-place mode: each class pocket shows that class's centre emblem
-  // until an ascendancy replaces it — the journey stays visible in
-  // snapshots.
+  // In-place mode (PoE1): the class emblem is the START MARKER — it
+  // draws at the real class-start coordinates, connected to the
+  // starting passives. The pocket beside it shows the base-class
+  // image until an ascendancy replaces it with its circle + nodes,
+  // so snapshots keep the journey visible.
   if (ASC_IN_PLACE && TREE.asc_anchors) {
     let activeClass: string | null = null;
     if (state.asc) {
       for (const c of TREE.classes) if (c.asc.includes(state.asc)) activeClass = c.name;
     }
+    const POCKET_SCALE = 1.5;
     for (const cn in TREE.asc_anchors) {
-      if (cn === activeClass) continue;
       const a = TREE.asc_anchors[cn]!;
       if (!a.p || !a.w || !a.h) continue;
       const tex = getTex(a.p);
       if (!tex) continue;
       const { w, h } = a as { w: number; h: number };
+      if (a.sx !== undefined && a.sy !== undefined) {
+        const { sx, sy } = a as { sx: number; sy: number };
+        dynBatch(tex, false, (arr) => {
+          pushSprite(arr, sx, sy, w, h, [1, 1, 1, 1], false);
+        });
+      }
+      if (cn === activeClass) continue;
       dynBatch(tex, false, (arr) => {
-        pushSprite(arr, a.x, a.y, w, h, [1, 1, 1, 1], false);
+        pushSprite(arr, a.x, a.y, w * POCKET_SCALE, h * POCKET_SCALE, [1, 1, 1, 1], false);
       });
     }
   }

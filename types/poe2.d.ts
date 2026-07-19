@@ -310,7 +310,7 @@ export interface TreeData {
   asc_panels: Record<string, { p: string; x: number; y: number; w: number; h: number; ax?: number; ay?: number }>;
   /** PoE1 in-place mode: class name → pocket where its ascendancy
    *  circle draws, plus the class emblem shown until one is chosen. */
-  asc_anchors?: Record<string, { x: number; y: number; p?: string; w?: number; h?: number }>;
+  asc_anchors?: Record<string, { x: number; y: number; p?: string; w?: number; h?: number; sx?: number; sy?: number }>;
   asc_variants?: Record<string, { parent: string; nodes: Record<string, { n: string; s: string; k: string; i?: string }> }>; // variant ascendancies (Abyssal Lich): parent panel + node content overrides
   classes: TreeClassInfo[];
   // display name → { internal: GGG canonical id, class: parent class name }
