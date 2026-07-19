@@ -313,6 +313,8 @@ export interface TreeData {
   class_markers?: Record<string, { x: number; y: number; p: string; w: number; h: number }>;
   /** PoE1 in-place mode: generic inactive start medallion. */
   start_inactive?: { p: string; w: number; h: number };
+  /** PoE1 in-place mode: ascendancy plaque art (GGG buttonPoint). */
+  asc_button?: { p: string; w: number; h: number };
   asc_variants?: Record<string, { parent: string; nodes: Record<string, { n: string; s: string; k: string; i?: string }> }>; // variant ascendancies (Abyssal Lich): parent panel + node content overrides
   classes: TreeClassInfo[];
   // display name → { internal: GGG canonical id, class: parent class name }

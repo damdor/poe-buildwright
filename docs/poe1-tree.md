@@ -53,16 +53,34 @@ Do NOT borrow PoB's `DrawAsset` ×1.33 factor: it calibrates PoB's own
 repackaged asset resolutions, not GGG's sheets (learned the hard way —
 subtrees spilled outside their circles).
 
-## Presentation rules (verified against GGG's renderer + PoB PoE1)
+## Presentation rules (from GGG's own renderer)
 
-- Ascendancy circles draw at their **raw GGG group coordinates**
-  (Duelist's below the tree, Witch's above, Shadow's along the right).
-  All are visible at once; non-selected backdrops at 25% alpha; the
-  selected ascendancy draws full-strength with selection overlays.
+The raw JSON group coordinates at the periphery are STORAGE, not
+presentation — several overlap. GGG's renderer
+(`getAscendancyPositionInfo` + `setCharacterClass` in skilltree.js)
+relocates the chosen ascendancy at selection time:
+
+```
+dir    = (0,1) for the centered Scion start, else (x/d, -y/d)
+angle  = atan2(dirX, dirY) + pi/2
+button = start + 270 * (cos angle, sin angle)
+circle = start + (270 + artWorldHeight/2) * (cos angle, sin angle)
+```
+
+Every group of that ascendancy shifts by `circle - startGroupCentre`,
+and ONLY the current ascendancy is drawn. Ours implements this
+verbatim (`ascAnchorInfo()` in render.ts): the selected subtree's
+raw-baked statics draw through a uTranslate of the delta, hit-testing
+follows via ascOffset, and the AscendancyButton plaque draws rotated
+at the buttonPoint. A python harness in the PR history verifies
+|start→circle| == 270 + h/2 for all 20 class/ascendancy pairs against
+the official tree.json — re-run it after any rebake.
+
 - Class starts: the selected class draws its own `center<class>` art
   at the start node; every other start shows the generic
-  `PSStartNodeBackgroundInactive` medallion. Start↔passive edges
-  render on PoE1 (PoE2 hides them under its central wedge art).
+  `PSStartNodeBackgroundInactive` medallion (skilltree.js
+  drawStartNodeBackground). Start↔passive edges render on PoE1 (PoE2
+  hides them under its central wedge art).
 - Mastery edges never render (structural only), same as PoE2.
 
 ## Page isolation (`--game poe1` descriptor)

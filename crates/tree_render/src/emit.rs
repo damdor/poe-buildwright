@@ -627,6 +627,17 @@ pub(crate) fn build_tree_data(
                 sp.h,
             );
         }
+        // Ascendancy plaque drawn at GGG's buttonPoint (270 world
+        // units out from the class start, rotated to face outward).
+        if let Some(sp) = sprite_lookup(sprites, "AscendancyButton") {
+            let _ = write!(
+                out,
+                r#","asc_button":{{"p":{},"w":{},"h":{}}}"#,
+                json_str(&format!("/assets/sprites/{}", sp.png)),
+                sp.w,
+                sp.h,
+            );
+        }
     }
     out.push_str(r#","asc_panels":{"#);
     let mut first_ap = true;

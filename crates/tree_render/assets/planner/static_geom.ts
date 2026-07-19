@@ -178,11 +178,7 @@ export function buildStaticGeometry(): void {
     // 1. Portrait (one quad, one texture)
     const portStart = verts.length / STRIDE_FLOATS;
     if (texCache.has(p.p)) {
-      // In-place mode bakes every backdrop dimmed (PoB draws
-      // non-selected ascendancies at 25% alpha); the selected one is
-      // redrawn at full strength by drawAscPanel.
-      const tint = ASC_IN_PLACE ? ([1, 1, 1, 0.25] as const) : WHITE;
-      pushSprite(verts, geomP.x + dx, geomP.y + dy, p.w, p.h, tint, false);
+      pushSprite(verts, geomP.x + dx, geomP.y + dy, p.w, p.h, WHITE, false);
     }
     const portCount = verts.length / STRIDE_FLOATS - portStart;
     const portraitTex = texCache.get(p.p);

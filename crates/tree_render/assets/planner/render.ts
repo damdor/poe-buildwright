@@ -324,6 +324,25 @@ export function render(): void {
       pushSprite(markers, m.x, m.y, art.w, art.h, [1, 1, 1, 1], false);
       markerBatches.push({ tex, clipIcon: false, start: s0, count: 6 });
     }
+    // Ascendancy plaque for the selected class at GGG's buttonPoint
+    // (270 out along the outward direction, rotated to face it).
+    if (state.klass && TREE.asc_button) {
+      const start = TREE.class_markers[state.klass];
+      const btn = TREE.asc_button;
+      const tex = btn ? getTex(btn.p) : null;
+      if (start && tex) {
+        const d = Math.hypot(start.x, start.y);
+        const centered = Math.abs(start.x) < 10 && Math.abs(start.y) < 10;
+        const dirX = centered ? 0 : start.x / d;
+        const dirY = centered ? 1 : -start.y / d;
+        const rot = Math.atan2(dirX, dirY);
+        const bx = start.x + 270 * Math.cos(rot + Math.PI / 2);
+        const by = start.y + 270 * Math.sin(rot + Math.PI / 2);
+        const s0 = markers.length / STRIDE_FLOATS;
+        pushSpriteRot(markers, bx, by, btn.w, btn.h, Math.cos(rot), Math.sin(rot), [1, 1, 1, 1]);
+        markerBatches.push({ tex, clipIcon: false, start: s0, count: 6 });
+      }
+    }
     if (markerBatches.length > 0) {
       uploadDyn(markers);
       gl.uniform1f(uClip, 0);
@@ -496,71 +515,32 @@ export function drawOverlays(): void {
   }
 }
 
-// One asc's baked static content (backdrop + edges + nodes), no
-// selection overlays — the non-selected subtrees in in-place mode.
-function drawAscStaticSimple(a: AscPanelStatic): void {
-  if (a.portraitBatch) {
-    gl.bindTexture(gl.TEXTURE_2D, a.portraitBatch.tex);
-    gl.uniform1f(uClip, 0);
-    gl.drawArrays(gl.TRIANGLES, a.portraitBatch.start, a.portraitBatch.count);
-  }
-  if (state.useGGGConnectors && a.connectorBatches.length > 0) {
-    gl.uniform1f(uClip, 0);
-    for (const b of a.connectorBatches) {
-      gl.bindTexture(gl.TEXTURE_2D, b.tex);
-      gl.drawArrays(gl.TRIANGLES, b.start, b.count);
-    }
-  } else if (a.edgeBatch) {
-    gl.bindTexture(gl.TEXTURE_2D, whiteTex);
-    const oh = offsetScale(0.8, 2.0, 0.5);
-    gl.uniform2f(uOffsetScale, oh, oh);
-    gl.uniform1f(uClip, 0);
-    gl.drawArrays(gl.TRIANGLES, a.edgeBatch.start, a.edgeBatch.count);
-    gl.uniform2f(uOffsetScale, 0, 0);
-  }
-  for (const b of a.batches) {
-    gl.bindTexture(gl.TEXTURE_2D, b.tex);
-    gl.uniform1f(uClip, b.clipIcon ? 1 : 0);
-    gl.drawArrays(gl.TRIANGLES, b.start, b.count);
-  }
-}
-
 export function drawAscPanel(): void {
   if (!state.asc && !ASC_IN_PLACE) return;
   gl.bindVertexArray(staticVAO);
   gl.uniform2f(uOffsetScale, 0, 0);
   gl.uniform2f(uTranslate, 0, 0);
-  // In-place mode: EVERY ascendancy subtree is visible at its raw
-  // coordinates, backdrops baked at 25% alpha (PoB's non-selected
-  // dim). The selected ascendancy is drawn last: full-strength
-  // backdrop quad, then its statics + selection overlays on top.
-  if (ASC_IN_PLACE) {
-    const sel = state.ascVariant ?? state.asc;
-    for (const name in ascStatic) {
-      if (name === sel) continue;
-      const a = ascStatic[name];
-      if (a) drawAscStaticSimple(a);
-    }
-  }
   if (!state.asc) return;
   const selectedKey = state.ascVariant ?? state.asc;
   // Variants have their own baked panel (parent content + overridden
   // node icons + variant portrait).
   const asc = ascStatic[selectedKey];
   if (!asc) return;
-  // In-place mode: redraw the selected backdrop at full strength (the
-  // baked copy is the dimmed one) before its edges and nodes.
+  // In-place mode (PoE1): ONLY the chosen ascendancy draws, hung off
+  // the class start per GGG's anchoring. The statics are baked at the
+  // raw JSON group coordinates, so the whole panel (backdrop + edges
+  // + nodes) is drawn through a uTranslate of the anchor delta.
+  let ipDX = 0, ipDY = 0;
   if (ASC_IN_PLACE) {
-    const panelSel = TREE.asc_panels[selectedKey];
-    const tex = panelSel ? getTex(panelSel.p) : null;
-    if (tex && panelSel) {
-      const q: number[] = [];
-      pushSprite(q, panelSel.x, panelSel.y, panelSel.w, panelSel.h, [1, 1, 1, 1], false);
-      uploadDyn(q);
+    const info = ascAnchorInfo();
+    if (!info) return;
+    ipDX = info.dx;
+    ipDY = info.dy;
+    gl.uniform2f(uTranslate, ipDX, ipDY);
+    if (asc.portraitBatch) {
+      gl.bindTexture(gl.TEXTURE_2D, asc.portraitBatch.tex);
       gl.uniform1f(uClip, 0);
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-      gl.bindVertexArray(staticVAO);
+      gl.drawArrays(gl.TRIANGLES, asc.portraitBatch.start, asc.portraitBatch.count);
     }
   }
   // (Asc portrait was drawn earlier, in the centre-stack dyn pass,
@@ -587,7 +567,10 @@ export function drawAscPanel(): void {
     gl.uniform2f(uOffsetScale, 0, 0);
   }
   // 2b. Selected edges for THIS asc — textured _active sprites when
-  //     enabled, procedural strip fallback otherwise.
+  //     enabled, procedural strip fallback otherwise. Their verts are
+  //     built with ascOffset already applied, so in-place mode must
+  //     NOT also translate them.
+  if (ASC_IN_PLACE) gl.uniform2f(uTranslate, 0, 0);
   if (state.useGGGConnectors && selConnectorAscBatches.length > 0) {
     gl.bindVertexArray(selEdgeVAO);
     gl.uniform2f(uOffsetScale, 0, 0);
@@ -633,17 +616,21 @@ export function drawAscPanel(): void {
   }
   // Reset offset scale back to 0 for the sprite passes below.
   gl.uniform2f(uOffsetScale, 0, 0);
-  // 3. Asc node sprites (mastery + icon + frame)
+  // 3. Asc node sprites (mastery + icon + frame) — raw-baked, so the
+  //    in-place translate comes back on.
+  if (ASC_IN_PLACE) gl.uniform2f(uTranslate, ipDX, ipDY);
   for (const b of asc.batches) {
     gl.bindTexture(gl.TEXTURE_2D, b.tex);
     gl.uniform1f(uClip, b.clipIcon ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, b.start, b.count);
   }
-  // 2. Dynamic asc overlays (selected frames, picked icons, popout)
+  // 2. Dynamic asc overlays (selected frames, picked icons, popout).
+  //    Their verts bake the offset directly, so the uniform resets.
+  gl.uniform2f(uTranslate, 0, 0);
   const panel = TREE.asc_panels[state.asc];
   if (!panel) return;
-  const dx = ASC_IN_PLACE ? 0 : -panel.x;
-  const dy = ASC_IN_PLACE ? 0 : -panel.y;
+  const dx = ASC_IN_PLACE ? ipDX : -panel.x;
+  const dy = ASC_IN_PLACE ? ipDY : -panel.y;
   const verts: number[] = [];
   const buckets = new Map<string, OverlayBucket>();
   function addBucket(
@@ -770,13 +757,55 @@ export function drawAscPanel(): void {
 
 // Asc nodes are drawn translated; for popouts we need to apply the
 // same offset so the popout lands at the visible (relocated) position.
+// GGG's ascendancy anchoring (skilltree.js getAscendancyPositionInfo):
+// the chosen ascendancy hangs off the class start — its plaque 270
+// world units out along the outward direction (straight down for the
+// centered Scion start), the circle centre half the art height
+// further. The subtree's groups are relocated by circle − group
+// centre; only the CURRENT ascendancy is drawn at all.
+const ASC_BUTTON_DIST = 270;
+export function ascAnchorInfo(): {
+  dx: number; dy: number;
+  button: { x: number; y: number; c: number; s: number };
+} | null {
+  if (!state.klass || !state.asc) return null;
+  const start = TREE.class_markers?.[state.klass];
+  const panel = TREE.asc_panels[state.ascVariant ?? state.asc];
+  if (!start || !panel) return null;
+  const d = Math.hypot(start.x, start.y);
+  const centered = Math.abs(start.x) < 10 && Math.abs(start.y) < 10;
+  const dirX = centered ? 0 : start.x / d;
+  const dirY = centered ? 1 : -start.y / d;
+  const rot = Math.atan2(dirX, dirY);
+  const ca = Math.cos(rot + Math.PI / 2), sa = Math.sin(rot + Math.PI / 2);
+  const imgDist = ASC_BUTTON_DIST + panel.h / 2;
+  return {
+    dx: start.x + imgDist * ca - panel.x,
+    dy: start.y + imgDist * sa - panel.y,
+    button: {
+      x: start.x + ASC_BUTTON_DIST * ca,
+      y: start.y + ASC_BUTTON_DIST * sa,
+      c: Math.cos(rot),
+      s: Math.sin(rot),
+    },
+  };
+}
+
 export function ascOffsetX(n: TreeNode): number {
-  if (!n.a || ASC_IN_PLACE) return 0;
+  if (!n.a) return 0;
+  if (ASC_IN_PLACE) {
+    if (n.a !== (state.ascVariant ?? state.asc)) return 0;
+    return ascAnchorInfo()?.dx ?? 0;
+  }
   const p = TREE.asc_panels[n.a];
   return p ? -p.x : 0;
 }
 export function ascOffsetY(n: TreeNode): number {
-  if (!n.a || ASC_IN_PLACE) return 0;
+  if (!n.a) return 0;
+  if (ASC_IN_PLACE) {
+    if (n.a !== (state.ascVariant ?? state.asc)) return 0;
+    return ascAnchorInfo()?.dy ?? 0;
+  }
   const p = TREE.asc_panels[n.a];
   return p ? -p.y : 0;
 }
