@@ -120,35 +120,6 @@ export function render(): void {
       pushSprite(arr, 0, 0, panel.w, panel.h, [1, 1, 1, 1], false);
     });
   }
-  // In-place mode (PoE1): the class emblem is the START MARKER — it
-  // draws at the real class-start coordinates, connected to the
-  // starting passives. The pocket beside it shows the base-class
-  // image until an ascendancy replaces it with its circle + nodes,
-  // so snapshots keep the journey visible.
-  if (ASC_IN_PLACE && TREE.asc_anchors) {
-    let activeClass: string | null = null;
-    if (state.asc) {
-      for (const c of TREE.classes) if (c.asc.includes(state.asc)) activeClass = c.name;
-    }
-    const POCKET_SCALE = 1.5;
-    for (const cn in TREE.asc_anchors) {
-      const a = TREE.asc_anchors[cn]!;
-      if (!a.p || !a.w || !a.h) continue;
-      const tex = getTex(a.p);
-      if (!tex) continue;
-      const { w, h } = a as { w: number; h: number };
-      if (a.sx !== undefined && a.sy !== undefined) {
-        const { sx, sy } = a as { sx: number; sy: number };
-        dynBatch(tex, false, (arr) => {
-          pushSprite(arr, sx, sy, w, h, [1, 1, 1, 1], false);
-        });
-      }
-      if (cn === activeClass) continue;
-      dynBatch(tex, false, (arr) => {
-        pushSprite(arr, a.x, a.y, w * POCKET_SCALE, h * POCKET_SCALE, [1, 1, 1, 1], false);
-      });
-    }
-  }
   // BGTreeActive: rotated wedge that lights up the sector containing
   // the chosen class's start hub. The sprite has 6 wedge slots baked
   // in — ONE is gold (the active one), the other 5 are near-black
@@ -332,6 +303,46 @@ export function render(): void {
     gl.bindTexture(gl.TEXTURE_2D, b.tex);
     gl.uniform1f(uClip, b.clipIcon ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+  }
+
+  // ============== Class start markers + ascendancy pocket (PoE1) ==============
+  // ON TOP of edges and nodes: the start-passive spokes visually
+  // terminate at the marker's rim instead of crossing through it,
+  // matching the game. Start markers draw for every class; the pocket
+  // shows the SELECTED class's base image until its ascendancy
+  // replaces it (drawAscPanel).
+  if (ASC_IN_PLACE && TREE.asc_anchors) {
+    let activeClass: string | null = null;
+    if (state.asc) {
+      for (const c of TREE.classes) if (c.asc.includes(state.asc)) activeClass = c.name;
+    }
+    const emblems: number[] = [];
+    const emblemBatches: DynBatch[] = [];
+    const POCKET_SCALE = 1.5;
+    for (const cn in TREE.asc_anchors) {
+      const a = TREE.asc_anchors[cn]!;
+      if (!a.p || !a.w || !a.h) continue;
+      const tex = getTex(a.p);
+      if (!tex) continue;
+      const { w, h } = a as { w: number; h: number };
+      const s0 = emblems.length / STRIDE_FLOATS;
+      if (a.sx !== undefined && a.sy !== undefined) {
+        pushSprite(emblems, a.sx, a.sy, w, h, [1, 1, 1, 1], false);
+      }
+      if (cn === state.klass && cn !== activeClass) {
+        pushSprite(emblems, a.x, a.y, w * POCKET_SCALE, h * POCKET_SCALE, [1, 1, 1, 1], false);
+      }
+      const c0 = emblems.length / STRIDE_FLOATS - s0;
+      if (c0 > 0) emblemBatches.push({ tex, clipIcon: false, start: s0, count: c0 });
+    }
+    if (emblemBatches.length > 0) {
+      uploadDyn(emblems);
+      gl.uniform1f(uClip, 0);
+      for (const b of emblemBatches) {
+        gl.bindTexture(gl.TEXTURE_2D, b.tex);
+        gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+      }
+    }
   }
 
   // ============== Per-frame overlays (selected frames, popout, etc.) ==============
