@@ -170,9 +170,11 @@ export function buildStaticGeometry(): void {
     const variant = TREE.asc_variants?.[ascName];
     const srcAsc = variant ? variant.parent : ascName;
     const geomP = (variant ? TREE.asc_panels[variant.parent] : null) ?? p;
-    // In-place mode (PoE1) bakes asc content at its real coordinates
-    // instead of translating the panel to the tree centre.
-    const dx = ASC_IN_PLACE ? 0 : -geomP.x, dy = ASC_IN_PLACE ? 0 : -geomP.y;
+    // In-place mode (PoE1) bakes asc content translated onto its
+    // class pocket anchor instead of the tree centre. Fallback to raw
+    // coordinates if the anchor is missing.
+    const dx = ASC_IN_PLACE ? (geomP.ax ?? geomP.x) - geomP.x : -geomP.x;
+    const dy = ASC_IN_PLACE ? (geomP.ay ?? geomP.y) - geomP.y : -geomP.y;
 
     // 1. Portrait (one quad, one texture)
     const portStart = verts.length / STRIDE_FLOATS;

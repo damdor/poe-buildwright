@@ -234,7 +234,7 @@ fn run() -> Result<(), String> {
         .to_string(),
         _ => "{\"id\":\"poe2\"}".to_string(),
     };
-    let chrome = emit::PageChrome { title: &args.title, game_json: &game_json };
+    let chrome = emit::PageChrome { title: &args.title, game_json: &game_json, game: &args.game };
     let html = render_canvas_html(&nodes, &edges, &canvas, &classes, &sprites, &asc_overrides, &chrome);
     fs::write(&args.output, html).map_err(|e| format!("writing {}: {e}", args.output.display()))?;
     eprintln!(
