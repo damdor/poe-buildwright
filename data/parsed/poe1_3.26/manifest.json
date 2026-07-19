@@ -11,9 +11,9 @@
       "sha256": "79eaf1108aacbfdd60753b7984f8e839c49703ac3f7f96a88ef36b5222930dfb"
     },
     "tree/meta.tsv": {
-      "bytes": 21741,
-      "rows": 808,
-      "sha256": "4afffbab9aa23719c560a992598497549c0e626c85fbff2cf807e02396c53565"
+      "bytes": 23028,
+      "rows": 828,
+      "sha256": "ba6ca2ac15c14268c9c938653a65d0212026b757058290835a83be72963c5475"
     },
     "tree/nodes.tsv": {
       "bytes": 521630,
@@ -21,14 +21,14 @@
       "sha256": "833089719dc7d82e8ac1dd4e67c83c815917ecaace934393432a232eb8d7406e"
     },
     "tree/sprites.tsv": {
-      "bytes": 200122,
-      "rows": 1586,
-      "sha256": "882ddafb615a79725c200e8d4333b5aa23c1f4e8f968308df520b6aec08d754f"
+      "bytes": 201868,
+      "rows": 1617,
+      "sha256": "0bbfc5ce5e27b27fa5e0c337767f5da3a81bd26480fd580d8effd16159afced2"
     }
   },
   "generated_by": "buildwright",
   "patch": "poe1.3.26",
-  "rollup": "2780d707b49fab280c0a999733f4f066102ab89b45789d94d83b872148dc561f",
+  "rollup": "13a1923583831bf366b75c78e7783cc76a8d29cb80299f0870e8164a4ddbbbb0",
   "schema_version": 2,
   "source": "pathofexile.com/passive-skill-tree (3.26)"
 }
