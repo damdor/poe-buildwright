@@ -355,19 +355,19 @@ pub(crate) fn build_tree_data(
         let icon_sp = sprite_lookup(sprites, &n.icon);
         let icon_url = icon_sp.map(|s| format!("/assets/sprites/{}", s.png));
         let (off_name, on_name) = pick_frame_names(n);
-        // PoE1: node draw sizes come straight from the sheet — world
-        // units are 2x the 0.5-zoom sprite pixels (same doubling as
-        // the backdrops / PoB DrawAsset). The PoE2 table above is
-        // tuned for PoE2's own art and packs PoE1's tighter orbits
-        // (orbit-2 chord is 63 units) with oversized nodes.
+        // PoE1: node draw sizes come straight from sprites.tsv, whose
+        // w/h are already WORLD units (sheet px / sheet zoom — the
+        // rule GGG's own skilltree.js renderer uses). The PoE2 table
+        // above is tuned for PoE2's own art and packs PoE1's tighter
+        // orbits (orbit-2 chord is 63 units) with oversized nodes.
         if data_sized {
             if let Some(sp) = icon_sp {
-                ts.icon = (sp.w * 2) as f64;
+                ts.icon = sp.w as f64;
             }
             if let Some(nm) = &off_name
                 && let Some(sp) = resolve_frame_sprite(sprites, nm, &n.kind)
             {
-                ts.frame = (sp.w * 2) as f64;
+                ts.frame = sp.w as f64;
             }
         }
         let frame_off_url = off_name
@@ -592,8 +592,8 @@ pub(crate) fn build_tree_data(
     if data_sized {
         // PoE1 class-start markers: the selected class draws its own
         // center<class> art at the start node; every other start shows
-        // the generic inactive medallion (PassiveTreeView.lua:775-776).
-        // Sizes are sheet px * 1.33 (DrawAsset).
+        // the generic inactive medallion (GGG skilltree.js
+        // drawStartNodeBackground). sprites.tsv w/h are world units.
         out.push_str(r#","class_markers":{"#);
         let mut first_cm = true;
         for n in nodes {
@@ -613,8 +613,8 @@ pub(crate) fn build_tree_data(
                 n.x as i32,
                 n.y as i32,
                 json_str(&format!("/assets/sprites/{}", sp.png)),
-                (sp.w as f64 * 1.33) as i32,
-                (sp.h as f64 * 1.33) as i32,
+                sp.w,
+                sp.h,
             );
         }
         out.push('}');
@@ -623,8 +623,8 @@ pub(crate) fn build_tree_data(
                 out,
                 r#","start_inactive":{{"p":{},"w":{},"h":{}}}"#,
                 json_str(&format!("/assets/sprites/{}", sp.png)),
-                (sp.w as f64 * 1.33) as i32,
-                (sp.h as f64 * 1.33) as i32,
+                sp.w,
+                sp.h,
             );
         }
     }
@@ -643,11 +643,11 @@ pub(crate) fn build_tree_data(
         first_ap = false;
         // PoB DrawAsset doubles bg.width/height (PassiveTreeView.lua:1239) —
         // we emit the doubled size so the JS draws it at 3000×3000 etc.
-        // PoE1's DrawAsset (PassiveTreeView.lua:1156) scales assets by
-        // 1.33 instead: a 650px Classes<Asc> circle draws 865 world
-        // units wide.
+        // PoE1 rows already carry WORLD units (sheet px / sheet zoom,
+        // GGG's skilltree.js rule: offsetZoom = zoom/curImgZoom) —
+        // draw them verbatim.
         let (dw, dh) = if data_sized {
-            (p.w * 1.33, p.h * 1.33)
+            (p.w, p.h)
         } else {
             (p.w * 2.0, p.h * 2.0)
         };
