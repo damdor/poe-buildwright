@@ -307,10 +307,12 @@ export interface TreeData {
   // doubled size (PoB DrawAsset doubles bg.width/height per
   // PassiveTreeView.lua:1239) }. Rust emits this per Portrait with
   // kind == "asc".
-  asc_panels: Record<string, { p: string; x: number; y: number; w: number; h: number; ax?: number; ay?: number }>;
-  /** PoE1 in-place mode: class name → pocket where its ascendancy
-   *  circle draws, plus the class emblem shown until one is chosen. */
-  asc_anchors?: Record<string, { x: number; y: number; p?: string; w?: number; h?: number; sx?: number; sy?: number }>;
+  asc_panels: Record<string, { p: string; x: number; y: number; w: number; h: number }>;
+  /** PoE1 in-place mode: class-start marker art at the start node's
+   *  real coordinates (selected class only; others use start_inactive). */
+  class_markers?: Record<string, { x: number; y: number; p: string; w: number; h: number }>;
+  /** PoE1 in-place mode: generic inactive start medallion. */
+  start_inactive?: { p: string; w: number; h: number };
   asc_variants?: Record<string, { parent: string; nodes: Record<string, { n: string; s: string; k: string; i?: string }> }>; // variant ascendancies (Abyssal Lich): parent panel + node content overrides
   classes: TreeClassInfo[];
   // display name → { internal: GGG canonical id, class: parent class name }

@@ -203,7 +203,6 @@ pub(crate) fn read_meta(path: &Path) -> Result<(Canvas, Vec<ClassInfo>), String>
     let mut groups: HashMap<u32, (f64, f64)> = HashMap::new();
     let mut portraits: Vec<Portrait> = Vec::new();
     let mut asc_internal: HashMap<String, (String, String)> = HashMap::new();
-    let mut asc_anchors: HashMap<String, (f64, f64)> = HashMap::new();
     for line in text.lines() {
         let mut parts = line.split('\t');
         let key = parts.next().unwrap_or("");
@@ -239,14 +238,6 @@ pub(crate) fn read_meta(path: &Path) -> Result<(Canvas, Vec<ClassInfo>), String>
                     name,
                     ascendancies: ascs,
                 });
-            }
-            "asc_anchor" => {
-                // asc_anchor <class> <x> <y> — pocket beside the class
-                // start where its ascendancy circle draws (PoE1).
-                let name = parts.next().unwrap_or("").to_string();
-                let x: f64 = parts.next().unwrap_or("0").parse().unwrap_or(0.0);
-                let y: f64 = parts.next().unwrap_or("0").parse().unwrap_or(0.0);
-                asc_anchors.insert(name, (x, y));
             }
             "asc_internal" => {
                 let name = parts.next().unwrap_or("").to_string();
@@ -288,7 +279,6 @@ pub(crate) fn read_meta(path: &Path) -> Result<(Canvas, Vec<ClassInfo>), String>
             groups,
             portraits,
             asc_internal,
-            asc_anchors,
         },
         classes,
     ))

@@ -305,40 +305,29 @@ export function render(): void {
     gl.drawArrays(gl.TRIANGLES, b.start, b.count);
   }
 
-  // ============== Class start markers + ascendancy pocket (PoE1) ==============
-  // ON TOP of edges and nodes: the start-passive spokes visually
-  // terminate at the marker's rim instead of crossing through it,
-  // matching the game. Start markers draw for every class; the pocket
-  // shows the SELECTED class's base image until its ascendancy
-  // replaces it (drawAscPanel).
-  if (ASC_IN_PLACE && TREE.asc_anchors) {
-    let activeClass: string | null = null;
-    if (state.asc) {
-      for (const c of TREE.classes) if (c.asc.includes(state.asc)) activeClass = c.name;
-    }
-    const emblems: number[] = [];
-    const emblemBatches: DynBatch[] = [];
-    const POCKET_SCALE = 1.5;
-    for (const cn in TREE.asc_anchors) {
-      const a = TREE.asc_anchors[cn]!;
-      if (!a.p || !a.w || !a.h) continue;
-      const tex = getTex(a.p);
+  // ============== Class start markers (PoE1) ==============
+  // ON TOP of edges and nodes so the start-passive spokes terminate
+  // at the marker's rim. PoB rule (PassiveTreeView.lua:775): the
+  // selected class draws its own center<class> art; every other
+  // start shows the generic inactive medallion.
+  if (ASC_IN_PLACE && TREE.class_markers) {
+    const markers: number[] = [];
+    const markerBatches: DynBatch[] = [];
+    for (const cn in TREE.class_markers) {
+      const m = TREE.class_markers[cn]!;
+      const active = cn === state.klass;
+      const art = active ? m : TREE.start_inactive;
+      if (!art) continue;
+      const tex = getTex(art.p);
       if (!tex) continue;
-      const { w, h } = a as { w: number; h: number };
-      const s0 = emblems.length / STRIDE_FLOATS;
-      if (a.sx !== undefined && a.sy !== undefined) {
-        pushSprite(emblems, a.sx, a.sy, w, h, [1, 1, 1, 1], false);
-      }
-      if (cn === state.klass && cn !== activeClass) {
-        pushSprite(emblems, a.x, a.y, w * POCKET_SCALE, h * POCKET_SCALE, [1, 1, 1, 1], false);
-      }
-      const c0 = emblems.length / STRIDE_FLOATS - s0;
-      if (c0 > 0) emblemBatches.push({ tex, clipIcon: false, start: s0, count: c0 });
+      const s0 = markers.length / STRIDE_FLOATS;
+      pushSprite(markers, m.x, m.y, art.w, art.h, [1, 1, 1, 1], false);
+      markerBatches.push({ tex, clipIcon: false, start: s0, count: 6 });
     }
-    if (emblemBatches.length > 0) {
-      uploadDyn(emblems);
+    if (markerBatches.length > 0) {
+      uploadDyn(markers);
       gl.uniform1f(uClip, 0);
-      for (const b of emblemBatches) {
+      for (const b of markerBatches) {
         gl.bindTexture(gl.TEXTURE_2D, b.tex);
         gl.drawArrays(gl.TRIANGLES, b.start, b.count);
       }
@@ -507,26 +496,72 @@ export function drawOverlays(): void {
   }
 }
 
+// One asc's baked static content (backdrop + edges + nodes), no
+// selection overlays — the non-selected subtrees in in-place mode.
+function drawAscStaticSimple(a: AscPanelStatic): void {
+  if (a.portraitBatch) {
+    gl.bindTexture(gl.TEXTURE_2D, a.portraitBatch.tex);
+    gl.uniform1f(uClip, 0);
+    gl.drawArrays(gl.TRIANGLES, a.portraitBatch.start, a.portraitBatch.count);
+  }
+  if (state.useGGGConnectors && a.connectorBatches.length > 0) {
+    gl.uniform1f(uClip, 0);
+    for (const b of a.connectorBatches) {
+      gl.bindTexture(gl.TEXTURE_2D, b.tex);
+      gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+    }
+  } else if (a.edgeBatch) {
+    gl.bindTexture(gl.TEXTURE_2D, whiteTex);
+    const oh = offsetScale(0.8, 2.0, 0.5);
+    gl.uniform2f(uOffsetScale, oh, oh);
+    gl.uniform1f(uClip, 0);
+    gl.drawArrays(gl.TRIANGLES, a.edgeBatch.start, a.edgeBatch.count);
+    gl.uniform2f(uOffsetScale, 0, 0);
+  }
+  for (const b of a.batches) {
+    gl.bindTexture(gl.TEXTURE_2D, b.tex);
+    gl.uniform1f(uClip, b.clipIcon ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+  }
+}
+
 export function drawAscPanel(): void {
   if (!state.asc && !ASC_IN_PLACE) return;
   gl.bindVertexArray(staticVAO);
   gl.uniform2f(uOffsetScale, 0, 0);
   gl.uniform2f(uTranslate, 0, 0);
-  // In-place mode draws ONLY the chosen ascendancy — every other
-  // class pocket shows the base medallion (dyn pass above), matching
-  // the game's presentation.
+  // In-place mode: EVERY ascendancy subtree is visible at its raw
+  // coordinates, backdrops baked at 25% alpha (PoB's non-selected
+  // dim). The selected ascendancy is drawn last: full-strength
+  // backdrop quad, then its statics + selection overlays on top.
+  if (ASC_IN_PLACE) {
+    const sel = state.ascVariant ?? state.asc;
+    for (const name in ascStatic) {
+      if (name === sel) continue;
+      const a = ascStatic[name];
+      if (a) drawAscStaticSimple(a);
+    }
+  }
   if (!state.asc) return;
   const selectedKey = state.ascVariant ?? state.asc;
   // Variants have their own baked panel (parent content + overridden
   // node icons + variant portrait).
   const asc = ascStatic[selectedKey];
   if (!asc) return;
-  // In-place mode has no centre-stack portrait — the backdrop is part
-  // of this pass, under the edges and nodes.
-  if (ASC_IN_PLACE && asc.portraitBatch) {
-    gl.bindTexture(gl.TEXTURE_2D, asc.portraitBatch.tex);
-    gl.uniform1f(uClip, 0);
-    gl.drawArrays(gl.TRIANGLES, asc.portraitBatch.start, asc.portraitBatch.count);
+  // In-place mode: redraw the selected backdrop at full strength (the
+  // baked copy is the dimmed one) before its edges and nodes.
+  if (ASC_IN_PLACE) {
+    const panelSel = TREE.asc_panels[selectedKey];
+    const tex = panelSel ? getTex(panelSel.p) : null;
+    if (tex && panelSel) {
+      const q: number[] = [];
+      pushSprite(q, panelSel.x, panelSel.y, panelSel.w, panelSel.h, [1, 1, 1, 1], false);
+      uploadDyn(q);
+      gl.uniform1f(uClip, 0);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.bindVertexArray(staticVAO);
+    }
   }
   // (Asc portrait was drawn earlier, in the centre-stack dyn pass,
   // so BGTree's frame can overlay it via the quatrefoil opening.
@@ -607,8 +642,8 @@ export function drawAscPanel(): void {
   // 2. Dynamic asc overlays (selected frames, picked icons, popout)
   const panel = TREE.asc_panels[state.asc];
   if (!panel) return;
-  const dx = ASC_IN_PLACE ? (panel.ax ?? panel.x) - panel.x : -panel.x;
-  const dy = ASC_IN_PLACE ? (panel.ay ?? panel.y) - panel.y : -panel.y;
+  const dx = ASC_IN_PLACE ? 0 : -panel.x;
+  const dy = ASC_IN_PLACE ? 0 : -panel.y;
   const verts: number[] = [];
   const buckets = new Map<string, OverlayBucket>();
   function addBucket(
@@ -736,16 +771,14 @@ export function drawAscPanel(): void {
 // Asc nodes are drawn translated; for popouts we need to apply the
 // same offset so the popout lands at the visible (relocated) position.
 export function ascOffsetX(n: TreeNode): number {
-  if (!n.a) return 0;
+  if (!n.a || ASC_IN_PLACE) return 0;
   const p = TREE.asc_panels[n.a];
-  if (!p) return 0;
-  return ASC_IN_PLACE ? (p.ax ?? p.x) - p.x : -p.x;
+  return p ? -p.x : 0;
 }
 export function ascOffsetY(n: TreeNode): number {
-  if (!n.a) return 0;
+  if (!n.a || ASC_IN_PLACE) return 0;
   const p = TREE.asc_panels[n.a];
-  if (!p) return 0;
-  return ASC_IN_PLACE ? (p.ay ?? p.y) - p.y : -p.y;
+  return p ? -p.y : 0;
 }
 
 // Attribute-popout layout — also needed by pickFromPopout for hit-

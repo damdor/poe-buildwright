@@ -589,6 +589,45 @@ pub(crate) fn build_tree_data(
         }
         out.push('}');
     }
+    if data_sized {
+        // PoE1 class-start markers: the selected class draws its own
+        // center<class> art at the start node; every other start shows
+        // the generic inactive medallion (PassiveTreeView.lua:775-776).
+        // Sizes are sheet px * 1.33 (DrawAsset).
+        out.push_str(r#","class_markers":{"#);
+        let mut first_cm = true;
+        for n in nodes {
+            if n.kind != "class_start" || n.klass.is_empty() {
+                continue;
+            }
+            let emblem = format!("center{}", n.klass.to_lowercase());
+            let Some(sp) = sprite_lookup(sprites, &emblem) else { continue };
+            if !first_cm {
+                out.push(',');
+            }
+            first_cm = false;
+            let _ = write!(
+                out,
+                r#"{}:{{"x":{},"y":{},"p":{},"w":{},"h":{}}}"#,
+                json_str(&n.klass),
+                n.x as i32,
+                n.y as i32,
+                json_str(&format!("/assets/sprites/{}", sp.png)),
+                (sp.w as f64 * 1.33) as i32,
+                (sp.h as f64 * 1.33) as i32,
+            );
+        }
+        out.push('}');
+        if let Some(sp) = sprite_lookup(sprites, "PSStartNodeBackgroundInactive") {
+            let _ = write!(
+                out,
+                r#","start_inactive":{{"p":{},"w":{},"h":{}}}"#,
+                json_str(&format!("/assets/sprites/{}", sp.png)),
+                (sp.w as f64 * 1.33) as i32,
+                (sp.h as f64 * 1.33) as i32,
+            );
+        }
+    }
     out.push_str(r#","asc_panels":{"#);
     let mut first_ap = true;
     for p in &canvas.portraits {
@@ -604,8 +643,14 @@ pub(crate) fn build_tree_data(
         first_ap = false;
         // PoB DrawAsset doubles bg.width/height (PassiveTreeView.lua:1239) —
         // we emit the doubled size so the JS draws it at 3000×3000 etc.
-        let dw = p.w * 2.0;
-        let dh = p.h * 2.0;
+        // PoE1's DrawAsset (PassiveTreeView.lua:1156) scales assets by
+        // 1.33 instead: a 650px Classes<Asc> circle draws 865 world
+        // units wide.
+        let (dw, dh) = if data_sized {
+            (p.w * 1.33, p.h * 1.33)
+        } else {
+            (p.w * 2.0, p.h * 2.0)
+        };
         let _ = write!(
             out,
             r#"{}:{{"p":{},"x":{},"y":{},"w":{},"h":{}"#,
@@ -616,50 +661,9 @@ pub(crate) fn build_tree_data(
             dw as i32,
             dh as i32,
         );
-        // In-place mode: where this asc's circle actually draws — the
-        // pocket beside its class start (asc_anchor meta rows).
-        if let Some((_, klass)) = canvas.asc_internal.get(&p.name)
-            && let Some((ax, ay)) = canvas.asc_anchors.get(klass)
-        {
-            let _ = write!(out, r#","ax":{},"ay":{}"#, *ax as i32, *ay as i32);
-        }
         out.push('}');
     }
     out.push('}');
-    if !canvas.asc_anchors.is_empty() {
-        // Per-class pocket: anchor position + the class's own centre
-        // emblem (startNode sheet, "center<class>") as the base-class
-        // placeholder shown until an ascendancy replaces it.
-        out.push_str(r#","asc_anchors":{"#);
-        let mut anchors: Vec<_> = canvas.asc_anchors.iter().collect();
-        anchors.sort_by(|a, b| a.0.cmp(b.0));
-        for (i, (klass, (ax, ay))) in anchors.iter().enumerate() {
-            if i > 0 {
-                out.push(',');
-            }
-            let _ = write!(out, r#"{}:{{"x":{},"y":{}"#, json_str(klass), *ax as i32, *ay as i32);
-            // Real class-start coordinates — the start marker emblem
-            // draws here, connected to the starting passives.
-            if let Some(start) = nodes
-                .iter()
-                .find(|n| n.kind == "class_start" && n.klass.split('|').any(|k| k == *klass))
-            {
-                let _ = write!(out, r#","sx":{},"sy":{}"#, start.x as i32, start.y as i32);
-            }
-            let emblem = format!("center{}", klass.to_lowercase());
-            if let Some(sp) = sprite_lookup(sprites, &emblem) {
-                let _ = write!(
-                    out,
-                    r#","p":{},"w":{},"h":{}"#,
-                    json_str(&format!("/assets/sprites/{}", sp.png)),
-                    sp.w * 2,
-                    sp.h * 2,
-                );
-            }
-            out.push('}');
-        }
-        out.push('}');
-    }
 
     // Classes (for sidebar).
     out.push_str(r#","classes":["#);
