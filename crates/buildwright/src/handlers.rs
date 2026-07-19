@@ -4819,6 +4819,62 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             ));
         }
     }
+
+    // Portrait rows drive the renderer's asc_panels — without them the
+    // ascendancy subtrees never draw (they're excluded from the main
+    // pass). One row per class-pickable ascendancy: panel origin = the
+    // asc-start node's GROUP center (GGG lays each subtree out around
+    // it, and centers the Classes<Name> backdrop art there too); w/h =
+    // the backdrop's sheet dims, which the emitter doubles to full
+    // resolution exactly like PoB's DrawAsset.
+    let asc_sheet = tree
+        .get("sprites")
+        .and_then(|v| v.get("ascendancy"))
+        .and_then(json::Value::as_object)
+        .and_then(|levels| {
+            levels
+                .keys()
+                .max_by(|a, b| {
+                    a.parse::<f64>().unwrap_or(0.0).total_cmp(&b.parse::<f64>().unwrap_or(0.0))
+                })
+                .and_then(|z| levels.get(z))
+        })
+        .and_then(|z| z.get("coords"))
+        .and_then(json::Value::as_object);
+    let mut asc_start_group: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+    for n in nodes_obj.values() {
+        if flag(n, "isAscendancyStart")
+            && let Some(g) = n.get("group").and_then(json::Value::as_i64)
+        {
+            asc_start_group.insert(s(n.get("ascendancyName")), g.to_string());
+        }
+    }
+    for c in classes {
+        for a in c.get("ascendancies").and_then(json::Value::as_array).unwrap_or(&[]) {
+            let aname = s(a.get("name"));
+            let mut image = format!("Classes{aname}");
+            let (Some(gid), Some(coords)) = (asc_start_group.get(&aname), asc_sheet) else {
+                ui::warn(ctx.style, &format!("no panel data for ascendancy {aname}"));
+                continue;
+            };
+            // GGG kept the old art key when 3.24 renamed Raider→Warden.
+            if !coords.contains_key(&image) && aname == "Warden" {
+                image = "ClassesRaider".into();
+            }
+            let (Some(g), Some(art)) = (groups.get(gid), coords.get(&image)) else {
+                ui::warn(ctx.style, &format!("no group/art for ascendancy {aname}"));
+                continue;
+            };
+            meta.push_str(&format!(
+                "portrait\tasc\t{aname}\t{image}\t{}\t{}\t{}\t{}\n",
+                f(g.get("x")),
+                f(g.get("y")),
+                f(art.get("w")),
+                f(art.get("h")),
+            ));
+        }
+    }
     std::fs::write(tree_dir.join("meta.tsv"), &meta).map_err(|e| e.to_string())?;
 
     // Provenance marker consumed by `manifest` — same contract as the
@@ -4860,12 +4916,13 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let cache = cache_root().join("poe1_atlases");
     std::fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
 
-    // The sheets the renderer needs for the base tree. Ascendancy
-    // backdrops (webp) and league-bloodline sheets come later.
+    // The sheets the renderer needs for the base tree. The ascendancy
+    // sheet (webp) carries the Classes<Name> panel backdrops referenced
+    // by portrait rows; league-bloodline sheets come later.
     const SHEETS: &[&str] = &[
         "normalActive", "notableActive", "keystoneActive", "mastery",
         "masteryConnected", "masteryInactive", "frame", "jewel", "line",
-        "groupBackground",
+        "groupBackground", "ascendancy",
     ];
     let sanitize = |n: &str| -> String {
         n.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect()
