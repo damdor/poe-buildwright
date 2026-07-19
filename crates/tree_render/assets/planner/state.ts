@@ -30,6 +30,20 @@ export const resetBtn = document.getElementById('reset') as HTMLElement;
 export const exportBtn = document.getElementById('export') as HTMLElement;
 export const zoomfitBtn = document.getElementById('zoomfit') as HTMLElement;
 
+// Chrome that only makes sense for PoE2 (weapon-set allocation modes,
+// the PoE2 share/export codec) is removed outright on other games.
+if (window.PoE2Game && window.PoE2Game.id !== "poe2") {
+  if (window.PoE2Game.features?.weaponSets === false) {
+    allocModeSel?.closest("label")?.remove();
+    allocModeSel?.remove();
+  }
+  if (window.PoE2Game.features?.share === false) {
+    exportBtn?.remove();
+    document.getElementById("share")?.remove();
+    document.getElementById("import")?.remove();
+  }
+}
+
 // WebGL2 context. We disable the default alpha channel (treat the
 // backbuffer as fully opaque, much cheaper) and use premultiplied
 // alpha blending for correct compositing of icons with transparent
@@ -156,9 +170,15 @@ export const state = {
 //     allocate ONE node that's only active when that weapon set is
 //     equipped. set1 + set2 used together ≤ 24.
 //   * 8 ascendancy points from labyrinth trials.
-export const MAX_MAIN_POINTS = 99;
-export const MAX_SET_POINTS  = 24;
-export const MAX_ASC_POINTS  = 8;
+// Budgets come from the page's game descriptor when present (PoE1
+// pages embed 123/8); the literals are the PoE2 defaults.
+export const GAME = window.PoE2Game ?? { id: "poe2" };
+export function featureOn(name: string): boolean {
+  return GAME.features?.[name] !== false;
+}
+export const MAX_MAIN_POINTS = GAME.budgets?.main ?? 99;
+export const MAX_SET_POINTS  = featureOn("weaponSets") ? 24 : 0;
+export const MAX_ASC_POINTS  = GAME.budgets?.asc ?? 8;
 
 // Hardcoded table of ascendancy nodes that change tree-level rules
 // when allocated. Six "+passive point" nodes (Pathfinder + Oracle),

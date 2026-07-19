@@ -2880,13 +2880,20 @@ pub fn verify(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         }
     }
 
-    // 4. Completeness: core datasets present and non-empty.
-    for core in [
-        "tree/nodes.tsv",
-        "tree/edges.tsv",
-        "skills/gems.tsv",
-        "items/bases.tsv",
-    ] {
+    // 4. Completeness: core datasets present and non-empty. poe1_*
+    //    dirs are tree-only by design (step 1: no skills/items), so
+    //    their required set is just the tree.
+    let core_sets: &[&str] = if patch.starts_with("poe1_") {
+        &["tree/nodes.tsv", "tree/edges.tsv", "tree/meta.tsv", "tree/sprites.tsv"]
+    } else {
+        &[
+            "tree/nodes.tsv",
+            "tree/edges.tsv",
+            "skills/gems.tsv",
+            "items/bases.tsv",
+        ]
+    };
+    for &core in core_sets {
         match datasets
             .get(core)
             .and_then(|e| e.get("rows"))
@@ -4630,7 +4637,7 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             .ok_or("page has no passiveSkillTreeData embed")?
             + marker.len();
         // Brace-match to the end of the object (string-aware).
-        let bytes = html[start..].as_bytes();
+        let bytes = &html.as_bytes()[start..];
         let (mut depth, mut i, mut in_str, mut esc) = (0i32, 0usize, false, false);
         let end = loop {
             let b = *bytes.get(i).ok_or("unterminated tree JSON embed")?;
@@ -4708,6 +4715,7 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         let (x, y) = (gx + r * angle.sin(), gy - r * angle.cos());
 
         let asc = s(n.get("ascendancyName"));
+        let node_is_asc = !asc.is_empty();
         let kind = if n.get("classStartIndex").is_some() {
             "class_start"
         } else if flag(n, "isAscendancyStart") {
@@ -4759,6 +4767,17 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         n_nodes += 1;
         for e in n.get("out").and_then(json::Value::as_array).unwrap_or(&[]) {
             if let Some(b) = e.as_str().and_then(|v| v.parse::<u64>().ok()) {
+                // Ascendancy↔main crossing edges are mechanics, not
+                // visuals (Scion's Ascendant path nodes, asc starts →
+                // Scion) — no PoE1 tool draws them, and rendered
+                // literally they streak across the whole tree.
+                let other_asc = nodes_obj
+                    .get(&b.to_string())
+                    .map(|m| s(m.get("ascendancyName")))
+                    .unwrap_or_default();
+                if node_is_asc == other_asc.is_empty() {
+                    continue;
+                }
                 edges.insert((id.min(b), id.max(b)));
             }
         }
@@ -4801,6 +4820,15 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         }
     }
     std::fs::write(tree_dir.join("meta.tsv"), &meta).map_err(|e| e.to_string())?;
+
+    // Provenance marker consumed by `manifest` — same contract as the
+    // PoE2 patch dirs, so poe1_<label> gets the identical hash story.
+    let source_marker = format!("pathofexile.com/passive-skill-tree ({label})\n");
+    std::fs::write(
+        tree_dir.parent().unwrap_or(&tree_dir).join(".source"),
+        source_marker,
+    )
+    .map_err(|e| e.to_string())?;
 
     ui::ok(
         ctx.style,

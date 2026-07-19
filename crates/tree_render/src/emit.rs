@@ -613,6 +613,13 @@ pub(crate) fn build_tree_data(
     out
 }
 
+// Page-level chrome that isn't tree data: the <title> and the game
+// descriptor JSON embedded as window.PoE2Game.
+pub(crate) struct PageChrome<'a> {
+    pub(crate) title: &'a str,
+    pub(crate) game_json: &'a str,
+}
+
 pub(crate) fn render_canvas_html(
     nodes: &[Node],
     edges: &[(u32, u32, i32)],
@@ -620,8 +627,9 @@ pub(crate) fn render_canvas_html(
     classes: &[ClassInfo],
     sprites: &HashMap<String, Sprite>,
     asc_overrides: &[Vec<String>],
-    title: &str,
+    chrome: &PageChrome,
 ) -> String {
+    let (title, game_json) = (chrome.title, chrome.game_json);
     let tree_data = build_tree_data(nodes, edges, canvas, classes, sprites, asc_overrides);
     let title_e = escape_html(title);
 
@@ -976,12 +984,13 @@ pub(crate) fn render_canvas_html(
 </div>
 </div>
 <script src="/assets/wizard_chrome.js" defer></script>
-<script>const TREE = {tree_data};</script>
+<script>const TREE = {tree_data};window.PoE2Game = {game_json};</script>
 <script src="/assets/planner.js" defer></script>
 </body>
 </html>
 "##,
         title_e = title_e,
+        game_json = game_json,
         class_opts = class_opts,
         tree_data = tree_data,
     );

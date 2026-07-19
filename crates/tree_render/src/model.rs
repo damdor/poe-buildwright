@@ -9,6 +9,7 @@ pub(crate) struct Args {
     pub(crate) output: PathBuf,
     pub(crate) title: String,
     pub(crate) agent_subdir: String,
+    pub(crate) game: String,
 }
 
 #[derive(Clone)]
