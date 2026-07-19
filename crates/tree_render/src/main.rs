@@ -219,7 +219,22 @@ fn run() -> Result<(), String> {
     let sprites = read_sprites(&args.tree_dir.join("sprites.tsv")).unwrap_or_default();
     let asc_overrides = io::read_asc_overrides(&args.tree_dir.join("asc_overrides.tsv"));
 
-    let html = render_canvas_html(&nodes, &edges, &canvas, &classes, &sprites, &asc_overrides, &args.title);
+    // Per-game client descriptor. poe2 = the defaults every module
+    // assumes; poe1 step 1 is TREE-ONLY: gear/skills/jewels/spirit/
+    // weapon-set features off, own storage namespace + agent dir,
+    // budgets from the official export (123 + 8).
+    let game_json = match args.game.as_str() {
+        "poe1" => concat!(
+            "{\"id\":\"poe1\",\"agentBase\":\"/assets/poe1-agent\",",
+            "\"budgets\":{\"main\":123,\"asc\":8},",
+            "\"features\":{\"gear\":false,\"skills\":false,\"jewels\":false,",
+            "\"spirit\":false,\"weaponSets\":false,\"share\":false}}",
+        )
+        .to_string(),
+        _ => "{\"id\":\"poe2\"}".to_string(),
+    };
+    let chrome = emit::PageChrome { title: &args.title, game_json: &game_json };
+    let html = render_canvas_html(&nodes, &edges, &canvas, &classes, &sprites, &asc_overrides, &chrome);
     fs::write(&args.output, html).map_err(|e| format!("writing {}: {e}", args.output.display()))?;
     eprintln!(
         "Canvas viewer: {} nodes, {} edges, {} classes, {} portraits → {}",
@@ -775,6 +790,7 @@ fn parse_args() -> Result<Args, String> {
     let mut tree_dir: Option<PathBuf> = None;
     let mut output: Option<PathBuf> = None;
     let mut agent_subdir: Option<String> = None;
+    let mut game: Option<String> = None;
     let mut title = String::from("Build planner");
     while let Some(a) = argv.next() {
         match a.as_str() {
@@ -788,6 +804,9 @@ fn parse_args() -> Result<Args, String> {
             // build meta into their own subdir instead of clobbering
             // the primary game's /assets/agent/.
             "--agent-subdir" => agent_subdir = argv.next(),
+            // Game descriptor: which game this page is (drives storage
+            // namespacing, feature gates, point budgets client-side).
+            "--game" => game = argv.next(),
             "--title" => {
                 if let Some(t) = argv.next() {
                     title = t;
@@ -808,5 +827,6 @@ fn parse_args() -> Result<Args, String> {
         output,
         title,
         agent_subdir,
+        game: game.unwrap_or_else(|| "poe2".into()),
     })
 }

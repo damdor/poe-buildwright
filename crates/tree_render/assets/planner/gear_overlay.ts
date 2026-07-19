@@ -17,7 +17,15 @@ import { cascadeJewelOrphans } from "./pathfind.ts";
 import { flushPersistNow } from "./wizard_sync.ts";
 import type { Item } from "../../../../types/poe2.d.ts";
 
-{
+// Tree-only games (PoE1 step 1) ship no gear/jewel UI: pull the
+// strip + popover out of the DOM and skip the whole module, so
+// no PoE2 item state or jewel rules ever load on those pages.
+const GEAR_ON = window.PoE2Game?.features?.gear !== false;
+if (!GEAR_ON) {
+  document.getElementById("gear-strip")?.remove();
+  document.getElementById("gear-popover")?.remove();
+}
+if (GEAR_ON) {
   interface UniqueEntry { name: string; base?: string; slot?: string; icon?: string | null; latest_stats?: string; req_level?: number; variants?: { label: string; stats: string }[]; }
   interface ItemCatalogue { uniques: UniqueEntry[]; }
   interface BaseEntry {

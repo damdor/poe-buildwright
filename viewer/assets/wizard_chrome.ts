@@ -16,9 +16,15 @@ import type {
   CommitMeta, PlanIndexEntry, PoE2PlanAPI,
 } from "../../types/poe2.d.ts";
 
-const KEY_PREFIX  = "poe2-planner:plan:";
-const KEY_INDEX   = "poe2-planner:index";
-const KEY_CURRENT = "poe2-planner:current";
+// Storage is namespaced per game so a PoE1 page never sees (or
+// clobbers) PoE2 plans. Default base keeps every existing PoE2 key.
+const STORE_BASE =
+  window.PoE2Game && window.PoE2Game.id !== "poe2"
+    ? `${window.PoE2Game.id}-planner`
+    : "poe2-planner";
+const KEY_PREFIX  = `${STORE_BASE}:plan:`;
+const KEY_INDEX   = `${STORE_BASE}:index`;
+const KEY_CURRENT = `${STORE_BASE}:current`;
 const PLAN_FORMAT: "poe2-planner-plan" = "poe2-planner-plan";
 // v2 = captures[] cumulative snapshots. v1 is unsupported — pre-launch
 // we don't carry legacy data forward. loadPlan returns null for non-v2

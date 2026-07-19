@@ -408,6 +408,15 @@ declare global {
   const TREE: TreeData;
 
   interface Window {
+    /** Per-game page descriptor embedded by tree_render (--game).
+     *  Absent or id "poe2" = classic behavior; poe1 pages turn off
+     *  PoE2-only features and get their own storage/agent namespace. */
+    PoE2Game?: {
+      id: string;
+      agentBase?: string;
+      budgets?: { main?: number; asc?: number };
+      features?: Record<string, boolean>;
+    };
     PoE2Plan?: PoE2PlanAPI;
     // Jewel socketing bridge: pathfind consults this before treating
     // a click on an allocated jewel-socket node as (de)allocation.

@@ -12,7 +12,13 @@ import { spiritCapAt, state } from "./state.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
 import type { Skill } from "../../../../types/poe2.d.ts";
 
-{
+// Tree-only games ship no skills/spirit UI either.
+const SKILLS_ON = window.PoE2Game?.features?.skills !== false;
+if (!SKILLS_ON) {
+  document.getElementById('skills-strip')?.remove();
+  document.getElementById('skill-popover')?.remove();
+}
+if (SKILLS_ON) {
   interface Gem {
     id: string;
     name: string;
