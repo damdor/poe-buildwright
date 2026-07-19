@@ -8,6 +8,7 @@ pub(crate) struct Args {
     pub(crate) tree_dir: PathBuf,
     pub(crate) output: PathBuf,
     pub(crate) title: String,
+    pub(crate) agent_subdir: String,
 }
 
 #[derive(Clone)]
