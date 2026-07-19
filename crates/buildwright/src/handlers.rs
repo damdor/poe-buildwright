@@ -4827,7 +4827,7 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // it, and centers the Classes<Name> backdrop art there too); w/h =
     // the backdrop's sheet dims, which the emitter doubles to full
     // resolution exactly like PoB's DrawAsset.
-    let asc_sheet = tree
+    let (asc_sheet, asc_sheet_zoom) = tree
         .get("sprites")
         .and_then(|v| v.get("ascendancy"))
         .and_then(json::Value::as_object)
@@ -4837,10 +4837,15 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 .max_by(|a, b| {
                     a.parse::<f64>().unwrap_or(0.0).total_cmp(&b.parse::<f64>().unwrap_or(0.0))
                 })
-                .and_then(|z| levels.get(z))
+                .map(|z| (levels.get(z), z.parse::<f64>().unwrap_or(1.0)))
         })
-        .and_then(|z| z.get("coords"))
-        .and_then(json::Value::as_object);
+        .map(|(z, zoom)| {
+            (
+                z.and_then(|z| z.get("coords")).and_then(json::Value::as_object),
+                if zoom > 0.0 { zoom } else { 1.0 },
+            )
+        })
+        .unwrap_or((None, 1.0));
     let mut asc_start_group: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
     for n in nodes_obj.values() {
@@ -4866,12 +4871,14 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 ui::warn(ctx.style, &format!("no group/art for ascendancy {aname}"));
                 continue;
             };
+            // World size = art px / sheet zoom (GGG renderer rule);
+            // the emitter draws portrait rows at w/h verbatim for poe1.
             meta.push_str(&format!(
                 "portrait\tasc\t{aname}\t{image}\t{}\t{}\t{}\t{}\n",
                 f(g.get("x")),
                 f(g.get("y")),
-                f(art.get("w")),
-                f(art.get("h")),
+                (f(art.get("w")) / asc_sheet_zoom).round(),
+                (f(art.get("h")) / asc_sheet_zoom).round(),
             ));
         }
     }
@@ -4942,6 +4949,14 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         let Some(zkey) = levels.keys().max_by(|a, b| {
             a.parse::<f64>().unwrap_or(0.0).total_cmp(&b.parse::<f64>().unwrap_or(0.0))
         }) else { continue };
+        // GGG's renderer draws every sheet image at world size =
+        // sheet px / sheet zoom (skilltree.js drawTile: offsetZoom =
+        // zoom/curImgZoom; drawImage dw = img.width*offsetZoom). We
+        // bake that into sprites.tsv width/height so downstream code
+        // never needs to know a sheet's zoom level — if GGG ships a
+        // different zoom next patch, the division here self-corrects.
+        let sheet_zoom: f64 = zkey.parse().unwrap_or(1.0);
+        let sheet_zoom = if sheet_zoom > 0.0 { sheet_zoom } else { 1.0 };
         let z = levels.get(zkey).unwrap_or(&json::Value::Null);
         let url = z.get("filename").and_then(json::Value::as_str).unwrap_or("");
         if url.is_empty() {
@@ -5011,7 +5026,11 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 let png = data_miner::png::encode_rgba(w as u32, h as u32, &px);
                 std::fs::write(&dest, &png).map_err(|e| format!("write {file}: {e}"))?;
             }
-            out.push_str(&format!("{key}\t{file}\t{w}\t{h}\n"));
+            let (ww, wh) = (
+                (w as f64 / sheet_zoom).round() as i64,
+                (h as f64 / sheet_zoom).round() as i64,
+            );
+            out.push_str(&format!("{key}\t{file}\t{ww}\t{wh}\n"));
             count += 1;
         }
     }
