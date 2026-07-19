@@ -1,0 +1,93 @@
+# PoE1 passive tree support — step 1 (tree only)
+
+Scope: render and plan the PoE1 passive tree with the same agentic
+grounding as PoE2. No skills, gear, jewels, or timeless mechanics —
+those are explicitly out of scope for step 1. Cluster jewels and the
+event/bloodline ascendancies present in the data are also deferred.
+
+## Pipeline (fully CLI, no hand fixing)
+
+```
+./bw poe1-tree --label 3.26        # fetch + shape the official tree
+./bw poe1-sprites --label 3.26     # fetch + slice the official atlases
+./bw manifest --patch poe1_3.26    # hash everything (same contract as PoE2)
+./bw verify   --patch poe1_3.26    # integrity + referential ship gate
+./target/release/tree_render \
+  --tree-dir data/parsed/poe1_3.26/tree \
+  --output viewer/planner-poe1.html \
+  --title "PoE1 Passive Tree" \
+  --agent-subdir poe1-agent --game poe1
+```
+
+`poe1-tree` fetches `pathofexile.com/passive-skill-tree` itself and
+brace-matches the `passiveSkillTreeData` embed (pass `--json` to reuse
+an already-fetched copy offline). `poe1-sprites` needs the saved
+`tree.json` and converts non-PNG atlases (JPG/WEBP) via macOS `sips` —
+the one platform-specific step in the import.
+
+## Data contracts
+
+- `data/parsed/poe1_<label>/tree.json` — the official embed, verbatim.
+- `tree/{nodes,edges,meta,sprites}.tsv` — the same 17-column shape the
+  PoE2 shaper emits, so `tree_render` consumes both games unchanged.
+- `.source` provenance marker + `manifest.json` (SHA-256 per file +
+  rollup). `verify` uses a tree-only core set for `poe1_*` dirs.
+- Node positions: `group.xy + r*sin/cos(2π*orbitIndex/skillsPerOrbit)`
+  with `orbitRadii`/`skillsPerOrbit` from the embed's constants.
+- Dropped at ingest: nodes without groups (cluster-jewel proxies) and
+  ascendancy↔main crossing edges (mechanics, not visuals — rendered
+  literally they streak across the whole tree).
+
+## Art ratio — the one true rule
+
+**World size = sheet pixels ÷ that sheet's zoom key.** This is GGG's
+own renderer's rule (web.poecdn.com `dist/legacy/skilltree.<hash>.js`:
+`offsetZoom = zoom / curImgZoom; dw = img.width * offsetZoom`), and it
+is baked at the data layer: poe1 `sprites.tsv` width/height and the
+`portrait` meta rows are already world units, and the emitter draws
+them verbatim. If GGG ships sheets at a different zoom next league,
+the division at ingest self-corrects — do not reintroduce scale
+constants in the render path.
+
+Do NOT borrow PoB's `DrawAsset` ×1.33 factor: it calibrates PoB's own
+repackaged asset resolutions, not GGG's sheets (learned the hard way —
+subtrees spilled outside their circles).
+
+## Presentation rules (verified against GGG's renderer + PoB PoE1)
+
+- Ascendancy circles draw at their **raw GGG group coordinates**
+  (Duelist's below the tree, Witch's above, Shadow's along the right).
+  All are visible at once; non-selected backdrops at 25% alpha; the
+  selected ascendancy draws full-strength with selection overlays.
+- Class starts: the selected class draws its own `center<class>` art
+  at the start node; every other start shows the generic
+  `PSStartNodeBackgroundInactive` medallion. Start↔passive edges
+  render on PoE1 (PoE2 hides them under its central wedge art).
+- Mastery edges never render (structural only), same as PoE2.
+
+## Page isolation (`--game poe1` descriptor)
+
+`tree_render --game poe1` embeds `window.PoE2Game`:
+
+- features off: gear, skills, jewels, spirit, weapon sets, share —
+  the corresponding modules skip entirely (strips removed from DOM).
+- `ascInPlace`: the in-place ascendancy presentation above.
+- budgets 123 main + 8 ascendancy; storage namespaced to
+  `poe1-planner:*`; agent assets under `/assets/poe1-agent`; the
+  wizard patch badge reads that dir (shows "PoE1 3.26").
+- First visit with no `?build=` mints a fresh build in place instead
+  of bouncing to the (PoE2) landing wizard.
+- PoE2's node-id-keyed rule tables (`ASC_EFFECTS`, `MULTI_CHOICE`)
+  are empty on non-PoE2 games — PoE1 reuses the id space, so leaving
+  them populated would silently apply PoE2 ascendancy rules to
+  unrelated PoE1 nodes.
+
+## Deferred (step 2+ candidates)
+
+- Cluster jewels (proxy groups are dropped at ingest).
+- Event/bloodline alternate ascendancies (14 in the data, not
+  class-pickable).
+- PoE1 masteries popout UX (mastery nodes render; effect picking is
+  PoE2-only).
+- Server-side agent validate endpoints for poe1 (static grounding
+  files exist under `/assets/poe1-agent`).
