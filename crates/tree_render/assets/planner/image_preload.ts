@@ -21,7 +21,11 @@ export function defaultClassName(): string | null {
 // Which class exclusively owns an ascendancy. Variants (Abyssal Lich)
 // resolve through their parent panel's class; asc_internal is the
 // fallback mapping. null = unknown → treated as shared, loads eagerly.
+// In-place asc rendering (PoE1) shows every panel at boot, so no
+// asc art can be deferred behind a class switch.
+const IN_PLACE = window.PoE2Game?.features?.ascInPlace === true;
 function classOfAsc(asc: string): string | null {
+  if (IN_PLACE) return null;
   for (const c of TREE.classes) if (c.asc.includes(asc)) return c.name;
   const parent = TREE.asc_variants?.[asc]?.parent;
   if (parent) for (const c of TREE.classes) if (c.asc.includes(parent)) return c.name;

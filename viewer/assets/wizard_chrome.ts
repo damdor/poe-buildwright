@@ -648,7 +648,14 @@ refreshBuildName();
 // copy and the badge would never appear. Standard revalidate catches
 // the new file via 304 on hit, full download on miss.
 interface BuildMeta { patch?: string; source?: string; }
-fetch("/assets/build_meta.json")
+// Per-game agent dir: the poe1 page's metadata lives under
+// /assets/poe1-agent, and its badge must not claim to be PoE2 data.
+const GAME_ID = window.PoE2Game?.id ?? "poe2";
+const GAME_LABEL = GAME_ID === "poe2" ? "PoE2" : GAME_ID.replace("poe", "PoE");
+const META_URL = window.PoE2Game?.agentBase
+  ? window.PoE2Game.agentBase + "/build_meta.json"
+  : "/assets/build_meta.json";
+fetch(META_URL)
   .then(r => r.ok ? r.json() : null)
   .then((meta: BuildMeta | null) => {
     if (!meta || !meta.patch) return;
@@ -660,11 +667,17 @@ fetch("/assets/build_meta.json")
       // canonical PoB2 stable source (e.g. during the preview period
       // before PoB2 ships the new patch). Empty source = legacy
       // manifest without the field, treated as stable.
-      const isPreview = !!meta.source && meta.source !== "pob2-stable";
-      badge.textContent = "PoE2 " + meta.patch + (isPreview ? " preview" : "");
+      const isPreview =
+        GAME_ID === "poe2" && !!meta.source && meta.source !== "pob2-stable";
+      // Patch labels for non-poe2 games carry the game prefix
+      // ("poe1.3.26") — the badge already names the game, so drop it.
+      const patchLabel = meta.patch.startsWith(GAME_ID + ".")
+        ? meta.patch.slice(GAME_ID.length + 1)
+        : meta.patch;
+      badge.textContent = GAME_LABEL + " " + patchLabel + (isPreview ? " preview" : "");
       badge.title = isPreview
         ? "Preview data from " + meta.source + " — may differ from final patch"
-        : "PoE2 data version currently loaded";
+        : GAME_LABEL + " data version currently loaded";
       badge.classList.toggle("wc-patch-badge-preview", isPreview);
       badge.hidden = false;
     }

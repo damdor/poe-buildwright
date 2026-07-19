@@ -29,6 +29,17 @@ fn resolve_frame_url(
         && let Some(s) = sprite_lookup(sprites, &alias) {
             return Some(format!("/assets/sprites/{}", s.png));
         }
+    // PoE1 ships GENERIC ascendancy frames (AscendancyFrameLargeNormal
+    // etc.) instead of PoE2's per-ascendancy sets — swap the asc-name
+    // prefix for "Ascendancy" as a last resort.
+    if let Some(idx) = name.find("Frame")
+        && idx > 0
+    {
+        let generic = format!("Ascendancy{}", &name[idx..]);
+        if let Some(s) = sprite_lookup(sprites, &generic) {
+            return Some(format!("/assets/sprites/{}", s.png));
+        }
+    }
     None
 }
 

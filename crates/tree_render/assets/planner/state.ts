@@ -173,6 +173,10 @@ export const state = {
 // Budgets come from the page's game descriptor when present (PoE1
 // pages embed 123/8); the literals are the PoE2 defaults.
 export const GAME = window.PoE2Game ?? { id: "poe2" };
+// PoE1 draws every ascendancy subtree at its real tree coordinates,
+// all at once (selected one interactive) — PoE2 pins the selected
+// panel to the tree center instead.
+export const ASC_IN_PLACE = window.PoE2Game?.features?.ascInPlace === true;
 export function featureOn(name: string): boolean {
   return GAME.features?.[name] !== false;
 }
