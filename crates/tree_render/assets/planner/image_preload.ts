@@ -78,9 +78,10 @@ function collectOwnedUrls(): Map<string, { owner: string | null; tier: SpriteTie
   }
   for (const cn in TREE.class_portraits) add(TREE.class_portraits[cn], cn, 2);
   for (const an in TREE.asc_panels) add(TREE.asc_panels[an]?.p, classOfAsc(an), 2);
-  for (const cn in TREE.asc_anchors ?? {}) {
-    add(TREE.asc_anchors![cn]?.p, null, 2);
+  for (const cn in TREE.class_markers ?? {}) {
+    add(TREE.class_markers![cn]?.p, null, 2);
   }
+  add(TREE.start_inactive?.p, null, 2);
   // Variant-ascendancy override icons (Abyssal Lich) — referenced only
   // via TREE.asc_variants, so the node loop above never sees them.
   // Without this they're absent from texCache and the panel bake

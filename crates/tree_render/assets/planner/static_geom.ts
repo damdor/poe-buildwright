@@ -170,16 +170,19 @@ export function buildStaticGeometry(): void {
     const variant = TREE.asc_variants?.[ascName];
     const srcAsc = variant ? variant.parent : ascName;
     const geomP = (variant ? TREE.asc_panels[variant.parent] : null) ?? p;
-    // In-place mode (PoE1) bakes asc content translated onto its
-    // class pocket anchor instead of the tree centre. Fallback to raw
-    // coordinates if the anchor is missing.
-    const dx = ASC_IN_PLACE ? (geomP.ax ?? geomP.x) - geomP.x : -geomP.x;
-    const dy = ASC_IN_PLACE ? (geomP.ay ?? geomP.y) - geomP.y : -geomP.y;
+    // In-place mode (PoE1) bakes asc content at its raw GGG
+    // coordinates (Duelist's below the tree, Witch's above, etc.);
+    // PoE2 translates the selected panel to the tree centre.
+    const dx = ASC_IN_PLACE ? 0 : -geomP.x, dy = ASC_IN_PLACE ? 0 : -geomP.y;
 
     // 1. Portrait (one quad, one texture)
     const portStart = verts.length / STRIDE_FLOATS;
     if (texCache.has(p.p)) {
-      pushSprite(verts, geomP.x + dx, geomP.y + dy, p.w, p.h, WHITE, false);
+      // In-place mode bakes every backdrop dimmed (PoB draws
+      // non-selected ascendancies at 25% alpha); the selected one is
+      // redrawn at full strength by drawAscPanel.
+      const tint = ASC_IN_PLACE ? ([1, 1, 1, 0.25] as const) : WHITE;
+      pushSprite(verts, geomP.x + dx, geomP.y + dy, p.w, p.h, tint, false);
     }
     const portCount = verts.length / STRIDE_FLOATS - portStart;
     const portraitTex = texCache.get(p.p);
