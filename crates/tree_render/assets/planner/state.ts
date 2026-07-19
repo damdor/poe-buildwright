@@ -249,7 +249,9 @@ interface AscEffect {
   weaponSetGrant?: number;
   altStartClass?: string;
 }
-export const ASC_EFFECTS: Record<string, AscEffect> = {
+// Keyed by RAW node ids — poe1 reuses the id space, so these PoE2
+// rule tables are empty on any other game.
+export const ASC_EFFECTS: Record<string, AscEffect> = GAME.id !== "poe2" ? {} : {
   '11335': { grantsPoints: 1 },                               // Oracle - Passive Point
   '12183': { grantsPoints: 1 },                               // Pathfinder - Passive Points
   '12795': { grantsPoints: 4, altStartClass: 'Sorceress' },   // Pathfinder - Path of the Sorceress
@@ -273,7 +275,7 @@ export const ASC_EFFECTS: Record<string, AscEffect> = {
 //   * Option nodes are hidden from tree rendering / pathfinding —
 //     the user only ever interacts with them through the parent's
 //     popout (same UX as attribute Str/Dex/Int picker).
-export const MULTI_CHOICE: Record<string, string[]> = {
+export const MULTI_CHOICE: Record<string, string[]> = GAME.id !== "poe2" ? {} : {
   '16433': ['12795', '57253'],                                // Pathfinder - Path Seeker
   '57141': ['9710', '18940', '38004', '56618', '58379'],      // Pathfinder - Brew Concoction
   '42416': ['41875', '59542'],                                // Deadeye - Projectile Proximity Specialisation
