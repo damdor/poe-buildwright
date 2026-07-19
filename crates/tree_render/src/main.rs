@@ -228,7 +228,8 @@ fn run() -> Result<(), String> {
             "{\"id\":\"poe1\",\"agentBase\":\"/assets/poe1-agent\",",
             "\"budgets\":{\"main\":123,\"asc\":8},",
             "\"features\":{\"gear\":false,\"skills\":false,\"jewels\":false,",
-            "\"spirit\":false,\"weaponSets\":false,\"share\":false}}",
+            "\"spirit\":false,\"weaponSets\":false,\"share\":false,",
+            "\"ascInPlace\":true}}",
         )
         .to_string(),
         _ => "{\"id\":\"poe2\"}".to_string(),

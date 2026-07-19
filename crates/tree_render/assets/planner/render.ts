@@ -3,10 +3,10 @@
 // ---------------------------------------------------------------------
 
 import { texCache } from "./image_preload.ts";
-import { ASC_EFFECTS, MULTI_CHOICE, canvas, gl, isMcOption, pickedMcOption, state , ascNodeOverride} from "./state.ts";
+import { ASC_EFFECTS, ASC_IN_PLACE, MULTI_CHOICE, canvas, gl, isMcOption, pickedMcOption, state , ascNodeOverride} from "./state.ts";
 import { STRIDE_FLOATS, getTex, uClip, uDashMode, uDashPeriod, uDashSolid, uOffsetScale, uPulse, uTranslate, uView, whiteTex } from "./webgl_setup.ts";
 import { Tint, pushSprite, pushSpriteRot, pushSpriteUV } from "./vertex_helpers.ts";
-import { ascStatic, mainConnectorBatches, mainEdgeBatch, staticBatches, staticVAO } from "./static_geom.ts";
+import { type AscPanelStatic, ascStatic, mainConnectorBatches, mainEdgeBatch, staticBatches, staticVAO } from "./static_geom.ts";
 import { buildClusterGlow, clusterGlowBatches, clusterGlowVAO, rebuildSearchGlow, rebuildSelEdges, searchGlowCount, searchGlowTex, searchGlowVAO, selConnectorAscBatches, selConnectorBatches, selEdgeAscCount, selEdgeMainCount, selEdgeProcAscStart, selEdgeProcMainStart, selEdgeVAO, uploadDyn } from "./overlay.ts";
 import { findClassStartHub, previewAscCount, previewConnectorAscBatches, previewConnectorBatches, previewMainCount, previewProcAscStart, previewProcMainStart, previewVAO } from "./pathfind.ts";
 import type { TreeNode } from "../../../../types/poe2.d.ts";
@@ -112,7 +112,7 @@ export function render(): void {
     if (tex) dynBatch(tex, false, (arr) => {
       pushSprite(arr, 0, 0, 3000, 3000, [1, 1, 1, 1], false);
     });
-  } else if (state.asc) {
+  } else if (state.asc && !ASC_IN_PLACE) {
     // Variant ascendancy shows its OWN portrait over the parent panel.
     const panel = TREE.asc_panels[state.ascVariant ?? state.asc];
     const tex = panel ? getTex(panel.p) : null;
@@ -309,7 +309,7 @@ export function render(): void {
   drawOverlays();
 
   // ============== Ascendancy panel (if active) ==============
-  if (state.asc) drawAscPanel();
+  if (state.asc || ASC_IN_PLACE) drawAscPanel();
 }
 
 // Draw all dynamic overlays in one upload: selected allocated frames
@@ -467,15 +467,63 @@ export function drawOverlays(): void {
   }
 }
 
+// One asc's baked static content (backdrop + edges + nodes), no
+// selection overlays — the non-selected panels in in-place mode.
+function drawAscStaticSimple(a: AscPanelStatic): void {
+  if (a.portraitBatch) {
+    gl.bindTexture(gl.TEXTURE_2D, a.portraitBatch.tex);
+    gl.uniform1f(uClip, 0);
+    gl.drawArrays(gl.TRIANGLES, a.portraitBatch.start, a.portraitBatch.count);
+  }
+  if (state.useGGGConnectors && a.connectorBatches.length > 0) {
+    gl.uniform1f(uClip, 0);
+    for (const b of a.connectorBatches) {
+      gl.bindTexture(gl.TEXTURE_2D, b.tex);
+      gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+    }
+  } else if (a.edgeBatch) {
+    gl.bindTexture(gl.TEXTURE_2D, whiteTex);
+    const oh = offsetScale(0.8, 2.0, 0.5);
+    gl.uniform2f(uOffsetScale, oh, oh);
+    gl.uniform1f(uClip, 0);
+    gl.drawArrays(gl.TRIANGLES, a.edgeBatch.start, a.edgeBatch.count);
+    gl.uniform2f(uOffsetScale, 0, 0);
+  }
+  for (const b of a.batches) {
+    gl.bindTexture(gl.TEXTURE_2D, b.tex);
+    gl.uniform1f(uClip, b.clipIcon ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+  }
+}
+
 export function drawAscPanel(): void {
-  if (!state.asc) return;
-  // Variants have their own baked panel (parent content + overridden
-  // node icons + variant portrait).
-  const asc = ascStatic[state.ascVariant ?? state.asc];
-  if (!asc) return;
+  if (!state.asc && !ASC_IN_PLACE) return;
   gl.bindVertexArray(staticVAO);
   gl.uniform2f(uOffsetScale, 0, 0);
   gl.uniform2f(uTranslate, 0, 0);
+  if (ASC_IN_PLACE) {
+    // PoE1: every subtree is visible at its real coordinates; the
+    // selected one continues below with its selection overlays.
+    const sel = state.ascVariant ?? state.asc;
+    for (const name in ascStatic) {
+      if (name === sel) continue;
+      const a = ascStatic[name];
+      if (a) drawAscStaticSimple(a);
+    }
+  }
+  if (!state.asc) return;
+  const selectedKey = state.ascVariant ?? state.asc;
+  // Variants have their own baked panel (parent content + overridden
+  // node icons + variant portrait).
+  const asc = ascStatic[selectedKey];
+  if (!asc) return;
+  // In-place mode has no centre-stack portrait — the backdrop is part
+  // of this pass, under the edges and nodes.
+  if (ASC_IN_PLACE && asc.portraitBatch) {
+    gl.bindTexture(gl.TEXTURE_2D, asc.portraitBatch.tex);
+    gl.uniform1f(uClip, 0);
+    gl.drawArrays(gl.TRIANGLES, asc.portraitBatch.start, asc.portraitBatch.count);
+  }
   // (Asc portrait was drawn earlier, in the centre-stack dyn pass,
   // so BGTree's frame can overlay it via the quatrefoil opening.
   // Here we only draw the interactive content: edges + nodes.)
@@ -555,7 +603,7 @@ export function drawAscPanel(): void {
   // 2. Dynamic asc overlays (selected frames, picked icons, popout)
   const panel = TREE.asc_panels[state.asc];
   if (!panel) return;
-  const dx = -panel.x, dy = -panel.y;
+  const dx = ASC_IN_PLACE ? 0 : -panel.x, dy = ASC_IN_PLACE ? 0 : -panel.y;
   const verts: number[] = [];
   const buckets = new Map<string, OverlayBucket>();
   function addBucket(
@@ -683,12 +731,12 @@ export function drawAscPanel(): void {
 // Asc nodes are drawn translated; for popouts we need to apply the
 // same offset so the popout lands at the visible (relocated) position.
 export function ascOffsetX(n: TreeNode): number {
-  if (!n.a) return 0;
+  if (!n.a || ASC_IN_PLACE) return 0;
   const p = TREE.asc_panels[n.a];
   return p ? -p.x : 0;
 }
 export function ascOffsetY(n: TreeNode): number {
-  if (!n.a) return 0;
+  if (!n.a || ASC_IN_PLACE) return 0;
   const p = TREE.asc_panels[n.a];
   return p ? -p.y : 0;
 }
