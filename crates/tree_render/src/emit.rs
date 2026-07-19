@@ -17,6 +17,30 @@ use crate::text::{escape_html, json_str, parse_node_options};
 /// → `OracleFrameLargeNormal`). Returns None if neither resolves, so
 /// bespoke frames GGG hasn't shipped sprites for (Blighted, JewelSocketAlt)
 /// simply draw no frame rather than a broken one.
+fn resolve_frame_sprite<'a>(
+    sprites: &'a HashMap<String, Sprite>,
+    name: &str,
+    kind: &str,
+) -> Option<&'a Sprite> {
+    if let Some(s) = sprite_lookup(sprites, name) {
+        return Some(s);
+    }
+    if let Some(alias) = portrait_frame_alias(name, kind)
+        && let Some(s) = sprite_lookup(sprites, &alias)
+    {
+        return Some(s);
+    }
+    if let Some(idx) = name.find("Frame")
+        && idx > 0
+    {
+        let generic = format!("Ascendancy{}", &name[idx..]);
+        if let Some(s) = sprite_lookup(sprites, &generic) {
+            return Some(s);
+        }
+    }
+    None
+}
+
 fn resolve_frame_url(
     sprites: &HashMap<String, Sprite>,
     name: &str,
@@ -135,6 +159,7 @@ pub(crate) fn build_tree_data(
     classes: &[ClassInfo],
     sprites: &HashMap<String, Sprite>,
     asc_overrides: &[Vec<String>],
+    data_sized: bool,
 ) -> String {
     let mut node_idx: HashMap<u32, &Node> = HashMap::new();
     for n in nodes {
@@ -322,10 +347,25 @@ pub(crate) fn build_tree_data(
             out.push(',');
         }
         first_n = false;
-        let ts = target_size(n);
-        let icon_url =
-            sprite_lookup(sprites, &n.icon).map(|s| format!("/assets/sprites/{}", s.png));
+        let mut ts = target_size(n);
+        let icon_sp = sprite_lookup(sprites, &n.icon);
+        let icon_url = icon_sp.map(|s| format!("/assets/sprites/{}", s.png));
         let (off_name, on_name) = pick_frame_names(n);
+        // PoE1: node draw sizes come straight from the sheet — world
+        // units are 2x the 0.5-zoom sprite pixels (same doubling as
+        // the backdrops / PoB DrawAsset). The PoE2 table above is
+        // tuned for PoE2's own art and packs PoE1's tighter orbits
+        // (orbit-2 chord is 63 units) with oversized nodes.
+        if data_sized {
+            if let Some(sp) = icon_sp {
+                ts.icon = (sp.w * 2) as f64;
+            }
+            if let Some(nm) = &off_name
+                && let Some(sp) = resolve_frame_sprite(sprites, nm, &n.kind)
+            {
+                ts.frame = (sp.w * 2) as f64;
+            }
+        }
         let frame_off_url = off_name
             .as_ref()
             .and_then(|nm| resolve_frame_url(sprites, nm, &n.kind));
@@ -564,7 +604,7 @@ pub(crate) fn build_tree_data(
         let dh = p.h * 2.0;
         let _ = write!(
             out,
-            r#"{}:{{"p":{},"x":{},"y":{},"w":{},"h":{}}}"#,
+            r#"{}:{{"p":{},"x":{},"y":{},"w":{},"h":{}"#,
             json_str(&p.name),
             json_str(&format!("/assets/sprites/{}", sp.png)),
             p.x as i32,
@@ -572,8 +612,42 @@ pub(crate) fn build_tree_data(
             dw as i32,
             dh as i32,
         );
+        // In-place mode: where this asc's circle actually draws — the
+        // pocket beside its class start (asc_anchor meta rows).
+        if let Some((_, klass)) = canvas.asc_internal.get(&p.name)
+            && let Some((ax, ay)) = canvas.asc_anchors.get(klass)
+        {
+            let _ = write!(out, r#","ax":{},"ay":{}"#, *ax as i32, *ay as i32);
+        }
+        out.push('}');
     }
     out.push('}');
+    if !canvas.asc_anchors.is_empty() {
+        // Per-class pocket: anchor position + the class's own centre
+        // emblem (startNode sheet, "center<class>") as the base-class
+        // placeholder shown until an ascendancy replaces it.
+        out.push_str(r#","asc_anchors":{"#);
+        let mut anchors: Vec<_> = canvas.asc_anchors.iter().collect();
+        anchors.sort_by(|a, b| a.0.cmp(b.0));
+        for (i, (klass, (ax, ay))) in anchors.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            let _ = write!(out, r#"{}:{{"x":{},"y":{}"#, json_str(klass), *ax as i32, *ay as i32);
+            let emblem = format!("center{}", klass.to_lowercase());
+            if let Some(sp) = sprite_lookup(sprites, &emblem) {
+                let _ = write!(
+                    out,
+                    r#","p":{},"w":{},"h":{}"#,
+                    json_str(&format!("/assets/sprites/{}", sp.png)),
+                    sp.w * 2,
+                    sp.h * 2,
+                );
+            }
+            out.push('}');
+        }
+        out.push('}');
+    }
 
     // Classes (for sidebar).
     out.push_str(r#","classes":["#);
@@ -629,6 +703,7 @@ pub(crate) fn build_tree_data(
 pub(crate) struct PageChrome<'a> {
     pub(crate) title: &'a str,
     pub(crate) game_json: &'a str,
+    pub(crate) game: &'a str,
 }
 
 pub(crate) fn render_canvas_html(
@@ -641,7 +716,7 @@ pub(crate) fn render_canvas_html(
     chrome: &PageChrome,
 ) -> String {
     let (title, game_json) = (chrome.title, chrome.game_json);
-    let tree_data = build_tree_data(nodes, edges, canvas, classes, sprites, asc_overrides);
+    let tree_data = build_tree_data(nodes, edges, canvas, classes, sprites, asc_overrides, chrome.game == "poe1");
     let title_e = escape_html(title);
 
     // Sidebar class options — sorted alphabetically (PoE2 has no

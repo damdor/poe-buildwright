@@ -80,6 +80,9 @@ pub(crate) struct Canvas {
     /// internalId (e.g. "Druid1") is what the new in-game Build Planner
     /// `.build` format wants in its top-level `ascendancy` field.
     pub(crate) asc_internal: HashMap<String, (String, String)>,
+    /// Class name → pocket anchor where its ascendancy circle draws
+    /// (PoE1 in-place mode). Empty for PoE2 trees.
+    pub(crate) asc_anchors: HashMap<String, (f64, f64)>,
 }
 
 /// Portrait sourced from tree.json `classes[i].background` or
