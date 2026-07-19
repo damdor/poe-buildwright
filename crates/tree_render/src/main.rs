@@ -257,7 +257,7 @@ fn run() -> Result<(), String> {
     // BFS hops from each class start so agents can budget passive
     // points before emitting a URL. Compact — LLMs fetch this.
     {
-        let agent_dir = assets_dir.join("agent");
+        let agent_dir = assets_dir.join(&args.agent_subdir);
         let _ = fs::create_dir_all(&agent_dir);
 
         // Hop distance from every class hub (adjacency over the same
@@ -745,7 +745,11 @@ fn run() -> Result<(), String> {
     }
     let patch = field(&manifest_text, "patch");
     let source = field(&manifest_text, "source");
-    let meta_path = assets_dir.join("build_meta.json");
+    let meta_path = if args.agent_subdir == "agent" {
+        assets_dir.join("build_meta.json")
+    } else {
+        assets_dir.join(&args.agent_subdir).join("build_meta.json")
+    };
     let meta = build_meta_json(&classes, &canvas, &patch, &source, &sprites);
     fs::write(&meta_path, meta).map_err(|e| format!("writing {}: {e}", meta_path.display()))?;
     eprintln!(
@@ -770,6 +774,7 @@ fn parse_args() -> Result<Args, String> {
     let mut argv = env::args().skip(1);
     let mut tree_dir: Option<PathBuf> = None;
     let mut output: Option<PathBuf> = None;
+    let mut agent_subdir: Option<String> = None;
     let mut title = String::from("Build planner");
     while let Some(a) = argv.next() {
         match a.as_str() {
@@ -779,6 +784,10 @@ fn parse_args() -> Result<Args, String> {
             }
             "--tree-dir" => tree_dir = argv.next().map(PathBuf::from),
             "--output" => output = argv.next().map(PathBuf::from),
+            // Second-game renders (PoE1) write their agent grounding +
+            // build meta into their own subdir instead of clobbering
+            // the primary game's /assets/agent/.
+            "--agent-subdir" => agent_subdir = argv.next(),
             "--title" => {
                 if let Some(t) = argv.next() {
                     title = t;
@@ -792,10 +801,12 @@ fn parse_args() -> Result<Args, String> {
     // docs/plan.md; pointing at it means re-running tree_render after a
     // patch update Just Works without flag changes.
     let tree_dir = tree_dir.unwrap_or_else(|| PathBuf::from("data/parsed/CURRENT/tree"));
+    let agent_subdir = agent_subdir.unwrap_or_else(|| "agent".into());
     let output = output.ok_or_else(|| format!("--output required\n\n{USAGE}"))?;
     Ok(Args {
         tree_dir,
         output,
         title,
+        agent_subdir,
     })
 }

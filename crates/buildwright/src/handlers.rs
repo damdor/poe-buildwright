@@ -4573,3 +4573,364 @@ mod tests {
         assert_eq!(orphans, 1);
     }
 }
+
+// ---------------------------------------------------------------------
+// poe1-tree: ingest GGG's OFFICIAL PoE1 passive-tree JSON into the
+// same tree TSV shape the PoE2 pipeline produces, so tree_render and
+// the whole downstream (planner, agent emitters) work unchanged.
+//
+// Source of truth: the `var passiveSkillTreeData = {...}` embed on
+// https://www.pathofexile.com/passive-skill-tree — GGG has published
+// it per league for a decade; it is the official first-party export
+// (nodes, groups, orbits, edges, stat text, sprite atlases). Re-run
+// on every league to refresh. Atlases arrive as JPG/WEBP/PNG; the
+// non-PNG ones are normalized with the system `sips` tool (macOS —
+// same shell-out philosophy as curl; Linux users convert manually).
+// ---------------------------------------------------------------------
+/// Pull `--<name> <value>` (or `--<name>=<value>`) out of an arg list.
+fn arg_value(args: &[String], name: &str) -> Option<String> {
+    let eq = format!("{name}=");
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == name {
+            return it.next().cloned();
+        }
+        if let Some(v) = a.strip_prefix(&eq) {
+            return Some(v.to_string());
+        }
+    }
+    None
+}
+
+pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    let label = arg_value(args, "--label").unwrap_or_else(|| "current".into());
+    let out_dir = ctx.root.join(format!("data/parsed/poe1_{label}"));
+    let tree_dir = out_dir.join("tree");
+    std::fs::create_dir_all(&tree_dir).map_err(|e| e.to_string())?;
+
+    // 1. Obtain the JSON: --json <file> or fetch the live page.
+    let raw = if let Some(p) = arg_value(args, "--json") {
+        std::fs::read_to_string(&p).map_err(|e| format!("read {p}: {e}"))?
+    } else {
+        let page_path = out_dir.join("page.html");
+        let status = std::process::Command::new("curl")
+            .args(["-fsSL", "--retry", "3", "-A",
+                   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "-o"])
+            .arg(&page_path)
+            .arg("https://www.pathofexile.com/passive-skill-tree")
+            .status()
+            .map_err(|e| format!("running curl: {e}"))?;
+        if !status.success() {
+            return Err("fetching the passive-skill-tree page failed".into());
+        }
+        let html = std::fs::read_to_string(&page_path).map_err(|e| e.to_string())?;
+        let marker = "var passiveSkillTreeData = ";
+        let start = html
+            .find(marker)
+            .ok_or("page has no passiveSkillTreeData embed")?
+            + marker.len();
+        // Brace-match to the end of the object (string-aware).
+        let bytes = html[start..].as_bytes();
+        let (mut depth, mut i, mut in_str, mut esc) = (0i32, 0usize, false, false);
+        let end = loop {
+            let b = *bytes.get(i).ok_or("unterminated tree JSON embed")?;
+            if in_str {
+                if esc {
+                    esc = false;
+                } else if b == b'\\' {
+                    esc = true;
+                } else if b == b'"' {
+                    in_str = false;
+                }
+            } else {
+                match b {
+                    b'"' => in_str = true,
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break i + 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            i += 1;
+        };
+        let json_text = html[start..start + end].to_string();
+        std::fs::write(out_dir.join("tree.json"), &json_text).map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&page_path);
+        json_text
+    };
+    let tree = json::parse(&raw).map_err(|e| format!("tree JSON: {e}"))?;
+
+    let f = |v: Option<&json::Value>| v.and_then(json::Value::as_f64).unwrap_or(0.0);
+    let s = |v: Option<&json::Value>| v.and_then(json::Value::as_str).unwrap_or("").to_string();
+    let flag = |n: &json::Value, k: &str| n.get(k).and_then(json::Value::as_bool).unwrap_or(false);
+
+    // 2. Geometry constants.
+    let consts = tree.get("constants").ok_or("no constants")?;
+    let radii: Vec<f64> = consts
+        .get("orbitRadii")
+        .and_then(json::Value::as_array)
+        .ok_or("no orbitRadii")?
+        .iter()
+        .filter_map(json::Value::as_f64)
+        .collect();
+    let per_orbit: Vec<f64> = consts
+        .get("skillsPerOrbit")
+        .and_then(json::Value::as_array)
+        .ok_or("no skillsPerOrbit")?
+        .iter()
+        .filter_map(json::Value::as_f64)
+        .collect();
+    let groups = tree.get("groups").and_then(json::Value::as_object).ok_or("no groups")?;
+    let classes = tree.get("classes").and_then(json::Value::as_array).ok_or("no classes")?;
+    let class_names: Vec<String> = classes.iter().map(|c| s(c.get("name"))).collect();
+
+    // 3. Nodes → nodes.tsv (same 17 columns the PoE2 shaper emits).
+    let nodes_obj = tree.get("nodes").and_then(json::Value::as_object).ok_or("no nodes")?;
+    let mut nodes_out = String::from(
+        "id\tx\ty\tkind\tklass\tascendancy\tname\tstats\tgroup\torbit\torbit_index\ticon\tnode_overlay\tactive_effect\tnode_options\tconnection_art\tunlock_constraint\n",
+    );
+    let mut edges: std::collections::BTreeSet<(u64, u64)> = std::collections::BTreeSet::new();
+    let mut n_nodes = 0usize;
+    for (nid, n) in nodes_obj.iter() {
+        let Ok(id) = nid.parse::<u64>() else { continue };
+        let Some(gid) = n.get("group").and_then(json::Value::as_i64) else { continue };
+        let g = groups.get(&gid.to_string());
+        let (gx, gy) = (f(g.and_then(|g| g.get("x"))), f(g.and_then(|g| g.get("y"))));
+        let orbit = n.get("orbit").and_then(json::Value::as_i64).unwrap_or(0) as usize;
+        let oidx = n.get("orbitIndex").and_then(json::Value::as_i64).unwrap_or(0) as f64;
+        let r = radii.get(orbit).copied().unwrap_or(0.0);
+        let slots = per_orbit.get(orbit).copied().unwrap_or(1.0).max(1.0);
+        let angle = std::f64::consts::TAU * oidx / slots;
+        let (x, y) = (gx + r * angle.sin(), gy - r * angle.cos());
+
+        let asc = s(n.get("ascendancyName"));
+        let kind = if n.get("classStartIndex").is_some() {
+            "class_start"
+        } else if flag(n, "isAscendancyStart") {
+            "asc_start"
+        } else if flag(n, "isKeystone") {
+            "keystone"
+        } else if flag(n, "isMastery") {
+            "mastery"
+        } else if flag(n, "isJewelSocket") {
+            "jewel"
+        } else if flag(n, "isNotable") {
+            if asc.is_empty() { "notable" } else { "asc_notable" }
+        } else if asc.is_empty() {
+            "small"
+        } else {
+            "asc_small"
+        };
+        let klass = n
+            .get("classStartIndex")
+            .and_then(json::Value::as_i64)
+            .and_then(|i| class_names.get(i as usize).cloned())
+            .unwrap_or_default();
+        let stats: Vec<String> = n
+            .get("stats")
+            .and_then(json::Value::as_array)
+            .map(|a| a.iter().filter_map(json::Value::as_str).map(|t| t.replace('\n', "; ")).collect())
+            .unwrap_or_default();
+        let row = [
+            id.to_string(),
+            format!("{x:.2}"),
+            format!("{y:.2}"),
+            kind.to_string(),
+            klass,
+            asc,
+            s(n.get("name")),
+            stats.join("; "),
+            gid.to_string(),
+            orbit.to_string(),
+            (oidx as i64).to_string(),
+            s(n.get("icon")),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+        ];
+        nodes_out.push_str(&row.join("\t"));
+        nodes_out.push('\n');
+        n_nodes += 1;
+        for e in n.get("out").and_then(json::Value::as_array).unwrap_or(&[]) {
+            if let Some(b) = e.as_str().and_then(|v| v.parse::<u64>().ok()) {
+                edges.insert((id.min(b), id.max(b)));
+            }
+        }
+    }
+    std::fs::write(tree_dir.join("nodes.tsv"), &nodes_out).map_err(|e| e.to_string())?;
+
+    // 4. edges.tsv (a, b, conn_orbit 0 — arcs derive from shared
+    //    group/orbit downstream, same as PoE2).
+    let mut edges_out = String::from("a\tb\tconn_orbit\n");
+    for (a, b) in &edges {
+        edges_out.push_str(&format!("{a}\t{b}\t0\n"));
+    }
+    std::fs::write(tree_dir.join("edges.tsv"), &edges_out).map_err(|e| e.to_string())?;
+
+    // 5. meta.tsv: bounds, orbit geometry, groups, classes + asc map.
+    let mut meta = String::new();
+    for k in ["min_x", "max_x", "min_y", "max_y"] {
+        meta.push_str(&format!("{k}\t{}\n", f(tree.get(k))));
+    }
+    let join_f = |v: &[f64]| v.iter().map(|x| format!("{x}")).collect::<Vec<_>>().join("|");
+    meta.push_str(&format!("orbit_radii\t{}\n", join_f(&radii)));
+    meta.push_str(&format!("skills_per_orbit\t{}\n", join_f(&per_orbit)));
+    for (gid, g) in groups.iter() {
+        meta.push_str(&format!("group\t{gid}\t{}\t{}\n", f(g.get("x")), f(g.get("y"))));
+    }
+    for c in classes {
+        let name = s(c.get("name"));
+        let ascs: Vec<String> = c
+            .get("ascendancies")
+            .and_then(json::Value::as_array)
+            .map(|a| a.iter().map(|x| s(x.get("name"))).collect())
+            .unwrap_or_default();
+        meta.push_str(&format!("class\t{name}\t{}\n", ascs.join("|")));
+        for a in c.get("ascendancies").and_then(json::Value::as_array).unwrap_or(&[]) {
+            meta.push_str(&format!(
+                "asc_internal\t{}\t{}\t{name}\n",
+                s(a.get("name")),
+                s(a.get("id")),
+            ));
+        }
+    }
+    std::fs::write(tree_dir.join("meta.tsv"), &meta).map_err(|e| e.to_string())?;
+
+    ui::ok(
+        ctx.style,
+        &format!(
+            "poe1 tree ({label}): {n_nodes} nodes, {} edges, {} classes → {}",
+            edges.len(),
+            class_names.len(),
+            tree_dir.strip_prefix(&ctx.root).unwrap_or(&tree_dir).display(),
+        ),
+    );
+    ui::note(ctx.style, "next: buildwright poe1-sprites (atlas download + slice)");
+    Ok(())
+}
+
+/// poe1-sprites: download the official sprite atlases referenced by
+/// the ingested tree JSON, normalize JPG/WEBP → PNG with the system
+/// `sips` tool, slice every icon/frame out with our PNG codec, and
+/// write tree/sprites.tsv. Sprite files are prefixed `poe1_` so the
+/// shared /assets/sprites/ dir can host both games without collisions.
+pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    let label = arg_value(args, "--label").unwrap_or_else(|| "current".into());
+    let out_dir = ctx.root.join(format!("data/parsed/poe1_{label}"));
+    let raw = std::fs::read_to_string(out_dir.join("tree.json"))
+        .map_err(|e| format!("tree.json (run poe1-tree first): {e}"))?;
+    let tree = json::parse(&raw).map_err(|e| e.to_string())?;
+    let sprites = tree.get("sprites").and_then(json::Value::as_object).ok_or("no sprites")?;
+    let assets = ctx.root.join("viewer/assets/sprites");
+    std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
+    let cache = cache_root().join("poe1_atlases");
+    std::fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
+
+    // The sheets the renderer needs for the base tree. Ascendancy
+    // backdrops (webp) and league-bloodline sheets come later.
+    const SHEETS: &[&str] = &[
+        "normalActive", "notableActive", "keystoneActive", "mastery",
+        "masteryConnected", "masteryInactive", "frame", "jewel", "line",
+        "groupBackground",
+    ];
+    let sanitize = |n: &str| -> String {
+        n.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect()
+    };
+    // Download + normalize each unique atlas once, decode once.
+    // (width, height, rgba)
+    let mut atlases: std::collections::BTreeMap<String, (u32, u32, Vec<u8>)> =
+        std::collections::BTreeMap::new();
+    let mut out = String::from("sprite_name\tpng\twidth\theight\n");
+    let mut count = 0usize;
+    for sheet in SHEETS {
+        let Some(levels) = sprites.get(*sheet).and_then(json::Value::as_object) else {
+            ui::warn(ctx.style, &format!("sprite sheet {sheet} missing — skipped"));
+            continue;
+        };
+        // Highest zoom level = sharpest atlas.
+        let Some(zkey) = levels.keys().max_by(|a, b| {
+            a.parse::<f64>().unwrap_or(0.0).total_cmp(&b.parse::<f64>().unwrap_or(0.0))
+        }) else { continue };
+        let z = levels.get(zkey).unwrap_or(&json::Value::Null);
+        let url = z.get("filename").and_then(json::Value::as_str).unwrap_or("");
+        if url.is_empty() {
+            continue;
+        }
+        let fname = url.split('/').next_back().unwrap_or("atlas").split('?').next().unwrap_or("atlas").to_string();
+        if !atlases.contains_key(&fname) {
+            let local = cache.join(&fname);
+            if !local.exists() {
+                let st = std::process::Command::new("curl")
+                    .args(["-fsSL", "--retry", "3", "-o"])
+                    .arg(&local)
+                    .arg(url)
+                    .status()
+                    .map_err(|e| format!("curl: {e}"))?;
+                if !st.success() {
+                    return Err(format!("download failed: {url}"));
+                }
+            }
+            // Normalize to PNG when needed (JPG/WEBP atlases).
+            let png_path = if fname.ends_with(".png") {
+                local.clone()
+            } else {
+                let p = cache.join(format!("{fname}.png"));
+                if !p.exists() {
+                    let st = std::process::Command::new("sips")
+                        .args(["-s", "format", "png"])
+                        .arg(&local)
+                        .arg("--out")
+                        .arg(&p)
+                        .output()
+                        .map_err(|e| format!("sips: {e}"))?;
+                    if !st.status.success() {
+                        return Err(format!(
+                            "sips could not convert {fname} (non-macOS? convert to PNG manually into {})",
+                            cache.display(),
+                        ));
+                    }
+                }
+                p
+            };
+            let bytes = std::fs::read(&png_path).map_err(|e| e.to_string())?;
+            let img = data_miner::png::decode_rgba(&bytes).map_err(|e| format!("{fname}: {e}"))?;
+            atlases.insert(fname.clone(), img);
+        }
+        let (aw, ah, apx) = atlases.get(&fname).cloned().ok_or("atlas missing")?;
+        let (aw, ah) = (aw as usize, ah as usize);
+        let Some(coords) = z.get("coords").and_then(json::Value::as_object) else { continue };
+        for (key, c) in coords.iter() {
+            let (x, y, w, h) = (
+                c.get("x").and_then(json::Value::as_i64).unwrap_or(0) as usize,
+                c.get("y").and_then(json::Value::as_i64).unwrap_or(0) as usize,
+                c.get("w").and_then(json::Value::as_i64).unwrap_or(0) as usize,
+                c.get("h").and_then(json::Value::as_i64).unwrap_or(0) as usize,
+            );
+            if w == 0 || h == 0 || x + w > aw || y + h > ah {
+                continue;
+            }
+            let file = format!("poe1_{}.png", sanitize(key));
+            let dest = assets.join(&file);
+            if !dest.exists() {
+                let mut px = Vec::with_capacity(w * h * 4);
+                for row in 0..h {
+                    let off = ((y + row) * aw + x) * 4;
+                    px.extend_from_slice(&apx[off..off + w * 4]);
+                }
+                let png = data_miner::png::encode_rgba(w as u32, h as u32, &px);
+                std::fs::write(&dest, &png).map_err(|e| format!("write {file}: {e}"))?;
+            }
+            out.push_str(&format!("{key}\t{file}\t{w}\t{h}\n"));
+            count += 1;
+        }
+    }
+    std::fs::write(out_dir.join("tree/sprites.tsv"), &out).map_err(|e| e.to_string())?;
+    ui::ok(ctx.style, &format!("poe1 sprites: {count} sliced → viewer/assets/sprites (poe1_*)"));
+    Ok(())
+}
