@@ -211,12 +211,21 @@ if (url.searchParams.has("new") || (hasAgentPayload && !buildId)) {
   if (lastId) {
     url.searchParams.set("build", lastId);
     location.replace(url.toString());
+    // Bail — page is navigating away. We use throw not return because
+    // we're at module top-level (not inside a function) under TS.
+    throw new Error("[wizard_chrome] redirecting; not initialising");
+  }
+  if (window.PoE2Game && window.PoE2Game.id !== "poe2") {
+    // Tree-only games (PoE1) have no landing wizard to bounce to —
+    // a first visit mints a fresh build in place, like ?new=1.
+    buildId = genId();
+    freshlyMinted = true;
+    url.searchParams.set("build", buildId);
+    history.replaceState({}, "", url);
   } else {
     location.replace("/");
+    throw new Error("[wizard_chrome] redirecting; not initialising");
   }
-  // Bail — page is navigating away. We use throw not return because
-  // we're at module top-level (not inside a function) under TS.
-  throw new Error("[wizard_chrome] redirecting; not initialising");
 }
 // After the redirect bail, buildId is definitely a string.
 const resolvedBuildId: string = buildId;
