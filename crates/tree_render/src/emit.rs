@@ -231,7 +231,11 @@ pub(crate) fn build_tree_data(
         // graph can pathfind from the class hub — without that, no
         // node in the tree is reachable from the player's start.
         let is_class_start_edge = na.kind == "class_start" || nb.kind == "class_start";
-        if is_class_start_edge {
+        // PoE1 has no central wedge art covering the start hubs — its
+        // start markers must visibly connect to the two (or more)
+        // passives each class may start from, so the edges render
+        // like any other there.
+        if is_class_start_edge && !data_sized {
             if !first_e {
                 edges_for_sel.push(',');
             }
@@ -634,6 +638,14 @@ pub(crate) fn build_tree_data(
                 out.push(',');
             }
             let _ = write!(out, r#"{}:{{"x":{},"y":{}"#, json_str(klass), *ax as i32, *ay as i32);
+            // Real class-start coordinates — the start marker emblem
+            // draws here, connected to the starting passives.
+            if let Some(start) = nodes
+                .iter()
+                .find(|n| n.kind == "class_start" && n.klass.split('|').any(|k| k == *klass))
+            {
+                let _ = write!(out, r#","sx":{},"sy":{}"#, start.x as i32, start.y as i32);
+            }
             let emblem = format!("center{}", klass.to_lowercase());
             if let Some(sp) = sprite_lookup(sprites, &emblem) {
                 let _ = write!(
