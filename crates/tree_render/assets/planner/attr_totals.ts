@@ -18,7 +18,7 @@
 // don't ship the granted* fields, but the stats text we do ship
 // encodes the same numbers ("+N to Strength", "+N to Strength and
 // Dexterity", "+N to all Attributes") — verified equal to granted*
-// for every node of the 3.26 embed.
+// for every node of the ingested embed (3.28.0k at time of writing).
 
 import { gl, state } from "./state.ts";
 
