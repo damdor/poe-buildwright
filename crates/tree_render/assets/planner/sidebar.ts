@@ -13,7 +13,9 @@ import { doExportBuild } from "./build_io.ts";
 import { focusNode } from "./cmdk.ts";
 import { flushPersistNow, persistToWizardStore } from "./wizard_sync.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
-import type { Allocation, Capture } from "../../../../types/poe2.d.ts";
+import { focusTree } from "./viewport.ts";
+import { GAME } from "./game.ts";
+import type { Allocation, Capture } from "../../../../types/shared.d.ts";
 
 export function refreshAscOptions(): void {
   const klass = classSel.value || null;
@@ -26,6 +28,7 @@ export function refreshAscOptions(): void {
   void ensureClassArt(klass);
   state.asc = null;
   state.ascVariant = null;
+  state.ascOpen = false;
   ascSel.innerHTML = '';
   const cls = TREE.classes.find(c => c.name === klass);
   if (!cls) {
@@ -50,23 +53,38 @@ export function refreshAscOptions(): void {
     state.selDirty = true;
     updatePreview();
     updateSelectionUI();
+    // PoE1: travel to the new class's start emblem. 0.25 ≈ the emblem
+    // plus a few surrounding rings — enough context to read the first
+    // pathing choices without hunting, not so close it disorients.
+    const marker = klass ? TREE.class_markers?.[klass] : null;
+    if (marker) focusTree(marker.x, marker.y, 0.25);
   }
   requestRender();
 }
-// First-run hint chip (#firstrun-hint, top of the canvas): visible only
-// while the build has ZERO allocations, so a new user learns the two
-// first steps (pick class → click a start node) instead of falling into
-// the silent-default-class trap. Dismissable; auto-hides for the session
-// once the first passive lands (synced by updateSelectionUI).
+// First-run hint chip (#firstrun-hint, top of the canvas): shown only
+// to users who have never planned a build on this game — it teaches
+// the two first steps (pick class → click a start node) exactly once.
+// "Done" persists per game: set when the user dismisses the chip OR
+// the moment their first passive ever lands (they clearly know the
+// ropes). Plan DATA storage belongs to wizard_chrome; this is a UI
+// preference, kept under the same per-game namespace (`:ui:` scope)
+// so a poe1 first-run doesn't suppress the poe2 tour or vice versa.
+const FR_DONE_KEY = `${GAME.id}-planner:ui:firstrun-done`;
 const frHint = document.getElementById('firstrun-hint');
-let frHintDismissed = false;
+let frDone = false;
+try { frDone = localStorage.getItem(FR_DONE_KEY) === '1'; } catch (e) { /* storage blocked → session-only */ }
+function markFirstrunDone(): void {
+  frDone = true;
+  try { localStorage.setItem(FR_DONE_KEY, '1'); } catch (e) { /* session-only */ }
+}
 document.getElementById('firstrun-hint-x')?.addEventListener('click', () => {
-  frHintDismissed = true;
+  markFirstrunDone();
   syncFirstrunHint();
 });
 export function syncFirstrunHint(): void {
   if (!frHint) return;
-  const show = !frHintDismissed && state.selected.size === 0;
+  if (!frDone && state.selected.size > 0) markFirstrunDone();
+  const show = !frDone && state.selected.size === 0;
   frHint.classList.toggle('hidden', !show);
 }
 
@@ -251,6 +269,10 @@ export function applyAsc(): void {
     if (toRemove.length > 0) state.selDirty = true;
   }
   state.asc = newAsc;
+  // PoE1 in-place: picking an ascendancy opens its circle right away
+  // (immediate feedback — the plaque toggles it thereafter); clearing
+  // the pick closes it.
+  if (oldAsc !== newAsc) state.ascOpen = !!newAsc;
 
   // Asc-driven invalidations:
   //   * Pathfinder "Path of the Sorceress / Warrior" options live

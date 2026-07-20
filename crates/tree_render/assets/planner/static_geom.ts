@@ -17,7 +17,7 @@
 
 
 import { texCache } from "./image_preload.ts";
-import { gl, isLocked, isMcOption, state } from "./state.ts";
+import { ASC_IN_PLACE, gl, isLocked, isMcOption, state } from "./state.ts";
 import { STRIDE_FLOATS, makeVAO } from "./webgl_setup.ts";
 import { pushSprite } from "./vertex_helpers.ts";
 import { tessellateConnectorsTextured, tessellateEdges } from "./edge_tessellate.ts";
@@ -170,7 +170,10 @@ export function buildStaticGeometry(): void {
     const variant = TREE.asc_variants?.[ascName];
     const srcAsc = variant ? variant.parent : ascName;
     const geomP = (variant ? TREE.asc_panels[variant.parent] : null) ?? p;
-    const dx = -geomP.x, dy = -geomP.y;
+    // In-place mode (PoE1) bakes asc content at its raw GGG
+    // coordinates (Duelist's below the tree, Witch's above, etc.);
+    // PoE2 translates the selected panel to the tree centre.
+    const dx = ASC_IN_PLACE ? 0 : -geomP.x, dy = ASC_IN_PLACE ? 0 : -geomP.y;
 
     // 1. Portrait (one quad, one texture)
     const portStart = verts.length / STRIDE_FLOATS;

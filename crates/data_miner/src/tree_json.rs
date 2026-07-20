@@ -82,35 +82,21 @@ fn strip_markup(s: &str) -> String {
 }
 
 /// The renderer's visual kind for a node (matches `shape_tree`'s strings).
+/// data.json flags → the shared canonical ladder (tree_tsv::node_kind).
 fn kind_of(n: &json::Value, has_class_start: bool) -> &'static str {
-    if b(n, "isAscendancyStart") {
-        "asc_start"
-    } else if has_class_start {
-        "class_start"
-    } else if b(n, "isJewelSocket") {
-        "jewel"
-    } else if b(n, "isMastery") {
-        "mastery"
-    } else if n.get("ascendancyId").and_then(|x| x.as_str()).is_some() {
-        if b(n, "isNotable") {
-            "asc_notable"
-        } else {
-            "asc_small"
-        }
-    } else if b(n, "isKeystone") {
-        "keystone"
-    } else if b(n, "isNotable") {
-        "notable"
-    } else if b(n, "isGenericAttribute") {
-        "attribute"
-    } else if b(n, "isMultipleChoice") {
+    crate::tree_tsv::node_kind(&crate::tree_tsv::KindFlags {
+        class_start: has_class_start,
+        asc_start: b(n, "isAscendancyStart"),
+        is_asc: n.get("ascendancyId").and_then(|x| x.as_str()).is_some(),
+        jewel: b(n, "isJewelSocket"),
+        mastery: b(n, "isMastery"),
+        keystone: b(n, "isKeystone"),
+        notable: b(n, "isNotable"),
+        attribute: b(n, "isGenericAttribute"),
         // PoE2 multi-choice parent (Gemling Legionnaire's node, Path Seeker…)
-        "multichoice"
-    } else if b(n, "isMultipleChoiceOption") {
-        "multichoice_opt"
-    } else {
-        "small"
-    }
+        multichoice: b(n, "isMultipleChoice"),
+        multichoice_opt: b(n, "isMultipleChoiceOption"),
+    })
 }
 
 /// Build a node's `node_overlay` frame-set ("alloc|path|unalloc"),
@@ -137,10 +123,9 @@ fn node_overlay(n: &json::Value, is_ascendancy: bool, has_unlock: bool) -> Strin
     String::new()
 }
 
-fn push(out: &mut String, fields: &[&str]) {
-    out.push_str(&fields.join("\t"));
-    out.push('\n');
-}
+// Row emission goes through the shared sanitizing helper so a stray
+// tab/newline in source text can never shift the positional columns.
+use crate::tree_tsv::push_row as push;
 
 /// Parse a decoded `data.json` into the tree TSVs. `asc_art` supplies the
 /// per-ascendancy backdrop `.dds` (resolved from the `Ascendancy` table),
@@ -202,11 +187,7 @@ pub fn shape_tree_json(data: &json::Value, asc_art: &AscArt) -> Result<TreeTsv, 
     }
 
     // ---- nodes.tsv ----
-    let mut out_nodes = String::from(
-        "id\tx\ty\tkind\tklass\tascendancy\tname\tstats\tgroup\torbit\t\
-         orbit_index\ticon\tnode_overlay\tactive_effect\tnode_options\t\
-         connection_art\tunlock_constraint\n",
-    );
+    let mut out_nodes = String::from(crate::tree_tsv::NODES_HEADER);
     // id → (kind, ascendancy) for the edge filters below.
     let mut meta_by_id: BTreeMap<i64, (&'static str, String)> = BTreeMap::new();
     // Main-tree extents (ascendancy nodes excluded). data.json's own
@@ -321,7 +302,7 @@ pub fn shape_tree_json(data: &json::Value, asc_art: &AscArt) -> Result<TreeTsv, 
     // ---- edges.tsv ---- from data.json `edges`. `orbit` present ⇒ arc:
     // signed by the from→to sweep direction about (orbitX,orbitY); absent ⇒
     // straight (0). Skip edges incident to dropped/`root` nodes.
-    let mut out_edges = String::from("from\tto\torbit\n");
+    let mut out_edges = String::from(crate::tree_tsv::EDGES_HEADER);
     let mut seen: HashSet<(i64, i64)> = HashSet::new();
     if let Some(edges) = data.get("edges").and_then(|e| e.as_array()) {
         for e in edges {
@@ -430,6 +411,35 @@ pub fn shape_tree_json(data: &json::Value, asc_art: &AscArt) -> Result<TreeTsv, 
         out_meta.push_str(&format!(
             "asc_internal\t{name}\t{id}\t{class}\t{img}\t{ox:.2}\t{oy:.2}\n"
         ));
+    }
+
+    // multichoice <parent> <opt1,opt2,…> — "pick one" notables
+    // (isMultipleChoice) whose option nodes (isMultipleChoiceOption)
+    // hang off them by edges. Emitted as data so the planner never
+    // hardcodes per-ascendancy cases: options cost no extra point and
+    // the picked option's icon overlays the parent. Derived purely
+    // from flags + adjacency; sorted for deterministic output.
+    for (&id, n) in &node_by_id {
+        if !b(n, "isMultipleChoice") {
+            continue;
+        }
+        let mut opts: Vec<i64> = Vec::new();
+        for key in ["out", "in"] {
+            for e in n.get(key).and_then(|v| v.as_array()).unwrap_or(&[]) {
+                let oid = e.as_i64().or_else(|| e.as_str().and_then(|t| t.parse().ok()));
+                let Some(oid) = oid else { continue };
+                if node_by_id.get(&oid).is_some_and(|o| b(o, "isMultipleChoiceOption")) {
+                    opts.push(oid);
+                }
+            }
+        }
+        opts.sort_unstable();
+        opts.dedup();
+        if opts.is_empty() {
+            continue;
+        }
+        let list: Vec<String> = opts.iter().map(i64::to_string).collect();
+        out_meta.push_str(&format!("multichoice\t{id}\t{}\n", list.join(",")));
     }
 
     Ok(TreeTsv {

@@ -8,6 +8,8 @@ pub(crate) struct Args {
     pub(crate) tree_dir: PathBuf,
     pub(crate) output: PathBuf,
     pub(crate) title: String,
+    pub(crate) agent_subdir: String,
+    pub(crate) game: String,
 }
 
 #[derive(Clone)]
@@ -78,6 +80,12 @@ pub(crate) struct Canvas {
     /// internalId (e.g. "Druid1") is what the new in-game Build Planner
     /// `.build` format wants in its top-level `ascendancy` field.
     pub(crate) asc_internal: HashMap<String, (String, String)>,
+    /// "Pick one" notables: parent node id → option node ids, from the
+    /// shapers' `multichoice` meta rows (derived from GGG's
+    /// isMultipleChoice/-Option flags — never hardcoded per
+    /// ascendancy). Options render nowhere; the planner offers them
+    /// via the parent's popout at zero extra point cost.
+    pub(crate) multi_choice: Vec<(String, Vec<String>)>,
 }
 
 /// Portrait sourced from tree.json `classes[i].background` or

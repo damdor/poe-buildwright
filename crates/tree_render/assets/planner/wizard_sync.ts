@@ -16,7 +16,7 @@ import { allocModeSel, ascSel, buildDescInput, buildNameInput, classSel, state ,
 import { requestRender } from "./render.ts";
 import { updatePreview } from "./pathfind.ts";
 import { applyAsc, refreshAscOptions, syncModeBadge, updateSelectionUI } from "./sidebar.ts";
-import type { Capture, Item, Plan, Skill } from "../../../../types/poe2.d.ts";
+import type { Capture, Item, Plan, Skill } from "../../../../types/shared.d.ts";
 
 export interface CommitMeta {
   notes?: string;

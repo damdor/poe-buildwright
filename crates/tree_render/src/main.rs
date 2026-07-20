@@ -219,7 +219,23 @@ fn run() -> Result<(), String> {
     let sprites = read_sprites(&args.tree_dir.join("sprites.tsv")).unwrap_or_default();
     let asc_overrides = io::read_asc_overrides(&args.tree_dir.join("asc_overrides.tsv"));
 
-    let html = render_canvas_html(&nodes, &edges, &canvas, &classes, &sprites, &asc_overrides, &args.title);
+    // Per-game client descriptor. poe2 = the defaults every module
+    // assumes; poe1 step 1 is TREE-ONLY: gear/skills/jewels/spirit/
+    // weapon-set features off, own storage namespace + agent dir,
+    // budgets from the official export (123 + 8).
+    let game_json = match args.game.as_str() {
+        "poe1" => concat!(
+            "{\"id\":\"poe1\",\"agentBase\":\"/assets/poe1-agent\",",
+            "\"budgets\":{\"main\":123,\"asc\":8},",
+            "\"features\":{\"gear\":false,\"skills\":false,\"jewels\":false,",
+            "\"spirit\":false,\"weaponSets\":false,\"share\":false,",
+            "\"ascInPlace\":true}}",
+        )
+        .to_string(),
+        _ => "{\"id\":\"poe2\"}".to_string(),
+    };
+    let chrome = emit::PageChrome { title: &args.title, game_json: &game_json, game: &args.game };
+    let html = render_canvas_html(&nodes, &edges, &canvas, &classes, &sprites, &asc_overrides, &chrome);
     fs::write(&args.output, html).map_err(|e| format!("writing {}: {e}", args.output.display()))?;
     eprintln!(
         "Canvas viewer: {} nodes, {} edges, {} classes, {} portraits → {}",
@@ -257,7 +273,7 @@ fn run() -> Result<(), String> {
     // BFS hops from each class start so agents can budget passive
     // points before emitting a URL. Compact — LLMs fetch this.
     {
-        let agent_dir = assets_dir.join("agent");
+        let agent_dir = assets_dir.join(&args.agent_subdir);
         let _ = fs::create_dir_all(&agent_dir);
 
         // Hop distance from every class hub (adjacency over the same
@@ -348,12 +364,15 @@ fn run() -> Result<(), String> {
                 out.push(',');
             }
             first_c = false;
-            let ascs: Vec<String> = canvas
+            // Sorted: asc_internal is a HashMap and this JSON is a
+            // tracked artifact — hash order churned it every bake.
+            let mut ascs: Vec<String> = canvas
                 .asc_internal
                 .iter()
                 .filter(|(_, (_, c))| c == cls)
                 .map(|(name, _)| text::json_str(name))
                 .collect();
+            ascs.sort();
             out.push_str(&format!(
                 "{{\"name\":{},\"start_id\":{hub},\"ascendancies\":[{}]}}",
                 text::json_str(cls),
@@ -705,6 +724,15 @@ fn run() -> Result<(), String> {
             }
             out.push_str("}}\n");
             let jewels_path = agent_dir.join("jewels.json");
+            // Two writers share this file: we own sockets/rings/bases/
+            // keystones; scripts/gen_agent_meta.mjs enriches it with the
+            // unique-jewel radii (`uniques`, needs node + items data).
+            // Preserve any top-level keys we don't emit so a plain
+            // tree_render run can never destroy the enrichment.
+            let out = match fs::read_to_string(&jewels_path) {
+                Ok(prev) => text::preserve_unknown_top_level(&prev, out),
+                Err(_) => out,
+            };
             fs::write(&jewels_path, out)
                 .map_err(|e| format!("writing {}: {e}", jewels_path.display()))?;
             eprintln!("Agent jewels → {}", jewels_path.display());
@@ -745,7 +773,11 @@ fn run() -> Result<(), String> {
     }
     let patch = field(&manifest_text, "patch");
     let source = field(&manifest_text, "source");
-    let meta_path = assets_dir.join("build_meta.json");
+    let meta_path = if args.agent_subdir == "agent" {
+        assets_dir.join("build_meta.json")
+    } else {
+        assets_dir.join(&args.agent_subdir).join("build_meta.json")
+    };
     let meta = build_meta_json(&classes, &canvas, &patch, &source, &sprites);
     fs::write(&meta_path, meta).map_err(|e| format!("writing {}: {e}", meta_path.display()))?;
     eprintln!(
@@ -770,6 +802,8 @@ fn parse_args() -> Result<Args, String> {
     let mut argv = env::args().skip(1);
     let mut tree_dir: Option<PathBuf> = None;
     let mut output: Option<PathBuf> = None;
+    let mut agent_subdir: Option<String> = None;
+    let mut game: Option<String> = None;
     let mut title = String::from("Build planner");
     while let Some(a) = argv.next() {
         match a.as_str() {
@@ -779,6 +813,13 @@ fn parse_args() -> Result<Args, String> {
             }
             "--tree-dir" => tree_dir = argv.next().map(PathBuf::from),
             "--output" => output = argv.next().map(PathBuf::from),
+            // Second-game renders (PoE1) write their agent grounding +
+            // build meta into their own subdir instead of clobbering
+            // the primary game's /assets/agent/.
+            "--agent-subdir" => agent_subdir = argv.next(),
+            // Game descriptor: which game this page is (drives storage
+            // namespacing, feature gates, point budgets client-side).
+            "--game" => game = argv.next(),
             "--title" => {
                 if let Some(t) = argv.next() {
                     title = t;
@@ -792,10 +833,13 @@ fn parse_args() -> Result<Args, String> {
     // docs/plan.md; pointing at it means re-running tree_render after a
     // patch update Just Works without flag changes.
     let tree_dir = tree_dir.unwrap_or_else(|| PathBuf::from("data/parsed/CURRENT/tree"));
+    let agent_subdir = agent_subdir.unwrap_or_else(|| "agent".into());
     let output = output.ok_or_else(|| format!("--output required\n\n{USAGE}"))?;
     Ok(Args {
         tree_dir,
         output,
         title,
+        agent_subdir,
+        game: game.unwrap_or_else(|| "poe2".into()),
     })
 }

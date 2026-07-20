@@ -9,6 +9,9 @@
 // ids the planner will hard-fail at boot — preferable to silent
 // misbehaviour later.
 
+import { GAME, featureOn } from "./game.ts";
+import { ASC_EFFECTS, MULTI_CHOICE, MULTI_CHOICE_PARENT, isMcOption } from "./poe2_rules.ts";
+
 export const canvas = document.getElementById('tree') as HTMLCanvasElement;
 export const viewport = document.getElementById('viewport') as HTMLElement;
 export const tooltip = document.getElementById('tooltip') as HTMLElement;
@@ -29,6 +32,30 @@ export const info = document.getElementById('info') as HTMLElement;
 export const resetBtn = document.getElementById('reset') as HTMLElement;
 export const exportBtn = document.getElementById('export') as HTMLElement;
 export const zoomfitBtn = document.getElementById('zoomfit') as HTMLElement;
+
+// Chrome that only makes sense for PoE2 (weapon-set allocation modes,
+// the PoE2 share/export codec) is removed outright on other games.
+if (GAME.id !== "poe2") {
+  if (!featureOn("weaponSets")) {
+    allocModeSel?.closest("label")?.remove();
+    allocModeSel?.remove();
+    // The footer HUD's "Set ●0/24 ●0/24" pool segment — the counters
+    // live inside a .hud-pool wrapper; drop the whole segment (and
+    // its separator) so the poe1 footer doesn't show poe2 budgets.
+    // updateSelectionUI keeps writing to the detached counters, which
+    // is a harmless no-op display-wise.
+    const seg = countSet1?.closest(".hud-pool");
+    if (seg?.previousElementSibling?.classList.contains("mode-sep")) {
+      seg.previousElementSibling.remove();
+    }
+    seg?.remove();
+  }
+  if (!featureOn("share")) {
+    exportBtn?.remove();
+    document.getElementById("share")?.remove();
+    document.getElementById("import")?.remove();
+  }
+}
 
 // WebGL2 context. We disable the default alpha channel (treat the
 // backbuffer as fully opaque, much cheaper) and use premultiplied
@@ -72,6 +99,12 @@ export const state = {
   klass: null as string | null,
   asc:   null as string | null,           // engine/panel ascendancy (always a PARENT panel name)
   ascVariant: null as string | null,      // chosen variant (e.g. 'Abyssal Lich') when asc is its parent
+  // PoE1 in-place presentation: the ascendancy circle overlaps main
+  // nodes, so — like GGG — it only shows while "open". Toggled by
+  // clicking the AscendancyButton plaque (or picking an asc in the
+  // sidebar); the plaque swaps to its Highlight art while hovered.
+  ascOpen: false,
+  ascBtnHover: false,
   // GGG's authored per-orbit kite-quad connector sprites for the
   // unallocated main-tree edges. Default ON; flip to false in the
   // console (and call requestRender()) to fall back to the procedural
@@ -156,112 +189,17 @@ export const state = {
 //     allocate ONE node that's only active when that weapon set is
 //     equipped. set1 + set2 used together ≤ 24.
 //   * 8 ascendancy points from labyrinth trials.
-export const MAX_MAIN_POINTS = 99;
-export const MAX_SET_POINTS  = 24;
-export const MAX_ASC_POINTS  = 8;
+// Game gates + budgets are defined in game.ts (the zero-import leaf —
+// see the ownership note there); re-exported here because most
+// modules already pull their shared constants from state.ts.
+export { ASC_IN_PLACE, GAME, MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, featureOn } from "./game.ts";
 
-// Hardcoded table of ascendancy nodes that change tree-level rules
-// when allocated. Six "+passive point" nodes (Pathfinder + Oracle),
-// two "Path of X" alt-start unlocks (Pathfinder), and Witchhunter's
-// Weapon Master conversion.
-//
-//   grantsPoints    → bonus main-tree passive points (raises main cap).
-//   altStartClass   → unlocks that class's start hub as an extra BFS
-//                     root (Path of the Sorceress on a Ranger lets
-//                     them allocate Sorceress's starting cluster
-//                     without crossing the tree).
-//   weaponSetGrant  → bonus weapon-set passive points (raises set cap).
-//                     PoB's PassivePointsToWeaponSetPoints adds 100
-//                     to maxWeaponSets when Weapon Master is taken.
-// Weapon-set passive points are quest rewards, not free-from-start.
-// Source: data/pob2/src/Data/QuestRewards.lua aggregated by AreaLevel
-// (the minimum character level required to do each quest). Each
-// reward grants +2 points; some levels carry two coincident quests
-// (51, 62) collapsed into +4 here. Total 24 at Lv 64+ — matches
-// PoB2's self.maxWeaponSets = acts[maxActs].questPoints derivation.
-// weaponSetCapAt(level) returns the BASE cap (before Witchhunter's
-// +100 Weapon Master grant, which is layered on top).
-export const WEAPON_SET_REWARDS = [
-  { lvl: 10, pts: 2 }, { lvl: 12, pts: 2 },
-  { lvl: 25, pts: 2 }, { lvl: 28, pts: 2 },
-  { lvl: 34, pts: 2 }, { lvl: 44, pts: 2 },
-  { lvl: 51, pts: 4 },
-  { lvl: 61, pts: 2 }, { lvl: 62, pts: 4 }, { lvl: 64, pts: 2 },
-];
-export function weaponSetCapAt(level: number): number {
-  let cap = 0;
-  for (const r of WEAPON_SET_REWARDS) {
-    if (r.lvl <= level) cap += r.pts;
-    else break;
-  }
-  return cap;
-}
-
-// Base Spirit is quest-earned: +30 (Act 1, King in the Mists), +30
-// (Act 3, Ignagduk), +40 (post-Act-4 interlude, Lythara) = 100. The
-// level mapping is DELIBERATELY CONSERVATIVE (latest plausible level
-// per boss) so the UI never promises spirit the player might not
-// have. KEEP IN SYNC with scripts/gen_agent_meta.mjs SPIRIT_REWARDS.
-export const SPIRIT_REWARDS = [
-  { lvl: 18, pts: 30 },
-  { lvl: 36, pts: 30 },
-  { lvl: 50, pts: 40 },
-];
-export function spiritCapAt(level: number): number {
-  let cap = 0;
-  for (const r of SPIRIT_REWARDS) {
-    if (r.lvl <= level) cap += r.pts;
-    else break;
-  }
-  return cap;
-}
-
-// Each entry MAY carry grantsPoints, weaponSetGrant, or altStartClass —
-// any combination, or none (in which case the entry would simply not
-// exist in this table). Typed with all-optional fields so the indexed
-// lookup ASC_EFFECTS[id] returns the right union of possible effects.
-interface AscEffect {
-  grantsPoints?: number;
-  weaponSetGrant?: number;
-  altStartClass?: string;
-}
-export const ASC_EFFECTS: Record<string, AscEffect> = {
-  '11335': { grantsPoints: 1 },                               // Oracle - Passive Point
-  '12183': { grantsPoints: 1 },                               // Pathfinder - Passive Points
-  '12795': { grantsPoints: 4, altStartClass: 'Sorceress' },   // Pathfinder - Path of the Sorceress
-  '36676': { grantsPoints: 1 },                               // Pathfinder - Passive Points
-  '47190': { grantsPoints: 1 },                               // Oracle - Passive Point
-  '57253': { grantsPoints: 4, altStartClass: 'Warrior' },     // Pathfinder - Path of the Warrior
-  '8272':  { weaponSetGrant: 100 },                           // Witchhunter - Weapon Master
-};
-
-// Multi-choice notables. GGG tree.json carries isMultipleChoice +
-// isMultipleChoiceOption flags on the parent and its options; we
-// hardcode the mapping since the set is small (5 notables across
-// 4 ascendancies) and unlikely to grow often.
-//
-// Behavior per PoB (PassiveSpec.lua:944-948 + line 985):
-//   * Parent notable costs the usual 1 asc point.
-//   * Picking an option costs 0 additional asc points (the option's
-//     asc allocation is "free" — the parent's slot covers it).
-//   * Picking an option deallocates any previously-picked sibling
-//     option of the same parent (mutex).
-//   * Option nodes are hidden from tree rendering / pathfinding —
-//     the user only ever interacts with them through the parent's
-//     popout (same UX as attribute Str/Dex/Int picker).
-export const MULTI_CHOICE: Record<string, string[]> = {
-  '16433': ['12795', '57253'],                                // Pathfinder - Path Seeker
-  '57141': ['9710', '18940', '38004', '56618', '58379'],      // Pathfinder - Brew Concoction
-  '42416': ['41875', '59542'],                                // Deadeye - Projectile Proximity Specialisation
-  '52395': ['56331', '26283', '664'],                         // Acolyte of Chayula - Lucid Dreaming
-  '60287': ['37397', '32952', '63259'],                       // Gemling Legionnaire - Implanted Gems
-};
-export const MULTI_CHOICE_PARENT: Record<string, string> = {};   // option_id → parent_id
-for (const parent in MULTI_CHOICE) {
-  for (const opt of (MULTI_CHOICE[parent] ?? [])) MULTI_CHOICE_PARENT[opt] = parent;
-}
-export function isMcOption(id: string | number): boolean { return MULTI_CHOICE_PARENT[String(id)] != null; }
-export function isMcParent(id: string | number): boolean { return MULTI_CHOICE[String(id)] != null; }
+// PoE2-only rule tables + quest-reward schedules live in
+// poe2_rules.ts (empty tables on any other game — poe1 reuses the id
+// space, so leaving them populated would silently apply PoE2 rules to
+// unrelated poe1 nodes). Re-exported here because most modules pull
+// their shared constants from state.ts.
+export { ASC_EFFECTS, MULTI_CHOICE, MULTI_CHOICE_PARENT, SPIRIT_REWARDS, WEAPON_SET_REWARDS, isMcOption, isMcParent, spiritCapAt, weaponSetCapAt } from "./poe2_rules.ts";
 // Unlock-constrained nodes (PoE2 `unlockConstraint`). Currently only
 // Oracle's "The Unseen Path" (node 5571) gates ~197 main-tree extras.
 // For any character whose active ascendancy doesn't match uc.a these

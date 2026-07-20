@@ -547,6 +547,7 @@ pub fn decode_rgba(png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
         return Err("not a PNG (bad signature)".into());
     }
     let (mut width, mut height, mut seen_ihdr) = (0u32, 0u32, false);
+    let mut bpp = 4usize;
     let mut zdata = Vec::new();
     let mut pos = 8;
     loop {
@@ -573,8 +574,15 @@ pub fn decode_rgba(png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
                 }
                 width = u32::from_be_bytes(payload[0..4].try_into().unwrap());
                 height = u32::from_be_bytes(payload[4..8].try_into().unwrap());
-                if payload[8..13] != [8, 6, 0, 0, 0] {
-                    return Err("unsupported PNG (need 8-bit RGBA, non-interlaced)".into());
+                // 8-bit non-interlaced RGBA (6) or RGB (2 — what sips
+                // emits when converting the alpha-less JPG atlases);
+                // RGB expands to RGBA after unfiltering.
+                if payload[8..13] == [8, 6, 0, 0, 0] {
+                    bpp = 4;
+                } else if payload[8..13] == [8, 2, 0, 0, 0] {
+                    bpp = 3;
+                } else {
+                    return Err("unsupported PNG (need 8-bit RGB/RGBA, non-interlaced)".into());
                 }
                 seen_ihdr = true;
             }
@@ -598,14 +606,23 @@ pub fn decode_rgba(png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
     if adler32(&raw) != want_adler {
         return Err("Adler-32 mismatch".into());
     }
-    let rgba = unfilter(width as usize, height as usize, &raw)?;
+    let px = unfilter(width as usize, height as usize, &raw, bpp)?;
+    let rgba = if bpp == 4 {
+        px
+    } else {
+        let mut out = Vec::with_capacity(px.len() / 3 * 4);
+        for p in px.chunks_exact(3) {
+            out.extend_from_slice(&[p[0], p[1], p[2], 255]);
+        }
+        out
+    };
     Ok((width, height, rgba))
 }
 
 /// Reverse per-row filtering: `data` is height rows of
-/// (filter byte + width*4 filtered bytes).
-fn unfilter(width: usize, height: usize, data: &[u8]) -> Result<Vec<u8>, String> {
-    let stride = width * BPP;
+/// (filter byte + width*bpp filtered bytes).
+fn unfilter(width: usize, height: usize, data: &[u8], bpp: usize) -> Result<Vec<u8>, String> {
+    let stride = width * bpp;
     if data.len() != (stride + 1) * height {
         return Err("decompressed size does not match dimensions".into());
     }
@@ -614,9 +631,9 @@ fn unfilter(width: usize, height: usize, data: &[u8]) -> Result<Vec<u8>, String>
         let ft = data[y * (stride + 1)];
         let row = &data[y * (stride + 1) + 1..(y + 1) * (stride + 1)];
         for x in 0..stride {
-            let a = if x >= BPP { out[y * stride + x - BPP] } else { 0 };
+            let a = if x >= bpp { out[y * stride + x - bpp] } else { 0 };
             let b = if y > 0 { out[(y - 1) * stride + x] } else { 0 };
-            let c = if y > 0 && x >= BPP { out[(y - 1) * stride + x - BPP] } else { 0 };
+            let c = if y > 0 && x >= bpp { out[(y - 1) * stride + x - bpp] } else { 0 };
             out[y * stride + x] = match ft {
                 0 => row[x],
                 1 => row[x].wrapping_add(a),
