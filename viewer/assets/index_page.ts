@@ -108,14 +108,87 @@ function render(): void {
         <span class="meta">${escHtml(b.class || "—")}${b.ascendancy ? " · " + escHtml(b.ascendancy) : ""} · <b>${b.nodeCount || 0}</b> nodes · ${escHtml(fmtDate(b.savedAt))}</span>
       </div>
       <span class="game-badge ${escHtml(b.game.id)}">${escHtml(b.game.id === "poe2" ? "PoE2" : b.game.label)}</span>
+      <button class="dl" data-id="${escHtml(b.id)}" data-game="${escHtml(b.game.id)}" title="Download this build as a JSON backup">⬇</button>
       <button class="rm" data-id="${escHtml(b.id)}" data-game="${escHtml(b.game.id)}" title="Delete this build">✕</button>
     </li>
   `).join("");
 }
 
+// ---- Backup: per-card download + landing-page import -----------------
+// The exported file is the persisted plan verbatim (lossless
+// poe2-planner-plan v2 — the planner normalizes on open, so import
+// stays a shallow store-and-index here; no logic duplicated from
+// build_io/wizard_chrome). The game is derived from the plan's
+// game-namespaced patch ("poe1.*" → poe1), matching wizard_chrome's
+// patch rules.
+function gameOfPlan(plan: { patch?: string | null }): GameStore {
+  const poe1 = typeof plan.patch === "string" && plan.patch.startsWith("poe1.");
+  return GAMES.find(g => g.id === (poe1 ? "poe1" : "poe2"))!;
+}
+function downloadBuild(g: GameStore, id: string): void {
+  const raw = localStorage.getItem(keyPrefix(g) + id);
+  if (!raw) { alert("Build data not found in this browser."); return; }
+  let name = "build";
+  try { name = (JSON.parse(raw).name || "build").replace(/[^\w.-]+/g, "_"); } catch (e) { /* keep default */ }
+  const blob = new Blob([raw], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${name}.${g.id}.buildwright.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+const importBtn = document.getElementById("import-build-btn");
+const importFile = document.getElementById("import-build-file") as HTMLInputElement | null;
+if (importBtn && importFile) {
+  importBtn.addEventListener("click", () => importFile.click());
+  importFile.addEventListener("change", () => {
+    const f = importFile.files?.[0];
+    importFile.value = "";
+    if (!f) return;
+    void f.text().then(text => {
+      let plan: { format?: string; version?: number; id?: string; name?: string;
+                  class?: string | null; patch?: string | null;
+                  captures?: Array<{ passives?: unknown[]; ascendancy?: string | null }> };
+      try { plan = JSON.parse(text); } catch (e) { alert("Not a JSON file."); return; }
+      if (plan.format !== "poe2-planner-plan" || plan.version !== 2) {
+        alert("Not a buildwright backup (expected poe2-planner-plan v2). GGG .build files import inside the PoE2 planner instead.");
+        return;
+      }
+      const g = gameOfPlan(plan);
+      // Keep the original id unless it already exists here — never
+      // silently overwrite a stored build on import.
+      let id = typeof plan.id === "string" && plan.id ? plan.id : Math.random().toString(36).slice(2, 10);
+      if (localStorage.getItem(keyPrefix(g) + id)) {
+        id = Math.random().toString(36).slice(2, 10);
+        plan.id = id;
+      }
+      localStorage.setItem(keyPrefix(g) + id, JSON.stringify(plan));
+      const last = plan.captures?.[plan.captures.length - 1];
+      const entry: PlanIndexEntry = {
+        id, name: plan.name || "(untitled)", savedAt: new Date().toISOString(),
+        class: plan.class ?? null, ascendancy: last?.ascendancy ?? null,
+        nodeCount: last?.passives?.length ?? 0, captureCount: plan.captures?.length ?? 1,
+      };
+      try {
+        const idx: PlanIndexEntry[] = JSON.parse(localStorage.getItem(keyIndex(g)) || "[]");
+        localStorage.setItem(keyIndex(g), JSON.stringify([entry, ...idx.filter(b => b.id !== id)]));
+      } catch (e) {
+        localStorage.setItem(keyIndex(g), JSON.stringify([entry]));
+      }
+      render();
+    });
+  });
+}
+
 const buildList = document.getElementById("build-list");
 if (buildList) {
   buildList.addEventListener("click", e => {
+    const dl = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>("button.dl");
+    if (dl) {
+      const g = GAMES.find(x => x.id === dl.dataset.game);
+      if (g && dl.dataset.id) downloadBuild(g, dl.dataset.id);
+      return;
+    }
     const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>("button.rm");
     if (!btn) return;
     const id = btn.dataset.id;
