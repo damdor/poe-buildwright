@@ -12,12 +12,16 @@ event/bloodline ascendancies present in the data are also deferred.
 ./bw poe1-sprites --label 3.26     # fetch + slice the official atlases
 ./bw manifest --patch poe1_3.26    # hash everything (same contract as PoE2)
 ./bw verify   --patch poe1_3.26    # integrity + referential ship gate
-./target/release/tree_render \
+./bw render \
   --tree-dir data/parsed/poe1_3.26/tree \
   --output viewer/planner-poe1.html \
   --title "PoE1 Passive Tree" \
   --agent-subdir poe1-agent --game poe1
 ```
+
+`bw render` (both games) chains `gen_agent_meta.mjs` after
+tree_render, so the agent sidecars regenerate with every bake — never
+call tree_render directly for a shipped page.
 
 `poe1-tree` fetches `pathofexile.com/passive-skill-tree` itself and
 brace-matches the `passiveSkillTreeData` embed (pass `--json` to reuse
