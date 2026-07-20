@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use crate::frames::{pick_frame_names, portrait_frame_alias, target_size};
 use crate::geom::{arc_geom_for, edge_path_piece};
 use crate::io::sprite_lookup;
-use crate::model::{Canvas, ClassInfo, Node, Sprite};
+use crate::model::{Canvas, ClassInfo, Node, NodeSize, Sprite};
 use crate::text::{escape_html, json_str, parse_node_options};
 
 /// Resolve a frame sprite NAME to its `/assets/sprites/...` URL. Tries
@@ -152,6 +152,53 @@ pub(crate) fn build_meta_json(
     out
 }
 
+// --- Node draw-size policy, one function per game -------------------
+// Keep these adjacent so an edit to one is made LOOKING AT the other:
+// they answer the same question ("how big does this node draw?") from
+// different data, and the history of this file is people fixing one
+// game and silently resizing the other.
+
+/// PoE2: the frames.rs `target_size` table — PoB-tuned for PoE2's own
+/// art and orbit spacing.
+fn node_sizes_poe2(n: &Node) -> NodeSize {
+    target_size(n)
+}
+
+/// PoE1 (`--game poe1`, data_sized): sizes come straight from
+/// sprites.tsv, whose w/h are already WORLD units (sheet px ÷ sheet
+/// zoom — the rule GGG's own skilltree.js renderer uses). The PoE2
+/// table would pack PoE1's tighter orbits (orbit-2 chord is 63 units)
+/// with oversized nodes. GGG draws NO skill icon/frame on class-start
+/// nodes (`if(node.classStartIndex!==undefined)return;`) — the
+/// center<class> emblem is their art — and no icon on asc starts
+/// (`spriteName=null`, just the AscendancyMiddle hub).
+fn node_sizes_poe1(
+    n: &Node,
+    sprites: &HashMap<String, Sprite>,
+    icon_sp: Option<&Sprite>,
+    off_name: Option<&str>,
+) -> NodeSize {
+    let mut ts = target_size(n);
+    if let Some(sp) = icon_sp {
+        ts.icon = sp.w as f64;
+    }
+    if let Some(nm) = off_name
+        && let Some(sp) = resolve_frame_sprite(sprites, nm, &n.kind)
+    {
+        ts.frame = sp.w as f64;
+    }
+    match n.kind.as_str() {
+        "class_start" => {
+            ts.icon = 0.0;
+            ts.frame = 0.0;
+        }
+        "asc_start" => ts.icon = 0.0,
+        _ => {}
+    }
+    ts
+}
+
+
 pub(crate) fn build_tree_data(
     nodes: &[Node],
     edges: &[(u32, u32, i32)],
@@ -218,7 +265,9 @@ pub(crate) fn build_tree_data(
     edges_meta.push('[');
     let mut first_e = true;
     let mut first_m = true;
-    let mut asc_edges: HashMap<String, String> = HashMap::new();
+    // BTreeMap: emitted as JSON keys — deterministic output means a
+    // rebake of unchanged data is byte-identical (diffable, hashable).
+    let mut asc_edges: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
     for (a, b, orbit) in edges {
         let (Some(na), Some(nb)) = (node_idx.get(a), node_idx.get(b)) else {
             continue;
@@ -351,40 +400,14 @@ pub(crate) fn build_tree_data(
             out.push(',');
         }
         first_n = false;
-        let mut ts = target_size(n);
         let icon_sp = sprite_lookup(sprites, &n.icon);
         let icon_url = icon_sp.map(|s| format!("/assets/sprites/{}", s.png));
         let (off_name, on_name) = pick_frame_names(n);
-        // PoE1: node draw sizes come straight from sprites.tsv, whose
-        // w/h are already WORLD units (sheet px / sheet zoom — the
-        // rule GGG's own skilltree.js renderer uses). The PoE2 table
-        // above is tuned for PoE2's own art and packs PoE1's tighter
-        // orbits (orbit-2 chord is 63 units) with oversized nodes.
-        if data_sized {
-            if let Some(sp) = icon_sp {
-                ts.icon = sp.w as f64;
-            }
-            if let Some(nm) = &off_name
-                && let Some(sp) = resolve_frame_sprite(sprites, nm, &n.kind)
-            {
-                ts.frame = sp.w as f64;
-            }
-            // GGG's renderer draws NO skill icon/frame on class-start
-            // nodes (`if(node.classStartIndex!==undefined)return;`) —
-            // the center<class> emblem is their art. Ascendancy-start
-            // nodes draw the AscendancyMiddle hub but NO icon
-            // (`spriteName=null`). We were painting the node's stat
-            // icon (an attribute / "damage" glyph) in the middle of
-            // every start emblem and every ascendancy circle.
-            match n.kind.as_str() {
-                "class_start" => {
-                    ts.icon = 0.0;
-                    ts.frame = 0.0;
-                }
-                "asc_start" => ts.icon = 0.0,
-                _ => {}
-            }
-        }
+        let ts = if data_sized {
+            node_sizes_poe1(n, sprites, icon_sp, off_name.as_deref())
+        } else {
+            node_sizes_poe2(n)
+        };
         let frame_off_url = off_name
             .as_ref()
             .and_then(|nm| resolve_frame_url(sprites, nm, &n.kind));
@@ -733,7 +756,10 @@ pub(crate) fn build_tree_data(
     // Used by the .build exporter to emit GGG's canonical `ascendancy` value.
     out.push_str(r#","asc_internal":{"#);
     let mut first_ai = true;
-    for (name, (internal, parent)) in &canvas.asc_internal {
+    // Sorted for deterministic output (asc_internal is a lookup map).
+    let mut ai_sorted: Vec<_> = canvas.asc_internal.iter().collect();
+    ai_sorted.sort_by(|a, b| a.0.cmp(b.0));
+    for (name, (internal, parent)) in ai_sorted {
         if !first_ai {
             out.push(',');
         }
