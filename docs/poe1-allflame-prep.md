@@ -72,16 +72,43 @@ changes.
 
 ## Step 2 plan: PoE1 gems/supports (post-launch)
 
-Data first, UX second — same shape as everything else in this repo:
+Data first, UX second — same shape as everything else in this repo.
+GROUND-TRUTHED 2026-07-20 (tests/poe1_cdn_probe.rs, run it with
+--ignored --nocapture):
 
-1. **Data source**: PoE1's own patch CDN serves the same bundle
-   format family our data_miner already parses for PoE2 (.datc64
-   tables, .csd stat descriptions, DDS art). Extending the miner =
-   a poe1 CDN endpoint + a poe1 schema pin + the poe1 table names
-   (SkillGems, GrantedEffects, GrantedEffectsPerLevel, ItemExperience
-   etc.). That gives us official gems/supports/per-level numbers
-   without any third-party source. (RePoE/wiki are NOT acceptable
-   sources here.)
+1. **Data source — verified live.** PoE1's patch server
+   (`patch.pathofexile.com:12995`) speaks the exact handshake
+   fetch.rs already implements (→ `https://patch.poecdn.com/3.28.0.15/`),
+   and the index decodes with our existing bundle/oodle stack
+   (1.17M paths). Every table the skills catalogue needs is served:
+   SkillGems, GemTags, GrantedEffects(+PerLevel, StatSets,
+   StatSetsPerLevel), ActiveSkills, ActiveSkillType, GemEffects, plus
+   skill/gem_stat_descriptions.txt (same UTF-16 csd format our
+   renderer parses). The poe-tool-dev schema we already pin carries
+   the poe1 variants in the SAME file (validFor 1); dat_schema.rs
+   currently filters to poe2 and needs a game mode.
+
+   Field mapping to our gems.tsv shape, all official:
+   - identity/name: GemEffects.Name/SupportName + BaseItemTypes
+   - active vs support: SkillGems.IsSupport / GrantedEffects.IsSupport
+   - colour: SkillGems.GemColour (post-3.29 this is a QUALITY BONUS
+     hint, not legality)
+   - tags: GemEffects.GemTags → GemTags.Tag
+   - compatibility: GrantedEffects.Allowed/Excluded/AddedActiveSkillTypes
+     (+ SupportsGemsOnly, CannotBeSupported, SupportWeaponRestrictions,
+     IgnoreMinionTypes) against ActiveSkills.ActiveSkillTypes — the
+     same set-algebra our support_compat precompute consumes
+   - per-level: GrantedEffectsPerLevel (PlayerLevelReq, costs,
+     reservation, cooldown) + GrantedEffectStatSetsPerLevel
+   - variants: Vaal (IsVaalVariant) and Transfigured
+     (ActiveSkills.TransfigureBase, GemEffects) come free — including
+     3.29's new ones on launch-day data
+   - icons: ActiveSkills.Icon_DDSFile via the DDS decoder (art paths
+     differ from poe2's — enumerate by prefix at shaping time)
+
+   Miner deltas are small: a POE1_PATCH_SERVER const + a
+   game-parameterized CdnClient::connect, a validFor-aware schema
+   mode, and a poe1 gems shaper mirroring shape.rs's joins.
 2. **Support compatibility**: PoE1's rules are tag/type-based like
    PoE2's (our support_compat precompute reuses conceptually); after
    3.29, socket COLOUR is no longer a legality input — only "can this
