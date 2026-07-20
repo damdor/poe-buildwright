@@ -1,0 +1,41 @@
+{
+  "format": "poe1-agent-examples",
+  "version": 1,
+  "note": "Known-good PoE1 agent plans for this deployment (planner-poe1.html#agent=<base64url JSON>). Both are modeled on popular poe.ninja Mirage-league builds and validated against the 3.26 tree. Fetch by url; imitate the shape.",
+  "examples": [
+    {
+      "id": "rf-chieftain",
+      "url": "/assets/poe1-agent/examples/rf-chieftain.json",
+      "class": "Marauder",
+      "ascendancy": "Chieftain",
+      "shape": "flat",
+      "tags": [
+        "targets",
+        "ascendancy"
+      ],
+      "targets": 22,
+      "shows": "The armour/regen archetype: RF Chieftain \u2014 ~122% increased life on the tree (tanky archetypes run 115-160%), endurance charges, Unwavering Stance.",
+      "points": {
+        "main": 78,
+        "asc": 8
+      }
+    },
+    {
+      "id": "kb-deadeye",
+      "url": "/assets/poe1-agent/examples/kb-deadeye.json",
+      "class": "Ranger",
+      "ascendancy": "Deadeye",
+      "shape": "flat",
+      "tags": [
+        "targets",
+        "ascendancy"
+      ],
+      "targets": 25,
+      "shows": "The evasion archetype: KB Deadeye \u2014 dex-side projectile scaling, ~68% increased life plus evasion/suppression layers (ranged meta trees run 50-100%).",
+      "points": {
+        "main": 78,
+        "asc": 8
+      }
+    }
+  ]
+}

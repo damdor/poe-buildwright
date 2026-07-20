@@ -1,10 +1,13 @@
 # poe-buildwright
 
 An unofficial, non-commercial, fan-made **build planner for Path of
-Exile 2** — the full passive tree rendered with the game's own art,
-skill gems with real per-level numbers, gear, leveling snapshots, a
-scrubable timeline, and a typeset Build Guide. Exports `.build` files
-the game reads directly.
+Exile 2 — and the original Path of Exile's passive tree** — rendered
+with the games' own art. PoE2 gets the full toolkit: skill gems with
+real per-level numbers, gear, leveling snapshots, a scrubable
+timeline, a typeset Build Guide, and `.build` files the game reads
+directly. PoE1 gets its real 3.26 tree with GGG-exact presentation
+(in-place ascendancy circles, attribute totals, pick-one notables),
+planned from the same one-page planner.
 
 Built **agent-first**: any AI assistant that can browse can create a
 working build here (via [`/llms.txt`](viewer/llms.txt) and the
@@ -80,6 +83,11 @@ patch re-mine is diffable and repeatable.
 - [`viewer/llms.txt`](viewer/llms.txt) — the entry point: the
   `#agent=` build-plan URL contract, grounding data endpoints
   (`/assets/agent/*`), and the validation endpoint.
+- PoE1: same contract on `/planner-poe1.html`, grounded by
+  `/assets/poe1-agent/*` — see the
+  [PoE1 primer](viewer/assets/poe1-agent/primer.md) (point budgets,
+  the %-life-on-tree rule, suppression, defence layers) and two
+  worked examples modeled on poe.ninja meta builds.
 - The Summary of a finished build is embedded on the planner as
   chronological JSON ("Copy for agent" in the Build Guide) with
   writing hints for producing a human leveling guide.
