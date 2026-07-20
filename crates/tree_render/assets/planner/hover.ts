@@ -4,7 +4,8 @@
 
 import { ASC_IN_PLACE, MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, countSelected, isLocked, isMcOption, isMcParent, pickedMcOption, state, tooltip, viewport , ascNodeOverride} from "./state.ts";
 import { clientToTree } from "./viewport.ts";
-import { POPOUT_FRAME_SIZE, PopoutOptionEntry, ascButtonHit, ascCircleInfo, ascOffsetX, ascOffsetY, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
+import { POPOUT_FRAME_SIZE, PopoutOptionEntry, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
+import { ascButtonHit, ascCircleInfo, ascOffsetX, ascOffsetY } from "./asc_present.ts";
 import { isGlobalNode, updatePreview } from "./pathfind.ts";
 import { effectiveActiveSet } from "./sidebar.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";

@@ -17,7 +17,8 @@ import { maybeRebuildStaticForLocks } from "./lock_rebuild.ts";
 import { STRIDE_FLOATS, getTex, makeVAO } from "./webgl_setup.ts";
 import { Tint, pushSprite } from "./vertex_helpers.ts";
 import { connectorUrl, edgeFamily, isAllocOrRoot, pushConnectorArc, pushConnectorLine, tessellateSelEdges } from "./edge_tessellate.ts";
-import { ascOffsetX, ascOffsetY, render } from "./render.ts";
+import { render } from "./render.ts";
+import { ascOffsetX, ascOffsetY } from "./asc_present.ts";
 import { getEdgeMeta } from "./pathfind.ts";
 import type { Allocation } from "../../../../types/shared.d.ts";
 

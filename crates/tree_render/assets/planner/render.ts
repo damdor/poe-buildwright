@@ -9,7 +9,7 @@ import { Tint, pushSprite, pushSpriteRot, pushSpriteUV } from "./vertex_helpers.
 import { type AscPanelStatic, ascStatic, mainConnectorBatches, mainEdgeBatch, staticBatches, staticVAO } from "./static_geom.ts";
 import { buildClusterGlow, clusterGlowBatches, clusterGlowVAO, rebuildSearchGlow, rebuildSelEdges, searchGlowCount, searchGlowTex, searchGlowVAO, selConnectorAscBatches, selConnectorBatches, selEdgeAscCount, selEdgeMainCount, selEdgeProcAscStart, selEdgeProcMainStart, selEdgeVAO, uploadDyn } from "./overlay.ts";
 import { findClassStartHub, previewAscCount, previewConnectorAscBatches, previewConnectorBatches, previewMainCount, previewProcAscStart, previewProcMainStart, previewVAO } from "./pathfind.ts";
-import { attrTotalsSprite } from "./attr_totals.ts";
+import { ascAnchorInfo, ascCircleInfo, ascOffsetX, ascOffsetY, buildInPlaceMarkers } from "./asc_present.ts";
 import type { TreeNode } from "../../../../types/shared.d.ts";
 
 export function requestRender(): void {
@@ -308,57 +308,15 @@ export function render(): void {
 
   // ============== Class start markers (PoE1) ==============
   // ON TOP of edges and nodes so the start-passive spokes terminate
-  // at the marker's rim. PoB rule (PassiveTreeView.lua:775): the
-  // selected class draws its own center<class> art; every other
-  // start shows the generic inactive medallion.
-  if (ASC_IN_PLACE && TREE.class_markers) {
-    const markers: number[] = [];
-    const markerBatches: DynBatch[] = [];
-    for (const cn in TREE.class_markers) {
-      const m = TREE.class_markers[cn]!;
-      const active = cn === state.klass;
-      const art = active ? m : TREE.start_inactive;
-      if (!art) continue;
-      const tex = getTex(art.p);
-      if (!tex) continue;
-      const s0 = markers.length / STRIDE_FLOATS;
-      pushSprite(markers, m.x, m.y, art.w, art.h, [1, 1, 1, 1], false);
-      markerBatches.push({ tex, clipIcon: false, start: s0, count: 6 });
-    }
-    // Ascendancy plaque for the selected class at GGG's buttonPoint
-    // (270 out along the outward direction, rotated to face it).
-    // Three art states like skilltree.js: Pressed while the circle is
-    // open, Highlight while hovered (the little eye lights up so the
-    // plaque reads as clickable), normal otherwise.
-    if (state.klass && TREE.asc_button) {
-      const pt = ascButtonPoint();
-      const btn = TREE.asc_button;
-      const art = state.ascOpen ? (btn.pp ?? btn.p)
-                : state.ascBtnHover ? (btn.hp ?? btn.p)
-                : btn.p;
-      const tex = getTex(art) ?? getTex(btn.p);
-      if (pt && tex) {
-        const s0 = markers.length / STRIDE_FLOATS;
-        pushSpriteRot(markers, pt.x, pt.y, btn.w, btn.h, pt.c, pt.s, [1, 1, 1, 1]);
-        markerBatches.push({ tex, clipIcon: false, start: s0, count: 6 });
-      }
-    }
-    // Str/Dex/Int totals over the active medallion's coloured rings
-    // (GGG drawStartNodeBackground: current class only, an empty
-    // build shows 0/0/0). Pushed last so the text sits on top.
-    if (state.klass) {
-      const start = TREE.class_markers[state.klass];
-      const at = start ? attrTotalsSprite() : null;
-      if (start && at) {
-        const s0 = markers.length / STRIDE_FLOATS;
-        pushSprite(markers, start.x, start.y, at.w, at.h, [1, 1, 1, 1], false);
-        markerBatches.push({ tex: at.tex, clipIcon: false, start: s0, count: 6 });
-      }
-    }
-    if (markerBatches.length > 0) {
-      uploadDyn(markers);
+  // at the marker's rim. Content (medallions, plaque states, attr
+  // totals) is built by asc_present.buildInPlaceMarkers — this pass
+  // only uploads and draws.
+  {
+    const mk = buildInPlaceMarkers();
+    if (mk.batches.length > 0) {
+      uploadDyn(mk.verts);
       gl.uniform1f(uClip, 0);
-      for (const b of markerBatches) {
+      for (const b of mk.batches) {
         gl.bindTexture(gl.TEXTURE_2D, b.tex);
         gl.drawArrays(gl.TRIANGLES, b.start, b.count);
       }
@@ -771,104 +729,8 @@ export function drawAscPanel(): void {
   }
 }
 
-// Asc nodes are drawn translated; for popouts we need to apply the
-// same offset so the popout lands at the visible (relocated) position.
-// GGG's ascendancy anchoring (skilltree.js getAscendancyPositionInfo):
-// the chosen ascendancy hangs off the class start — its plaque 270
-// world units out along the outward direction (straight down for the
-// centered Scion start), the circle centre half the art height
-// further. The subtree's groups are relocated by circle − group
-// centre; only the CURRENT ascendancy is drawn at all.
-const ASC_BUTTON_DIST = 270;
-export function ascAnchorInfo(): {
-  dx: number; dy: number;
-  button: { x: number; y: number; c: number; s: number };
-} | null {
-  if (!state.klass || !state.asc) return null;
-  const start = TREE.class_markers?.[state.klass];
-  const panel = TREE.asc_panels[state.ascVariant ?? state.asc];
-  if (!start || !panel) return null;
-  const d = Math.hypot(start.x, start.y);
-  const centered = Math.abs(start.x) < 10 && Math.abs(start.y) < 10;
-  const dirX = centered ? 0 : start.x / d;
-  const dirY = centered ? 1 : -start.y / d;
-  const rot = Math.atan2(dirX, dirY);
-  const ca = Math.cos(rot + Math.PI / 2), sa = Math.sin(rot + Math.PI / 2);
-  const imgDist = ASC_BUTTON_DIST + panel.h / 2;
-  return {
-    dx: start.x + imgDist * ca - panel.x,
-    dy: start.y + imgDist * sa - panel.y,
-    button: {
-      x: start.x + ASC_BUTTON_DIST * ca,
-      y: start.y + ASC_BUTTON_DIST * sa,
-      c: Math.cos(rot),
-      s: Math.sin(rot),
-    },
-  };
-}
-
-// Plaque point for the SELECTED CLASS — unlike ascAnchorInfo this
-// doesn't need an ascendancy chosen (the plaque shows as soon as a
-// class is picked, inviting the click). Same outward-direction math.
-export function ascButtonPoint(): { x: number; y: number; c: number; s: number } | null {
-  if (!state.klass) return null;
-  const start = TREE.class_markers?.[state.klass];
-  if (!start) return null;
-  const d = Math.hypot(start.x, start.y);
-  const centered = Math.abs(start.x) < 10 && Math.abs(start.y) < 10;
-  const dirX = centered ? 0 : start.x / d;
-  const dirY = centered ? 1 : -start.y / d;
-  const rot = Math.atan2(dirX, dirY);
-  return {
-    x: start.x + ASC_BUTTON_DIST * Math.cos(rot + Math.PI / 2),
-    y: start.y + ASC_BUTTON_DIST * Math.sin(rot + Math.PI / 2),
-    c: Math.cos(rot),
-    s: Math.sin(rot),
-  };
-}
-
-// Is a tree-coord point on the plaque? Circle test with the plaque's
-// half-width — generous like GGG's Clickable image bounds, and the
-// slack keeps the eye ornament (which pokes past the art box toward
-// the medallion) inside the hit area.
-export function ascButtonHit(tx: number, ty: number): boolean {
-  if (!ASC_IN_PLACE || !TREE.asc_button) return false;
-  const pt = ascButtonPoint();
-  if (!pt) return false;
-  const r = Math.max(TREE.asc_button.w, TREE.asc_button.h) / 2;
-  return (tx - pt.x) ** 2 + (ty - pt.y) ** 2 < r * r;
-}
-
-// Centre + radius of the OPEN ascendancy circle (in-place mode) — the
-// art overlaps main-tree nodes, so hit-testing needs to know the
-// occluded disc: skilltree.js foreachClickable skips main nodes
-// within classArtRadius of the popup centre.
-export function ascCircleInfo(): { x: number; y: number; r: number } | null {
-  if (!ASC_IN_PLACE || !state.ascOpen || !state.asc) return null;
-  const info = ascAnchorInfo();
-  const panel = TREE.asc_panels[state.ascVariant ?? state.asc];
-  if (!info || !panel) return null;
-  return { x: info.dx + panel.x, y: info.dy + panel.y, r: panel.h / 2 };
-}
-
-export function ascOffsetX(n: TreeNode): number {
-  if (!n.a) return 0;
-  if (ASC_IN_PLACE) {
-    if (n.a !== (state.ascVariant ?? state.asc)) return 0;
-    return ascAnchorInfo()?.dx ?? 0;
-  }
-  const p = TREE.asc_panels[n.a];
-  return p ? -p.x : 0;
-}
-export function ascOffsetY(n: TreeNode): number {
-  if (!n.a) return 0;
-  if (ASC_IN_PLACE) {
-    if (n.a !== (state.ascVariant ?? state.asc)) return 0;
-    return ascAnchorInfo()?.dy ?? 0;
-  }
-  const p = TREE.asc_panels[n.a];
-  return p ? -p.y : 0;
-}
+// Ascendancy presentation geometry (anchoring, offsets, plaque hit
+// tests) lives in asc_present.ts.
 
 // Attribute-popout layout — also needed by pickFromPopout for hit-
 // tests and by drawOverlays / drawAscPanel for rendering. Keep in

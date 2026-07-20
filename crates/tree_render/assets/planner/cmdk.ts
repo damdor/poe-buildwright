@@ -16,7 +16,8 @@ import { ASC_IN_PLACE, allocModeSel, isLocked, isMcOption, state, viewport } fro
 import { featureOn } from "./game.ts";
 import { fitToView } from "./viewport.ts";
 import { syncPulse } from "./overlay.ts";
-import { ascOffsetX, ascOffsetY, requestRender } from "./render.ts";
+import { requestRender } from "./render.ts";
+import { ascOffsetX, ascOffsetY } from "./asc_present.ts";
 import { updatePreview } from "./pathfind.ts";
 import { doShareLink, syncModeBadge } from "./sidebar.ts";
 import { GGG_BUILD_SCHEMA, PLAN_VERSION, doExportBuild, doExportPlan, doImportBuild, doImportPlan } from "./build_io.ts";
