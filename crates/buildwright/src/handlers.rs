@@ -4818,6 +4818,43 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         }
     }
 
+    // multichoice <parent> <opt1,opt2,…> — "pick one" notables, same
+    // contract as the PoE2 shapers (flags + adjacency, no hardcoding;
+    // covers Ascendant's class picks, Reliquarian displays, Assassin's
+    // Assassination Style, and the event ascendancies alike).
+    {
+        let mc_flag = |v: Option<&json::Value>| v.and_then(json::Value::as_bool).unwrap_or(false);
+        let mut parents: Vec<(u64, Vec<u64>)> = Vec::new();
+        for (nid, n) in nodes_obj.iter() {
+            let Ok(id) = nid.parse::<u64>() else { continue };
+            if !mc_flag(n.get("isMultipleChoice")) {
+                continue;
+            }
+            let mut opts: Vec<u64> = Vec::new();
+            for key in ["out", "in"] {
+                for e in n.get(key).and_then(json::Value::as_array).unwrap_or(&[]) {
+                    let Some(oid) = e.as_str().and_then(|t| t.parse::<u64>().ok()) else { continue };
+                    if nodes_obj
+                        .get(&oid.to_string())
+                        .is_some_and(|o| mc_flag(o.get("isMultipleChoiceOption")))
+                    {
+                        opts.push(oid);
+                    }
+                }
+            }
+            opts.sort_unstable();
+            opts.dedup();
+            if !opts.is_empty() {
+                parents.push((id, opts));
+            }
+        }
+        parents.sort_unstable();
+        for (id, opts) in parents {
+            let list: Vec<String> = opts.iter().map(u64::to_string).collect();
+            meta.push_str(&format!("multichoice\t{id}\t{}\n", list.join(",")));
+        }
+    }
+
     // Portrait rows drive the renderer's asc_panels — without them the
     // ascendancy subtrees never draw (they're excluded from the main
     // pass). One row per class-pickable ascendancy: panel origin = the

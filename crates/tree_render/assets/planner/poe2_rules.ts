@@ -105,13 +105,24 @@ export const ASC_EFFECTS: Record<string, AscEffect> = GAME.id !== "poe2" ? {} : 
 //   * Option nodes are hidden from tree rendering / pathfinding —
 //     the user only ever interacts with them through the parent's
 //     popout (same UX as attribute Str/Dex/Int picker).
-export const MULTI_CHOICE: Record<string, string[]> = GAME.id !== "poe2" ? {} : {
+// Data-driven since the multichoice meta rows landed: the shapers
+// derive parent→options from GGG's isMultipleChoice/-Option flags and
+// tree_render bakes TREE.multi_choice — poe1's 16 (Ascendant class
+// picks, Reliquarian displays, Assassination Style, the event
+// ascendancies) and poe2's 5 alike, no per-ascendancy hardcoding.
+// The literal table below is a FALLBACK for a poe2 page baked before
+// the multi_choice field existed (planner.js deploys independently of
+// page bakes); it matches the flag-derived output 1:1 and can be
+// deleted once every deployed page carries TREE.multi_choice.
+const LEGACY_POE2_MULTI_CHOICE: Record<string, string[]> = {
   '16433': ['12795', '57253'],                                // Pathfinder - Path Seeker
   '57141': ['9710', '18940', '38004', '56618', '58379'],      // Pathfinder - Brew Concoction
   '42416': ['41875', '59542'],                                // Deadeye - Projectile Proximity Specialisation
   '52395': ['56331', '26283', '664'],                         // Acolyte of Chayula - Lucid Dreaming
   '60287': ['37397', '32952', '63259'],                       // Gemling Legionnaire - Implanted Gems
 };
+export const MULTI_CHOICE: Record<string, string[]> =
+  TREE.multi_choice ?? (GAME.id === "poe2" ? LEGACY_POE2_MULTI_CHOICE : {});
 export const MULTI_CHOICE_PARENT: Record<string, string> = {};   // option_id → parent_id
 for (const parent in MULTI_CHOICE) {
   for (const opt of (MULTI_CHOICE[parent] ?? [])) MULTI_CHOICE_PARENT[opt] = parent;

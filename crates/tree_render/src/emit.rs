@@ -268,7 +268,19 @@ pub(crate) fn build_tree_data(
     // BTreeMap: emitted as JSON keys — deterministic output means a
     // rebake of unchanged data is byte-identical (diffable, hashable).
     let mut asc_edges: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    // Multi-choice OPTION nodes render nowhere (the planner offers
+    // them via the parent's popout), so their parent↔option edges
+    // must not render OR join the adjacency graph — an option is
+    // allocated by picking, never by pathing.
+    let mc_option_ids: std::collections::HashSet<u32> = canvas
+        .multi_choice
+        .iter()
+        .flat_map(|(_, opts)| opts.iter().filter_map(|o| o.parse().ok()))
+        .collect();
     for (a, b, orbit) in edges {
+        if mc_option_ids.contains(a) || mc_option_ids.contains(b) {
+            continue;
+        }
         let (Some(na), Some(nb)) = (node_idx.get(a), node_idx.get(b)) else {
             continue;
         };
@@ -771,6 +783,24 @@ pub(crate) fn build_tree_data(
             json_str(internal),
             json_str(parent),
         );
+    }
+    out.push('}');
+
+    // multi_choice: parent node id → option node ids ("pick one"
+    // notables, from the shapers' flag-derived meta rows). The planner
+    // builds its MULTI_CHOICE table from this — options cost no extra
+    // point and the picked option's icon overlays the parent.
+    out.push_str(r#","multi_choice":{"#);
+    let mut mc_sorted: Vec<_> = canvas.multi_choice.iter().collect();
+    mc_sorted.sort_by_key(|(p, _)| p.parse::<u64>().unwrap_or(u64::MAX));
+    let mut first_mc = true;
+    for (parent, opts) in mc_sorted {
+        if !first_mc {
+            out.push(',');
+        }
+        first_mc = false;
+        let list: Vec<String> = opts.iter().map(|o| json_str(o)).collect();
+        let _ = write!(out, "{}:[{}]", json_str(parent), list.join(","));
     }
     out.push('}');
 

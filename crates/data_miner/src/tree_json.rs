@@ -413,6 +413,35 @@ pub fn shape_tree_json(data: &json::Value, asc_art: &AscArt) -> Result<TreeTsv, 
         ));
     }
 
+    // multichoice <parent> <opt1,opt2,…> — "pick one" notables
+    // (isMultipleChoice) whose option nodes (isMultipleChoiceOption)
+    // hang off them by edges. Emitted as data so the planner never
+    // hardcodes per-ascendancy cases: options cost no extra point and
+    // the picked option's icon overlays the parent. Derived purely
+    // from flags + adjacency; sorted for deterministic output.
+    for (&id, n) in &node_by_id {
+        if !b(n, "isMultipleChoice") {
+            continue;
+        }
+        let mut opts: Vec<i64> = Vec::new();
+        for key in ["out", "in"] {
+            for e in n.get(key).and_then(|v| v.as_array()).unwrap_or(&[]) {
+                let oid = e.as_i64().or_else(|| e.as_str().and_then(|t| t.parse().ok()));
+                let Some(oid) = oid else { continue };
+                if node_by_id.get(&oid).is_some_and(|o| b(o, "isMultipleChoiceOption")) {
+                    opts.push(oid);
+                }
+            }
+        }
+        opts.sort_unstable();
+        opts.dedup();
+        if opts.is_empty() {
+            continue;
+        }
+        let list: Vec<String> = opts.iter().map(i64::to_string).collect();
+        out_meta.push_str(&format!("multichoice\t{id}\t{}\n", list.join(",")));
+    }
+
     Ok(TreeTsv {
         nodes: out_nodes,
         edges: out_edges,
