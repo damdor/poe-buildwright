@@ -1509,7 +1509,7 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
 
     let mut cache: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    let mut out = String::from("sprite_name\tpng\twidth\theight\n");
+    let mut out = String::from(data_miner::tree_tsv::SPRITES_HEADER);
     let (mut ok, mut missing) = (0usize, 0usize);
     for (key, candidates) in &jobs {
         let bytes = match candidates
@@ -4609,35 +4609,6 @@ fn arg_value(args: &[String], name: &str) -> Option<String> {
     None
 }
 
-/// GGG skilltree.js `getOrbitAngle`: orbits with 16 or 40 placements
-/// use hand-tuned angle tables — the 12-position clock angles plus the
-/// four diagonals (16), or the same clock angles with 10°/15°/20°
-/// sub-steps (40). Everything else is uniform. PoE1's skillsPerOrbit
-/// is [1, 6, 16, 16, 40, 72, 72], so uniform math put every node on
-/// orbits 2–4 up to 7.5° off — visibly detaching the center<class>
-/// medallion's baked ornament anchors from the start passives they
-/// point at.
-fn poe1_orbit_angle(oidx: f64, slots: f64) -> f64 {
-    const DEG16: [f64; 16] = [
-        0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 135.0, 150.0, 180.0, 210.0, 225.0, 240.0, 270.0,
-        300.0, 315.0, 330.0,
-    ];
-    const DEG40: [f64; 40] = [
-        0.0, 10.0, 20.0, 30.0, 40.0, 45.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0,
-        130.0, 135.0, 140.0, 150.0, 160.0, 170.0, 180.0, 190.0, 200.0, 210.0, 220.0, 225.0,
-        230.0, 240.0, 250.0, 260.0, 270.0, 280.0, 290.0, 300.0, 310.0, 315.0, 320.0, 330.0,
-        340.0, 350.0,
-    ];
-    let i = oidx as usize;
-    if slots == 16.0 && i < 16 {
-        DEG16[i].to_radians()
-    } else if slots == 40.0 && i < 40 {
-        DEG40[i].to_radians()
-    } else {
-        std::f64::consts::TAU * oidx / slots
-    }
-}
-
 pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let label = arg_value(args, "--label").unwrap_or_else(|| "current".into());
     let out_dir = ctx.root.join(format!("data/parsed/poe1_{label}"));
@@ -4726,9 +4697,7 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     // 3. Nodes → nodes.tsv (same 17 columns the PoE2 shaper emits).
     let nodes_obj = tree.get("nodes").and_then(json::Value::as_object).ok_or("no nodes")?;
-    let mut nodes_out = String::from(
-        "id\tx\ty\tkind\tklass\tascendancy\tname\tstats\tgroup\torbit\torbit_index\ticon\tnode_overlay\tactive_effect\tnode_options\tconnection_art\tunlock_constraint\n",
-    );
+    let mut nodes_out = String::from(data_miner::tree_tsv::NODES_HEADER);
     let mut edges: std::collections::BTreeSet<(u64, u64)> = std::collections::BTreeSet::new();
     let mut n_nodes = 0usize;
     for (nid, n) in nodes_obj.iter() {
@@ -4740,28 +4709,26 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         let oidx = n.get("orbitIndex").and_then(json::Value::as_i64).unwrap_or(0) as f64;
         let r = radii.get(orbit).copied().unwrap_or(0.0);
         let slots = per_orbit.get(orbit).copied().unwrap_or(1.0).max(1.0);
-        let angle = poe1_orbit_angle(oidx, slots);
+        // GGG's non-uniform 16/40-slot orbit angles — shared rule
+        // (data_miner::tree_tsv::orbit_angle), same tables skilltree.js uses.
+        let angle = data_miner::tree_tsv::orbit_angle(oidx, slots);
         let (x, y) = (gx + r * angle.sin(), gy - r * angle.cos());
 
         let asc = s(n.get("ascendancyName"));
         let node_is_asc = !asc.is_empty();
-        let kind = if n.get("classStartIndex").is_some() {
-            "class_start"
-        } else if flag(n, "isAscendancyStart") {
-            "asc_start"
-        } else if flag(n, "isKeystone") {
-            "keystone"
-        } else if flag(n, "isMastery") {
-            "mastery"
-        } else if flag(n, "isJewelSocket") {
-            "jewel"
-        } else if flag(n, "isNotable") {
-            if asc.is_empty() { "notable" } else { "asc_notable" }
-        } else if asc.is_empty() {
-            "small"
-        } else {
-            "asc_small"
-        };
+        // Embed flags → the shared canonical ladder. Verified
+        // output-identical for 3.26: no poe1 node carries two flags
+        // whose relative order differs from the old local ladder.
+        let kind = data_miner::tree_tsv::node_kind(&data_miner::tree_tsv::KindFlags {
+            class_start: n.get("classStartIndex").is_some(),
+            asc_start: flag(n, "isAscendancyStart"),
+            is_asc: node_is_asc,
+            jewel: flag(n, "isJewelSocket"),
+            mastery: flag(n, "isMastery"),
+            keystone: flag(n, "isKeystone"),
+            notable: flag(n, "isNotable"),
+            ..Default::default()
+        });
         let klass = n
             .get("classStartIndex")
             .and_then(json::Value::as_i64)
@@ -4791,8 +4758,10 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             String::new(),
             String::new(),
         ];
-        nodes_out.push_str(&row.join("\t"));
-        nodes_out.push('\n');
+        {
+            let refs: Vec<&str> = row.iter().map(String::as_str).collect();
+            data_miner::tree_tsv::push_row(&mut nodes_out, &refs);
+        }
         n_nodes += 1;
         for e in n.get("out").and_then(json::Value::as_array).unwrap_or(&[]) {
             if let Some(b) = e.as_str().and_then(|v| v.parse::<u64>().ok()) {
@@ -4815,7 +4784,7 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     // 4. edges.tsv (a, b, conn_orbit 0 — arcs derive from shared
     //    group/orbit downstream, same as PoE2).
-    let mut edges_out = String::from("a\tb\tconn_orbit\n");
+    let mut edges_out = String::from(data_miner::tree_tsv::EDGES_HEADER);
     for (a, b) in &edges {
         edges_out.push_str(&format!("{a}\t{b}\t0\n"));
     }
@@ -4967,7 +4936,7 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // (width, height, rgba)
     let mut atlases: std::collections::BTreeMap<String, (u32, u32, Vec<u8>)> =
         std::collections::BTreeMap::new();
-    let mut out = String::from("sprite_name\tpng\twidth\theight\n");
+    let mut out = String::from(data_miner::tree_tsv::SPRITES_HEADER);
     let mut count = 0usize;
     for sheet in SHEETS {
         let Some(levels) = sprites.get(*sheet).and_then(json::Value::as_object) else {

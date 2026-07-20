@@ -29,4 +29,5 @@ pub mod png;
 pub mod psg;
 pub mod shape;
 pub mod tree_json;
+pub mod tree_tsv;
 pub mod uniques;
