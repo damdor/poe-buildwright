@@ -4993,16 +4993,18 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     // Base-class portraits for the builds-index cards: GGG's own
     // center<class> medallions (startNode sheet) — the same official
-    // art the tree draws at the class start. Position 0,0: these rows
-    // exist for build_meta's portraits map, not for tree placement
-    // (build_tree_data only places kind=="asc" portraits).
+    // art the tree draws at the class start. Kind "card", NOT "class":
+    // build_meta's portraits map takes every kind, but kind=="class"
+    // ALSO feeds TREE.class_portraits, which the planner draws as the
+    // huge PoE2 centre portrait — shipping these as "class" put a
+    // giant centerscion under the middle of the poe1 tree.
     for c in classes {
         let cname = s(c.get("name"));
         if cname.is_empty() {
             continue;
         }
         meta.push_str(&format!(
-            "portrait\tclass\t{cname}\tcenter{}\t0\t0\t0\t0\n",
+            "portrait\tcard\t{cname}\tcenter{}\t0\t0\t0\t0\n",
             cname.to_lowercase()
         ));
     }
