@@ -364,12 +364,15 @@ fn run() -> Result<(), String> {
                 out.push(',');
             }
             first_c = false;
-            let ascs: Vec<String> = canvas
+            // Sorted: asc_internal is a HashMap and this JSON is a
+            // tracked artifact — hash order churned it every bake.
+            let mut ascs: Vec<String> = canvas
                 .asc_internal
                 .iter()
                 .filter(|(_, (_, c))| c == cls)
                 .map(|(name, _)| text::json_str(name))
                 .collect();
+            ascs.sort();
             out.push_str(&format!(
                 "{{\"name\":{},\"start_id\":{hub},\"ascendancies\":[{}]}}",
                 text::json_str(cls),

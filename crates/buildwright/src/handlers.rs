@@ -4072,7 +4072,26 @@ pub fn render(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         argv.push("viewer/planner.html".into());
     }
     argv.extend(args.iter().cloned());
-    sh(ctx, "render planner.html", &program, &argv)
+    sh(ctx, "render planner", &program, &argv)?;
+    // ONE bake path: every render re-runs the agent-metadata generator
+    // so the sidecar enrichment (jewels `uniques`, capabilities,
+    // support_compat, robots) can never diverge between a local bake
+    // and a deploy — deploy.sh runs the same script under node; both
+    // are idempotent, and tree_render itself preserves enrichment keys
+    // it doesn't own (text::preserve_unknown_top_level) as the
+    // belt-and-suspenders layer.
+    let deno = deno_program(ctx);
+    let meta_argv: Vec<String> = [
+        "run",
+        "--allow-read",
+        "--allow-write=viewer",
+        "--allow-env",
+        "scripts/gen_agent_meta.mjs",
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect();
+    sh(ctx, "agent metadata (gen_agent_meta)", &deno, &meta_argv)
 }
 
 // ---------------------------------------------------------------------
