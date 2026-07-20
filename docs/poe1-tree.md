@@ -119,6 +119,30 @@ the official tree.json — re-run it after any rebake.
   them populated would silently apply PoE2 ascendancy rules to
   unrelated PoE1 nodes.
 
+## Game-split ownership (where code goes)
+
+One codebase serves both games; the split is by OWNERSHIP, not by
+duplicated trees. The rule everywhere: a new thing goes in the
+narrowest home that covers its consumers — never copied.
+
+- Types: `types/shared.d.ts` / `poe1.d.ts` / `poe2.d.ts`.
+- Planner gates: `game.ts` (zero-import leaf) is the ONLY reader of
+  `window.PoE2Game`; everything checks `featureOn()` / `ASC_IN_PLACE`
+  from it. Feature-gated cmd+K actions carry a `feature` tag.
+- PoE2-only rule tables (ASC_EFFECTS, MULTI_CHOICE, weapon-set/spirit
+  curves): `poe2_rules.ts` — empty on other games via the GAME gate.
+- Ascendancy presentation geometry (both modes' anchoring/offsets,
+  poe1 plaque + markers): `asc_present.ts`; `ascOffsetX/Y` is the one
+  interface for "where is this asc node drawn".
+- Tree TSV contract (headers, kind ladder, orbit angles, escaping):
+  `data_miner::tree_tsv`, shared by all three shapers. tree_render's
+  reader stays std-only and mirrors the 17-column contract under test
+  on both sides. `tests/shape_golden.rs` is the offline byte-diff
+  harness for shaper refactors; page bakes are deterministic, so a
+  rebake of unchanged data is byte-identical.
+- Node draw sizes: `emit.rs` `node_sizes_poe1` / `node_sizes_poe2`,
+  kept adjacent on purpose.
+
 ## Deferred (step 2+ candidates)
 
 - Cluster jewels (proxy groups are dropped at ingest).
