@@ -19,7 +19,7 @@ import { canvas, state, viewport, zoomfitBtn } from "./state.ts";
 import { requestRender } from "./render.ts";
 import { handleHover } from "./hover.ts";
 import { handleClick, handleRightClick } from "./pathfind.ts";
-import type { Capture } from "../../../../types/poe2.d.ts";
+import type { Capture } from "../../../../types/shared.d.ts";
 
 let bufRealloc: ReturnType<typeof setTimeout> | null = null;
 export function resize(): void {

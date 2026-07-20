@@ -5,7 +5,7 @@
 // delete-this-build clicks, and re-renders when another tab mutates
 // localStorage. Loaded as a classic <script src=> tag from index.html.
 
-import type { PlanIndexEntry } from "../../types/poe2.d.ts";
+import type { PlanIndexEntry } from "../../types/shared.d.ts";
 
 const KEY_INDEX  = "poe2-planner:index";
 const KEY_PREFIX = "poe2-planner:plan:";

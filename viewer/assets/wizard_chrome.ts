@@ -14,7 +14,7 @@ import { decode as decodeShare } from "./share_codec.ts";
 import type {
   Plan, Capture, Allocation, Skill, Item,
   CommitMeta, PlanIndexEntry, PoE2PlanAPI,
-} from "../../types/poe2.d.ts";
+} from "../../types/shared.d.ts";
 
 // Storage is namespaced per game so a PoE1 page never sees (or
 // clobbers) PoE2 plans. Default base keeps every existing PoE2 key.
