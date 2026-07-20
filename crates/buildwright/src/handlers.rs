@@ -4609,6 +4609,35 @@ fn arg_value(args: &[String], name: &str) -> Option<String> {
     None
 }
 
+/// GGG skilltree.js `getOrbitAngle`: orbits with 16 or 40 placements
+/// use hand-tuned angle tables — the 12-position clock angles plus the
+/// four diagonals (16), or the same clock angles with 10°/15°/20°
+/// sub-steps (40). Everything else is uniform. PoE1's skillsPerOrbit
+/// is [1, 6, 16, 16, 40, 72, 72], so uniform math put every node on
+/// orbits 2–4 up to 7.5° off — visibly detaching the center<class>
+/// medallion's baked ornament anchors from the start passives they
+/// point at.
+fn poe1_orbit_angle(oidx: f64, slots: f64) -> f64 {
+    const DEG16: [f64; 16] = [
+        0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 135.0, 150.0, 180.0, 210.0, 225.0, 240.0, 270.0,
+        300.0, 315.0, 330.0,
+    ];
+    const DEG40: [f64; 40] = [
+        0.0, 10.0, 20.0, 30.0, 40.0, 45.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0,
+        130.0, 135.0, 140.0, 150.0, 160.0, 170.0, 180.0, 190.0, 200.0, 210.0, 220.0, 225.0,
+        230.0, 240.0, 250.0, 260.0, 270.0, 280.0, 290.0, 300.0, 310.0, 315.0, 320.0, 330.0,
+        340.0, 350.0,
+    ];
+    let i = oidx as usize;
+    if slots == 16.0 && i < 16 {
+        DEG16[i].to_radians()
+    } else if slots == 40.0 && i < 40 {
+        DEG40[i].to_radians()
+    } else {
+        std::f64::consts::TAU * oidx / slots
+    }
+}
+
 pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let label = arg_value(args, "--label").unwrap_or_else(|| "current".into());
     let out_dir = ctx.root.join(format!("data/parsed/poe1_{label}"));
@@ -4711,7 +4740,7 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         let oidx = n.get("orbitIndex").and_then(json::Value::as_i64).unwrap_or(0) as f64;
         let r = radii.get(orbit).copied().unwrap_or(0.0);
         let slots = per_orbit.get(orbit).copied().unwrap_or(1.0).max(1.0);
-        let angle = std::f64::consts::TAU * oidx / slots;
+        let angle = poe1_orbit_angle(oidx, slots);
         let (x, y) = (gx + r * angle.sin(), gy - r * angle.cos());
 
         let asc = s(n.get("ascendancyName"));

@@ -32,8 +32,17 @@ the one platform-specific step in the import.
   PoE2 shaper emits, so `tree_render` consumes both games unchanged.
 - `.source` provenance marker + `manifest.json` (SHA-256 per file +
   rollup). `verify` uses a tree-only core set for `poe1_*` dirs.
-- Node positions: `group.xy + r*sin/cos(2π*orbitIndex/skillsPerOrbit)`
-  with `orbitRadii`/`skillsPerOrbit` from the embed's constants.
+- Node positions: `group.xy + r*(sin a, -cos a)` with
+  `orbitRadii`/`skillsPerOrbit` from the embed's constants — but the
+  angle is NOT uniform for every orbit. GGG's `getOrbitAngle`
+  (skilltree.js) hand-tables orbits with 16 placements
+  (0,30,45,60,90,… — the 12-position clock plus the four diagonals)
+  and 40 placements (the clock angles with 10°/15°/20° sub-steps);
+  only other counts use `2π*orbitIndex/skillsPerOrbit`. PoE1's
+  skillsPerOrbit is [1,6,16,16,40,72,72], so orbits 2–4 need the
+  tables (`poe1_orbit_angle` in handlers.rs) — uniform math puts
+  those nodes up to 7.5° off and the start-emblem ornaments visibly
+  miss their first passives.
 - Dropped at ingest: nodes without groups (cluster-jewel proxies) and
   ascendancy↔main crossing edges (mechanics, not visuals — rendered
   literally they streak across the whole tree).
