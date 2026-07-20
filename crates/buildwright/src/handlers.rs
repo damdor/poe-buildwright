@@ -4936,6 +4936,21 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             ));
         }
     }
+    // Base-class portraits for the builds-index cards: GGG's own
+    // center<class> medallions (startNode sheet) — the same official
+    // art the tree draws at the class start. Position 0,0: these rows
+    // exist for build_meta's portraits map, not for tree placement
+    // (build_tree_data only places kind=="asc" portraits).
+    for c in classes {
+        let cname = s(c.get("name"));
+        if cname.is_empty() {
+            continue;
+        }
+        meta.push_str(&format!(
+            "portrait\tclass\t{cname}\tcenter{}\t0\t0\t0\t0\n",
+            cname.to_lowercase()
+        ));
+    }
     std::fs::write(tree_dir.join("meta.tsv"), &meta).map_err(|e| e.to_string())?;
 
     // Provenance marker consumed by `manifest` — same contract as the

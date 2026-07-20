@@ -71,6 +71,17 @@
   ul.build-list a.name:hover { text-decoration: underline; }
   ul.build-list .meta { color: var(--muted); font-size: 12px; }
   ul.build-list .meta b { color: var(--fg); }
+  section.builds .import-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    font: inherit; font-size: 11px; padding: 2px 10px; border-radius: 999px; cursor: pointer;
+  }
+  section.builds .import-btn:hover { border-color: var(--accent); color: var(--accent); }
+  ul.build-list button.dl {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); padding: 2px 8px; border-radius: 4px;
+    font: inherit; font-size: 11px; cursor: pointer;
+  }
+  ul.build-list button.dl:hover { color: var(--accent); border-color: var(--accent); }
   ul.build-list button.rm {
     background: transparent; border: 1px solid var(--border);
     color: var(--muted); padding: 2px 8px; border-radius: 4px;
@@ -227,12 +238,14 @@
         <button type="button" data-game="poe2">PoE2</button>
         <button type="button" data-game="poe1">PoE1</button>
       </div>
+      <button type="button" class="import-btn" id="import-build-btn" title="Restore a build from a .buildwright.json backup">&#8682; Import backup</button>
+      <input type="file" id="import-build-file" accept=".json,application/json" hidden>
     </div>
     <ul class="build-list" id="build-list"><li class="empty">No saved builds yet. Start one above.</li></ul>
   </section>
 
   <div class="storage-warning">
-    <strong>Heads up:</strong> builds are saved <em>in this browser only</em> right now. Clearing site data, switching browsers, or using private mode will lose them. Use <strong>Export .build</strong> in the planner sidebar to back up. A server-side share-link store lands in a later iteration.
+    <strong>Heads up:</strong> builds are saved <em>in this browser only</em>. Clearing site data, switching browsers, or using private mode will lose them. Back up with the <strong>&#8681;</strong> button on any build card (a lossless <em>.buildwright.json</em> for either game) and restore it here with <strong>&#8682; Import backup</strong>. PoE2 builds can also <strong>Export .build</strong> from the planner sidebar for the in-game planner. A server-side share-link store lands in a later iteration.
   </div>
 
   <footer>

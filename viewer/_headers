@@ -17,11 +17,17 @@
 /assets/agent/*
   Cache-Control: public, max-age=300, stale-while-revalidate=3600
 
-# JS/CSS bundles: hour-level cache; deploys are frequent.
+# JS/CSS bundles: ALWAYS revalidate (no-cache = conditional request,
+# ETag turns it into a cheap 304). These files are unhashed and every
+# page that loads them deploys COUPLED changes (a new chip in the HTML
+# + its listener in the JS) — an hour of positive cache served users
+# fresh HTML against stale JS, and features silently no-opped until
+# the cache expired. Sprites/JSON keep positive caching; bundles pay
+# one 304 per load for correctness.
 /assets/*.js
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Cache-Control: no-cache
 /assets/*.css
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Cache-Control: no-cache
 
 # Baseline security headers, site-wide.
 /*
