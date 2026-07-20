@@ -9,6 +9,7 @@ import { Tint, pushSprite, pushSpriteRot, pushSpriteUV } from "./vertex_helpers.
 import { type AscPanelStatic, ascStatic, mainConnectorBatches, mainEdgeBatch, staticBatches, staticVAO } from "./static_geom.ts";
 import { buildClusterGlow, clusterGlowBatches, clusterGlowVAO, rebuildSearchGlow, rebuildSelEdges, searchGlowCount, searchGlowTex, searchGlowVAO, selConnectorAscBatches, selConnectorBatches, selEdgeAscCount, selEdgeMainCount, selEdgeProcAscStart, selEdgeProcMainStart, selEdgeVAO, uploadDyn } from "./overlay.ts";
 import { findClassStartHub, previewAscCount, previewConnectorAscBatches, previewConnectorBatches, previewMainCount, previewProcAscStart, previewProcMainStart, previewVAO } from "./pathfind.ts";
+import { attrTotalsSprite } from "./attr_totals.ts";
 import type { TreeNode } from "../../../../types/poe2.d.ts";
 
 export function requestRender(): void {
@@ -341,6 +342,18 @@ export function render(): void {
         const s0 = markers.length / STRIDE_FLOATS;
         pushSpriteRot(markers, bx, by, btn.w, btn.h, Math.cos(rot), Math.sin(rot), [1, 1, 1, 1]);
         markerBatches.push({ tex, clipIcon: false, start: s0, count: 6 });
+      }
+    }
+    // Str/Dex/Int totals over the active medallion's coloured rings
+    // (GGG drawStartNodeBackground: current class only, an empty
+    // build shows 0/0/0). Pushed last so the text sits on top.
+    if (state.klass) {
+      const start = TREE.class_markers[state.klass];
+      const at = start ? attrTotalsSprite() : null;
+      if (start && at) {
+        const s0 = markers.length / STRIDE_FLOATS;
+        pushSprite(markers, start.x, start.y, at.w, at.h, [1, 1, 1, 1], false);
+        markerBatches.push({ tex: at.tex, clipIcon: false, start: s0, count: 6 });
       }
     }
     if (markerBatches.length > 0) {

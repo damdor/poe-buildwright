@@ -81,6 +81,16 @@ the official tree.json — re-run it after any rebake.
   `PSStartNodeBackgroundInactive` medallion (skilltree.js
   drawStartNodeBackground). Start↔passive edges render on PoE1 (PoE2
   hides them under its central wedge art).
+- Attribute totals: drawStartNodeBackground also draws, for the
+  CURRENT class only, the allocated Str/Dex/Int sums as text over the
+  medallion's coloured rings — `start + PSSCentreInnerRadius(130) *
+  (sin a, cos a)` at Str 300° rgb(235,46,16), Dex 60° rgb(1,217,1),
+  Int 180° rgb(88,130,255), 25pt Fontin × zoom (constant world size).
+  No class base attributes — an empty build reads 0/0/0, like
+  pathofexile.com. Ours: `attr_totals.ts`, which derives the sums by
+  parsing the shipped stats text ("+N to X", "+N to X and Y", "+N to
+  all Attributes") — verified equal to the embed's grantedStrength/
+  Dexterity/Intelligence for all 3337 nodes of 3.26.
 - Mastery edges never render (structural only), same as PoE2.
 
 ## Page isolation (`--game poe1` descriptor)
