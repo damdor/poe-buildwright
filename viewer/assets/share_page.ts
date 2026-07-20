@@ -5,7 +5,7 @@
 // share_codec.js (which exposes window.PoE2Share). Browsers honour
 // <script defer> order, so the codec is ready when this runs.
 
-import type { Plan, PlanIndexEntry } from "../../types/poe2.d.ts";
+import type { Plan, PlanIndexEntry } from "../../types/shared.d.ts";
 
 const PLAN_FORMAT: "poe2-planner-plan" = "poe2-planner-plan";
 // Captures-era plans are v2. Anything older (v1) is from the

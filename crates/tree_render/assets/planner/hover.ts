@@ -8,7 +8,7 @@ import { POPOUT_FRAME_SIZE, PopoutOptionEntry, ascButtonHit, ascCircleInfo, ascO
 import { isGlobalNode, updatePreview } from "./pathfind.ts";
 import { effectiveActiveSet } from "./sidebar.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
-import type { Skill } from "../../../../types/poe2.d.ts";
+import type { Skill } from "../../../../types/shared.d.ts";
 
 export function findHoverNode(treeX: number, treeY: number): string | null {
   // Brute-force closest node within hit radius. 4700 nodes × distance

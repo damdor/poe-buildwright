@@ -8,7 +8,7 @@
 // Deno test namespace is pulled in per test file:
 /// <reference lib="deno.ns" />
 
-import type { TreeData } from "../../../../types/poe2.d.ts";
+import type { TreeData } from "../../../../types/shared.d.ts";
 
 // TREE is a global the planner IIFE gets from planner.html; tests
 // install a fixture BEFORE importing the module under test.

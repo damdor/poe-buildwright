@@ -18,7 +18,7 @@ import { fitToView } from "./viewport.ts";
 import { requestRender } from "./render.ts";
 import { adj } from "./pathfind.ts";
 import { loadPlanData } from "./build_io.ts";
-import type { Allocation, Capture, Item, Plan, Skill, TreeNode } from "../../../../types/poe2.d.ts";
+import type { Allocation, Capture, Item, Plan, Skill, TreeNode } from "../../../../types/shared.d.ts";
 
 interface AgentSkill { gem?: string; level?: number; supports?: string[]; note?: string; set?: "set1" | "set2" }
 /** Gear entry. Either a `name` (a unique from item_catalogue, or

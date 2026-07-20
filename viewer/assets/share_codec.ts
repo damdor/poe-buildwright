@@ -9,7 +9,7 @@
 // `format` + `version` fields before installing. Schema version
 // mismatches refuse cleanly rather than corrupting state.
 
-import type { Plan } from "../../types/poe2.d.ts";
+import type { Plan } from "../../types/shared.d.ts";
 
 async function encode(plan: Plan): Promise<string> {
   const json = JSON.stringify(plan);
@@ -65,7 +65,8 @@ async function buildUrl(plan: Plan, origin?: string): Promise<string> {
 }
 
 // Expose to the global namespace for the classic-<script> wizard pages
-// that consume this. window.PoE2Share is typed via types/poe2.d.ts.
+// that consume this. window.PoE2Share is typed via types/poe2.d.ts
+// (PoE2-only surface; the Plan payload types live in types/shared.d.ts).
 window.PoE2Share = { encode, decode, buildUrl };
 // Module consumers (wizard_chrome's share-recipient path) import
 // directly; the window global stays for the planner bundle.

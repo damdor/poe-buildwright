@@ -15,7 +15,7 @@ import { state, viewport } from "./state.ts";
 import { requestRender } from "./render.ts";
 import { cascadeJewelOrphans } from "./pathfind.ts";
 import { flushPersistNow } from "./wizard_sync.ts";
-import type { Item } from "../../../../types/poe2.d.ts";
+import type { Item } from "../../../../types/shared.d.ts";
 
 // Tree-only games (PoE1 step 1) ship no gear/jewel UI: pull the
 // strip + popover out of the DOM and skip the whole module, so

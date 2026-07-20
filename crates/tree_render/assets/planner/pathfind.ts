@@ -16,7 +16,7 @@ import { POPOUT_FRAME_SIZE, ascButtonHit, ascOffsetX, ascOffsetY, popoutOptionCe
 import { computePathAccumulation, findHoverNode, refreshTooltip } from "./hover.ts";
 import { effectiveActiveSet, updateSelectionUI } from "./sidebar.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
-import type { TreeNode } from "../../../../types/poe2.d.ts";
+import type { TreeNode } from "../../../../types/shared.d.ts";
 
 export const adj: Map<string, Set<string>> = new Map();
 for (const [a, b] of TREE.edges_for_sel) {

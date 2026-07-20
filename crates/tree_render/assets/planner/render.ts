@@ -10,7 +10,7 @@ import { type AscPanelStatic, ascStatic, mainConnectorBatches, mainEdgeBatch, st
 import { buildClusterGlow, clusterGlowBatches, clusterGlowVAO, rebuildSearchGlow, rebuildSelEdges, searchGlowCount, searchGlowTex, searchGlowVAO, selConnectorAscBatches, selConnectorBatches, selEdgeAscCount, selEdgeMainCount, selEdgeProcAscStart, selEdgeProcMainStart, selEdgeVAO, uploadDyn } from "./overlay.ts";
 import { findClassStartHub, previewAscCount, previewConnectorAscBatches, previewConnectorBatches, previewMainCount, previewProcAscStart, previewProcMainStart, previewVAO } from "./pathfind.ts";
 import { attrTotalsSprite } from "./attr_totals.ts";
-import type { TreeNode } from "../../../../types/poe2.d.ts";
+import type { TreeNode } from "../../../../types/shared.d.ts";
 
 export function requestRender(): void {
   if (state.needsRender) return;

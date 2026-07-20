@@ -28,7 +28,7 @@ import { adj, updatePreview } from "./pathfind.ts";
 import { applyAsc, updateSelectionUI } from "./sidebar.ts";
 import { flushPersistNow, syncFromWizardStore } from "./wizard_sync.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
-import type { Capture, Skill } from "../../../../types/poe2.d.ts";
+import type { Capture, Skill } from "../../../../types/shared.d.ts";
 
 const lsEl       = document.getElementById('level-slider') as HTMLElement | null;
 const lsInput    = document.getElementById('ls-input')     as HTMLInputElement | null;

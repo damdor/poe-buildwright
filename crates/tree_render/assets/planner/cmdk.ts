@@ -20,7 +20,7 @@ import { updatePreview } from "./pathfind.ts";
 import { doShareLink, syncModeBadge } from "./sidebar.ts";
 import { GGG_BUILD_SCHEMA, PLAN_VERSION, doExportBuild, doExportPlan, doImportBuild, doImportPlan } from "./build_io.ts";
 import { copyAgentLink } from "./agent_import.ts";
-import type { Allocation, TreeData, TreeNode } from "../../../../types/poe2.d.ts";
+import type { Allocation, TreeData, TreeNode } from "../../../../types/shared.d.ts";
 
 export interface CmdkActionItem {
   type: "action";

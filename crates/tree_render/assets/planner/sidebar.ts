@@ -14,7 +14,7 @@ import { focusNode } from "./cmdk.ts";
 import { flushPersistNow, persistToWizardStore } from "./wizard_sync.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
 import { focusTree } from "./viewport.ts";
-import type { Allocation, Capture } from "../../../../types/poe2.d.ts";
+import type { Allocation, Capture } from "../../../../types/shared.d.ts";
 
 export function refreshAscOptions(): void {
   const klass = classSel.value || null;

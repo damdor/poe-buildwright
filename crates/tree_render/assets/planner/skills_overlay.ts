@@ -10,7 +10,7 @@
 // ============================================================================
 import { spiritCapAt, state } from "./state.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
-import type { Skill } from "../../../../types/poe2.d.ts";
+import type { Skill } from "../../../../types/shared.d.ts";
 
 // Tree-only games ship no skills/spirit UI either.
 const SKILLS_ON = window.PoE2Game?.features?.skills !== false;

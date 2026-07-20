@@ -18,7 +18,7 @@
 import { state, tooltip } from "./state.ts";
 import { focusNode } from "./cmdk.ts";
 import { requestRender } from "./render.ts";
-import type { Allocation, Capture, Item, Skill } from "../../../../types/poe2.d.ts";
+import type { Allocation, Capture, Item, Skill } from "../../../../types/shared.d.ts";
 
 // The guide typesets the whole PoE2 plan (captures, skills, gear) and
 // its open button lives inside the gear strip — on tree-only games

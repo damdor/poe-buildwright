@@ -23,7 +23,9 @@ export function defaultClassName(): string | null {
 // fallback mapping. null = unknown → treated as shared, loads eagerly.
 // In-place asc rendering (PoE1) shows every panel at boot, so no
 // asc art can be deferred behind a class switch.
-const IN_PLACE = window.PoE2Game?.features?.ascInPlace === true;
+// globalThis.window (not bare `window`): this module is imported by
+// unit tests under deno 2, where the window global no longer exists.
+const IN_PLACE = globalThis.window?.PoE2Game?.features?.ascInPlace === true;
 function classOfAsc(asc: string): string | null {
   if (IN_PLACE) return null;
   for (const c of TREE.classes) if (c.asc.includes(asc)) return c.name;

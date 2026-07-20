@@ -23,7 +23,7 @@
 import { state } from "./state.ts";
 import { ascOffsetX, ascOffsetY } from "./render.ts";
 import { persistToWizardStore } from "./wizard_sync.ts";
-import type { Plan } from "../../../../types/poe2.d.ts";
+import type { Plan } from "../../../../types/shared.d.ts";
 
 const noteOverlayEl = document.getElementById('note-overlay') as HTMLElement | null;
 

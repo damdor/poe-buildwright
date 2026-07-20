@@ -19,7 +19,7 @@ import { Tint, pushSprite } from "./vertex_helpers.ts";
 import { connectorUrl, edgeFamily, isAllocOrRoot, pushConnectorArc, pushConnectorLine, tessellateSelEdges } from "./edge_tessellate.ts";
 import { ascOffsetX, ascOffsetY, render } from "./render.ts";
 import { getEdgeMeta } from "./pathfind.ts";
-import type { Allocation } from "../../../../types/poe2.d.ts";
+import type { Allocation } from "../../../../types/shared.d.ts";
 
 export interface TexBucket { tex: WebGLTexture | undefined; items: Array<(arr: number[]) => void>; }
 export interface TexturedConnectorBatch { tex: WebGLTexture | undefined; start: number; count: number; }
