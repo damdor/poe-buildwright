@@ -721,6 +721,15 @@ fn run() -> Result<(), String> {
             }
             out.push_str("}}\n");
             let jewels_path = agent_dir.join("jewels.json");
+            // Two writers share this file: we own sockets/rings/bases/
+            // keystones; scripts/gen_agent_meta.mjs enriches it with the
+            // unique-jewel radii (`uniques`, needs node + items data).
+            // Preserve any top-level keys we don't emit so a plain
+            // tree_render run can never destroy the enrichment.
+            let out = match fs::read_to_string(&jewels_path) {
+                Ok(prev) => text::preserve_unknown_top_level(&prev, out),
+                Err(_) => out,
+            };
             fs::write(&jewels_path, out)
                 .map_err(|e| format!("writing {}: {e}", jewels_path.display()))?;
             eprintln!("Agent jewels → {}", jewels_path.display());

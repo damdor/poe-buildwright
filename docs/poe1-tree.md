@@ -153,6 +153,11 @@ narrowest home that covers its consumers — never copied.
   rebake of unchanged data is byte-identical.
 - Node draw sizes: `emit.rs` `node_sizes_poe1` / `node_sizes_poe2`,
   kept adjacent on purpose.
+- Agent sidecars with two writers (`agent/jewels.json`: tree_render
+  base + gen_agent_meta's `uniques` enrichment): tree_render preserves
+  top-level keys it doesn't emit (`text::preserve_unknown_top_level`),
+  so a plain rebake can't destroy enrichment in any run order; the
+  `agent_assets_coherent` cargo test gates the tracked file.
 
 ## Deferred (step 2+ candidates)
 
