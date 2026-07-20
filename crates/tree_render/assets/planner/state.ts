@@ -9,6 +9,8 @@
 // ids the planner will hard-fail at boot — preferable to silent
 // misbehaviour later.
 
+import { GAME, featureOn } from "./game.ts";
+
 export const canvas = document.getElementById('tree') as HTMLCanvasElement;
 export const viewport = document.getElementById('viewport') as HTMLElement;
 export const tooltip = document.getElementById('tooltip') as HTMLElement;
@@ -32,12 +34,22 @@ export const zoomfitBtn = document.getElementById('zoomfit') as HTMLElement;
 
 // Chrome that only makes sense for PoE2 (weapon-set allocation modes,
 // the PoE2 share/export codec) is removed outright on other games.
-if (window.PoE2Game && window.PoE2Game.id !== "poe2") {
-  if (window.PoE2Game.features?.weaponSets === false) {
+if (GAME.id !== "poe2") {
+  if (!featureOn("weaponSets")) {
     allocModeSel?.closest("label")?.remove();
     allocModeSel?.remove();
+    // The footer HUD's "Set ●0/24 ●0/24" pool segment — the counters
+    // live inside a .hud-pool wrapper; drop the whole segment (and
+    // its separator) so the poe1 footer doesn't show poe2 budgets.
+    // updateSelectionUI keeps writing to the detached counters, which
+    // is a harmless no-op display-wise.
+    const seg = countSet1?.closest(".hud-pool");
+    if (seg?.previousElementSibling?.classList.contains("mode-sep")) {
+      seg.previousElementSibling.remove();
+    }
+    seg?.remove();
   }
-  if (window.PoE2Game.features?.share === false) {
+  if (!featureOn("share")) {
     exportBtn?.remove();
     document.getElementById("share")?.remove();
     document.getElementById("import")?.remove();
@@ -176,19 +188,10 @@ export const state = {
 //     allocate ONE node that's only active when that weapon set is
 //     equipped. set1 + set2 used together ≤ 24.
 //   * 8 ascendancy points from labyrinth trials.
-// Budgets come from the page's game descriptor when present (PoE1
-// pages embed 123/8); the literals are the PoE2 defaults.
-export const GAME = window.PoE2Game ?? { id: "poe2" };
-// PoE1 draws every ascendancy subtree at its real tree coordinates,
-// all at once (selected one interactive) — PoE2 pins the selected
-// panel to the tree center instead.
-export const ASC_IN_PLACE = window.PoE2Game?.features?.ascInPlace === true;
-export function featureOn(name: string): boolean {
-  return GAME.features?.[name] !== false;
-}
-export const MAX_MAIN_POINTS = GAME.budgets?.main ?? 99;
-export const MAX_SET_POINTS  = featureOn("weaponSets") ? 24 : 0;
-export const MAX_ASC_POINTS  = GAME.budgets?.asc ?? 8;
+// Game gates + budgets are defined in game.ts (the zero-import leaf —
+// see the ownership note there); re-exported here because most
+// modules already pull their shared constants from state.ts.
+export { ASC_IN_PLACE, GAME, MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, featureOn } from "./game.ts";
 
 // Hardcoded table of ascendancy nodes that change tree-level rules
 // when allocated. Six "+passive point" nodes (Pathfinder + Oracle),
