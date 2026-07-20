@@ -227,6 +227,11 @@ export interface TreeData extends Poe1TreeData, Poe2TreeData {
   // kind == "asc".
   asc_panels: Record<string, { p: string; x: number; y: number; w: number; h: number }>;
   classes: TreeClassInfo[];
+  /** "Pick one" notables: parent node id → option node ids, derived at
+   *  shape time from GGG's isMultipleChoice/-Option flags (never
+   *  hardcoded per ascendancy). Options are hidden from the tree; the
+   *  parent's popout offers them at zero extra point cost. */
+  multi_choice?: Record<string, string[]>;
   // display name → { internal: GGG canonical id, class: parent class name }
   asc_internal?: Record<string, { internal: string; class: string }>;
   tree_schema?: number;

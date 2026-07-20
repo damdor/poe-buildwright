@@ -46,6 +46,15 @@ the one platform-specific step in the import.
 - Dropped at ingest: nodes without groups (cluster-jewel proxies) and
   ascendancy↔main crossing edges (mechanics, not visuals — rendered
   literally they streak across the whole tree).
+- "Pick one" notables (isMultipleChoice + isMultipleChoiceOption):
+  emitted as `multichoice <parent> <opt1,opt2,…>` meta rows, derived
+  from flags + adjacency — never hardcoded per ascendancy. Covers
+  Ascendant's six class picks, the Reliquarian displays, Assassin's
+  Assassination Style, and the event ascendancies alike (16 parents
+  in 3.26). tree_render bakes them as TREE.multi_choice; the planner's
+  popout/zero-cost/icon-overlay machinery (shared with PoE2) runs off
+  that map, and parent↔option edges are excluded from every render
+  path (options are picked, never pathed).
 
 ## Art ratio — the one true rule
 
@@ -114,10 +123,12 @@ the official tree.json — re-run it after any rebake.
   wizard patch badge reads that dir (shows "PoE1 3.26").
 - First visit with no `?build=` mints a fresh build in place instead
   of bouncing to the (PoE2) landing wizard.
-- PoE2's node-id-keyed rule tables (`ASC_EFFECTS`, `MULTI_CHOICE`)
-  are empty on non-PoE2 games — PoE1 reuses the id space, so leaving
-  them populated would silently apply PoE2 ascendancy rules to
-  unrelated PoE1 nodes.
+- PoE2's node-id-keyed rule table `ASC_EFFECTS` is empty on
+  non-PoE2 games — PoE1 reuses the id space, so leaving it populated
+  would silently apply PoE2 ascendancy rules to unrelated PoE1 nodes.
+  (`MULTI_CHOICE` is no longer such a table: it reads the baked
+  per-game TREE.multi_choice map, so each page only ever sees its own
+  game's ids.)
 
 ## Game-split ownership (where code goes)
 

@@ -203,6 +203,7 @@ pub(crate) fn read_meta(path: &Path) -> Result<(Canvas, Vec<ClassInfo>), String>
     let mut groups: HashMap<u32, (f64, f64)> = HashMap::new();
     let mut portraits: Vec<Portrait> = Vec::new();
     let mut asc_internal: HashMap<String, (String, String)> = HashMap::new();
+    let mut multi_choice: Vec<(String, Vec<String>)> = Vec::new();
     for line in text.lines() {
         let mut parts = line.split('\t');
         let key = parts.next().unwrap_or("");
@@ -224,6 +225,20 @@ pub(crate) fn read_meta(path: &Path) -> Result<(Canvas, Vec<ClassInfo>), String>
                 let gx: f64 = parts.next().unwrap_or("0").parse().unwrap_or(0.0);
                 let gy: f64 = parts.next().unwrap_or("0").parse().unwrap_or(0.0);
                 groups.insert(gid, (gx, gy));
+            }
+            // multichoice <parent> <opt1,opt2,…> — see Canvas::multi_choice.
+            "multichoice" => {
+                let parent = parts.next().unwrap_or("").to_string();
+                let opts: Vec<String> = parts
+                    .next()
+                    .unwrap_or("")
+                    .split(',')
+                    .filter(|t| !t.is_empty())
+                    .map(str::to_string)
+                    .collect();
+                if !parent.is_empty() && !opts.is_empty() {
+                    multi_choice.push((parent, opts));
+                }
             }
             "class" => {
                 let name = parts.next().unwrap_or("").to_string();
@@ -279,6 +294,7 @@ pub(crate) fn read_meta(path: &Path) -> Result<(Canvas, Vec<ClassInfo>), String>
             groups,
             portraits,
             asc_internal,
+            multi_choice,
         },
         classes,
     ))
