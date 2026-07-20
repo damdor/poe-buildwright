@@ -107,7 +107,10 @@ export function render(): void {
   // the same deepest layer so BGTree frames it the same way. The
   // asc's edges + nodes are drawn later (above BGTree) by
   // drawAscPanel — they're interactive content that belongs on top.
-  if (state.klass && !state.asc) {
+  // In-place mode (PoE1) draws class-start medallions at their real
+  // coordinates instead — the 3000-unit centre portrait is PoE2
+  // presentation and must never render there.
+  if (!ASC_IN_PLACE && state.klass && !state.asc) {
     const url = TREE.class_portraits[state.klass];
     const tex = getTex(url);
     if (tex) dynBatch(tex, false, (arr) => {
