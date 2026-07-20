@@ -36,6 +36,7 @@ import { ASC_EFFECTS, isLocked, isMcOption, state } from "./state.ts";
 import { STRIDE_FLOATS } from "./webgl_setup.ts";
 import { Tint, pushArc, pushLineSeg, pushVtx } from "./vertex_helpers.ts";
 import { edgeTint } from "./overlay.ts";
+import { ascOffsetX, ascOffsetY } from "./render.ts";
 import type { TreeNode } from "../../../../types/poe2.d.ts";
 
 export type EdgeFilter = (aId: string, bId: string) => Tint | null;
@@ -375,12 +376,9 @@ export function tessellateSelEdges(outArr: number[], tint: Tint | null, scope: '
     if (scope === 'asc') {
       if (!asc || asc !== state.asc) continue;
     }
-    let dx = 0, dy = 0;
-    if (asc) {
-      const p = TREE.asc_panels[String(asc)];
-      if (!p) continue;
-      dx = -p.x; dy = -p.y;
-    }
+    // Asc edges draw wherever their nodes are drawn — ascOffset covers
+    // both presentations (PoE2 side panel, PoE1 in-place anchoring).
+    const dx = ascOffsetX(na), dy = ascOffsetY(na);
     // tint=null means "color per-edge by set membership". Used by
     // rebuildSelEdges so a single buffer can mix gold/pink/green.
     // edgeTint (declared in overlay) returns `number[]`; cast to

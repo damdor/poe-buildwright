@@ -12,7 +12,7 @@ import { clientToTree } from "./viewport.ts";
 import { STRIDE_FLOATS, makeVAO } from "./webgl_setup.ts";
 import { Tint, pushArcD, pushLineSegD } from "./vertex_helpers.ts";
 import { tessellateEdgesTexturedFromList } from "./overlay.ts";
-import { POPOUT_FRAME_SIZE, ascButtonHit, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
+import { POPOUT_FRAME_SIZE, ascButtonHit, ascOffsetX, ascOffsetY, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
 import { computePathAccumulation, findHoverNode, refreshTooltip } from "./hover.ts";
 import { effectiveActiveSet, updateSelectionUI } from "./sidebar.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
@@ -528,12 +528,10 @@ export function tessellatePreviewEdges(edgePairs: EdgePair[], tint: Tint, outArr
     const nb = TREE.nodes[String(m[2])];
     if (!na || !nb) continue;
     const asc = m[m.length - 1];
-    let dx = 0, dy = 0;
-    if (asc) {
-      const p = TREE.asc_panels[String(asc)];
-      if (!p || state.asc !== asc) continue;
-      dx = -p.x; dy = -p.y;
-    }
+    if (asc && state.asc !== asc) continue;
+    // Draw asc preview edges where their nodes are drawn (PoE2 side
+    // panel or PoE1 in-place anchoring).
+    const dx = ascOffsetX(na), dy = ascOffsetY(na);
     if (m[0] === 'a') {
       const cx = m[3] as number, cy = m[4] as number, orbitNum = m[6] as number;
       const r = orbitR[orbitNum] || 0;

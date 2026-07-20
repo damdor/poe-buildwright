@@ -12,12 +12,12 @@
 // resolved up-front so render can skip the cache lookup).
 
 import { texCache } from "./image_preload.ts";
-import { gl, state } from "./state.ts";
+import { ASC_IN_PLACE, gl, state } from "./state.ts";
 import { maybeRebuildStaticForLocks } from "./lock_rebuild.ts";
 import { STRIDE_FLOATS, getTex, makeVAO } from "./webgl_setup.ts";
 import { Tint, pushSprite } from "./vertex_helpers.ts";
 import { connectorUrl, edgeFamily, isAllocOrRoot, pushConnectorArc, pushConnectorLine, tessellateSelEdges } from "./edge_tessellate.ts";
-import { render } from "./render.ts";
+import { ascOffsetX, ascOffsetY, render } from "./render.ts";
 import { getEdgeMeta } from "./pathfind.ts";
 import type { Allocation } from "../../../../types/poe2.d.ts";
 
@@ -94,13 +94,11 @@ export function rebuildSearchGlow(): void {
   for (const id of state.searchHighlight) {
     const n = TREE.nodes[id];
     if (!n) continue;
-    let x = n.x, y = n.y;
     if (n.a) {
-      if (state.asc !== n.a) continue;  // hidden — different asc panel
-      const p = TREE.asc_panels[n.a];
-      if (!p) continue;
-      x -= p.x; y -= p.y;
+      if (state.asc !== n.a) continue;             // different ascendancy — hidden
+      if (ASC_IN_PLACE && !state.ascOpen) continue; // circle closed — invisible
     }
+    const x = n.x + ascOffsetX(n), y = n.y + ascOffsetY(n);
     // Glow size scales with the node's frame so notables show a
     // bigger ring than small travel nodes.
     const size = Math.max(n.fw ?? 60, 60) * 2.4;
@@ -194,12 +192,9 @@ export function tessellateEdgesTexturedFromList(
     if (!na || !nb) continue;
     const tint = tintFor(a, b);
     if (!tint) continue;
-    let dx = 0, dy = 0;
-    if (asc) {
-      const p = TREE.asc_panels[String(asc)];
-      if (!p) continue;
-      dx = -p.x; dy = -p.y;
-    }
+    // Draw asc edges where their nodes are drawn (PoE2 side panel or
+    // PoE1 in-place anchoring).
+    const dx = ascOffsetX(na), dy = ascOffsetY(na);
     const prefix = edgeFamily(na, nb);
     if (m[0] === 'a') {
       const cx = m[3] as number, cy = m[4] as number, orbitNum = m[6] as number;
