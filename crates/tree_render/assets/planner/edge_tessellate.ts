@@ -36,7 +36,7 @@ import { ASC_EFFECTS, isLocked, isMcOption, state } from "./state.ts";
 import { STRIDE_FLOATS } from "./webgl_setup.ts";
 import { Tint, pushArc, pushLineSeg, pushVtx } from "./vertex_helpers.ts";
 import { edgeTint } from "./overlay.ts";
-import { ascOffsetX, ascOffsetY } from "./render.ts";
+import { ascOffsetX, ascOffsetY } from "./asc_present.ts";
 import type { TreeNode } from "../../../../types/shared.d.ts";
 
 export type EdgeFilter = (aId: string, bId: string) => Tint | null;
