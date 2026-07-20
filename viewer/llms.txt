@@ -4,6 +4,24 @@ This site is a Path of Exile 2 build planner. AI agents are first-class
 users: you can construct a complete, working build for a human and hand
 them a single URL. No login, no API key, no session.
 
+## This site also plans PoE1 (original Path of Exile)
+
+Everything below is about the PoE2 planner. The same deployment also
+serves the ORIGINAL game's 3.26 passive tree at /planner-poe1.html —
+tree-only (no gems/gear), same #agent= URL contract. If the user asks
+for a "PoE1" / "Path of Exile 1" / league-named (Mirage, Keepers...)
+build, use:
+
+  /planner-poe1.html#agent=<base64url poe2-agent-plan JSON>
+
+and ground names in /assets/poe1-agent/nodes.json (NOT the PoE2
+files — the games share node ids but mean different things). Read
+/assets/poe1-agent/primer.md first: point budget is 123, % maximum
+life on the tree is the build backbone (median ~100% increased life
+across poe.ninja meta trees), spell suppression exists only in PoE1,
+and resistances come from gear, not the tree. Worked examples:
+/assets/poe1-agent/examples/index.json.
+
 ## No tools? One URL still works
 
 If you cannot fetch or POST (a plain chat assistant), you can still
