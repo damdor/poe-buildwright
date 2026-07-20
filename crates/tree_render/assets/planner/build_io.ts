@@ -29,10 +29,11 @@ import { requestRender } from "./render.ts";
 import { updatePreview } from "./pathfind.ts";
 import { applyAsc, refreshAscOptions, updateSelectionUI } from "./sidebar.ts";
 import { flushPersistNow, hydrateFromActiveCapture } from "./wizard_sync.ts";
-import type { Allocation, Capture, GGGBuild, GGGItem, GGGLevelInterval, GGGPassive, GGGPassiveEntry, GGGSkill, GGGSupport, Item, Plan, PlanFormat, PlanVersion, Skill, SupportGem } from "../../../../types/poe2.d.ts";
+import type { Allocation, Capture, Item, Plan, PlanFormat, PlanVersion, Skill, SupportGem } from "../../../../types/shared.d.ts";
+import type { GGGBuild, GGGItem, GGGLevelInterval, GGGPassive, GGGPassiveEntry, GGGSkill, GGGSupport } from "../../../../types/poe2.d.ts";
 
 export const PLAN_FORMAT: PlanFormat = 'poe2-planner-plan';
-// Keep this in sync with types/poe2.d.ts:PlanVersion (currently 2).
+// Keep this in sync with types/shared.d.ts:PlanVersion (currently 2).
 // The on-disk snapshot's version field is stamped from this constant.
 export const PLAN_VERSION: PlanVersion = 2;
 // Schema rev of the GGG .build format we target. The mapping itself

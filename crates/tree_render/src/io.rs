@@ -203,6 +203,7 @@ pub(crate) fn read_meta(path: &Path) -> Result<(Canvas, Vec<ClassInfo>), String>
     let mut groups: HashMap<u32, (f64, f64)> = HashMap::new();
     let mut portraits: Vec<Portrait> = Vec::new();
     let mut asc_internal: HashMap<String, (String, String)> = HashMap::new();
+    let mut multi_choice: Vec<(String, Vec<String>)> = Vec::new();
     for line in text.lines() {
         let mut parts = line.split('\t');
         let key = parts.next().unwrap_or("");
@@ -224,6 +225,20 @@ pub(crate) fn read_meta(path: &Path) -> Result<(Canvas, Vec<ClassInfo>), String>
                 let gx: f64 = parts.next().unwrap_or("0").parse().unwrap_or(0.0);
                 let gy: f64 = parts.next().unwrap_or("0").parse().unwrap_or(0.0);
                 groups.insert(gid, (gx, gy));
+            }
+            // multichoice <parent> <opt1,opt2,…> — see Canvas::multi_choice.
+            "multichoice" => {
+                let parent = parts.next().unwrap_or("").to_string();
+                let opts: Vec<String> = parts
+                    .next()
+                    .unwrap_or("")
+                    .split(',')
+                    .filter(|t| !t.is_empty())
+                    .map(str::to_string)
+                    .collect();
+                if !parent.is_empty() && !opts.is_empty() {
+                    multi_choice.push((parent, opts));
+                }
             }
             "class" => {
                 let name = parts.next().unwrap_or("").to_string();
@@ -279,7 +294,65 @@ pub(crate) fn read_meta(path: &Path) -> Result<(Canvas, Vec<ClassInfo>), String>
             groups,
             portraits,
             asc_internal,
+            multi_choice,
         },
         classes,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // MIRROR of data_miner::tree_tsv::NODES_HEADER. tree_render is
+    // std-only by design (no crate deps), so this cannot import the
+    // shared constant — if the contract ever changes, change BOTH in
+    // the same commit (tree_tsv's own tests pin the column count on
+    // the emitter side; this pins the reader's positional mapping).
+    const NODES_HEADER: &str =
+        "id\tx\ty\tkind\tklass\tascendancy\tname\tstats\tgroup\torbit\t\
+         orbit_index\ticon\tnode_overlay\tactive_effect\tnode_options\t\
+         connection_art\tunlock_constraint";
+
+    fn write_tmp(name: &str, content: &str) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!("tree_render_io_test_{name}_{}.tsv", std::process::id()));
+        fs::write(&p, content).unwrap();
+        p
+    }
+
+    #[test]
+    fn reader_matches_the_17_column_contract() {
+        assert_eq!(NODES_HEADER.split('\t').count(), 17);
+        let row = "42\t1.50\t-2.25\tnotable\tWitch\tOccultist\tName\t+5 to X\t7\t3\t9\ticon.png\tov\tae\topts\tca\tuc";
+        let p = write_tmp("ok", &format!("{NODES_HEADER}\n{row}\n"));
+        let nodes = read_nodes(&p).unwrap();
+        fs::remove_file(&p).ok();
+        assert_eq!(nodes.len(), 1);
+        let n = &nodes[0];
+        // Positional mapping — every column lands in its named field.
+        assert_eq!(n.id, 42);
+        assert_eq!((n.x, n.y), (1.5, -2.25));
+        assert_eq!(n.kind, "notable");
+        assert_eq!(n.klass, "Witch");
+        assert_eq!(n.ascendancy, "Occultist");
+        assert_eq!(n.name, "Name");
+        assert_eq!(n.stats, "+5 to X");
+        assert_eq!((n.group, n.orbit, n.orbit_index), (7, 3, 9));
+        assert_eq!(n.icon, "icon.png");
+        assert_eq!(n.node_overlay, "ov");
+        assert_eq!(n.active_effect, "ae");
+        assert_eq!(n.node_options, "opts");
+        assert_eq!(n.connection_art, "ca");
+        assert_eq!(n.unlock_constraint, "uc");
+    }
+
+    #[test]
+    fn reader_rejects_short_rows() {
+        let short = "1\t0\t0\tsmall"; // far fewer than 17 columns
+        let p = write_tmp("short", &format!("{NODES_HEADER}\n{short}\n"));
+        let res = read_nodes(&p);
+        fs::remove_file(&p).ok();
+        let Err(err) = res else { panic!("short row was accepted") };
+        assert!(err.contains("expected 17 columns"), "{err}");
+    }
 }

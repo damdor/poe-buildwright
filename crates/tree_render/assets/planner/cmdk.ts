@@ -12,15 +12,17 @@
 // (a tree node we'll focus on). Discriminated by `type` so the
 // keydown handler can branch on it without losing type information.
 
-import { allocModeSel, isLocked, isMcOption, state, viewport } from "./state.ts";
+import { ASC_IN_PLACE, allocModeSel, isLocked, isMcOption, state, viewport } from "./state.ts";
+import { featureOn } from "./game.ts";
 import { fitToView } from "./viewport.ts";
 import { syncPulse } from "./overlay.ts";
 import { requestRender } from "./render.ts";
+import { ascOffsetX, ascOffsetY } from "./asc_present.ts";
 import { updatePreview } from "./pathfind.ts";
 import { doShareLink, syncModeBadge } from "./sidebar.ts";
 import { GGG_BUILD_SCHEMA, PLAN_VERSION, doExportBuild, doExportPlan, doImportBuild, doImportPlan } from "./build_io.ts";
 import { copyAgentLink } from "./agent_import.ts";
-import type { Allocation, TreeData, TreeNode } from "../../../../types/poe2.d.ts";
+import type { Allocation, TreeData, TreeNode } from "../../../../types/shared.d.ts";
 
 export interface CmdkActionItem {
   type: "action";
@@ -29,6 +31,10 @@ export interface CmdkActionItem {
   sub: string;
   tag: string;
   match: string;
+  /** Game feature this action needs (featureOn name). Actions without
+   *  one are game-agnostic. Filtered at palette build so poe1 pages
+   *  never surface poe2-only verbs the sidebar chrome already hides. */
+  feature?: string;
   run: () => void;
 }
 export interface CmdkNodeItem {
@@ -78,19 +84,11 @@ export function focusNode(id: string): void {
   const ascName = (n as unknown as { a?: string }).a;
   if (ascName && ascName !== state.asc) return;
   const rect = viewport.getBoundingClientRect();
-  let tx = n.x, ty = n.y;
-  if (ascName) {
-    const p = TREE.asc_panels[ascName];
-    if (p) {
-      // asc_panels entries carry their own x/y offset on the source
-      // JSON; the typed TreeData only exposes the panel sprite path.
-      const panel = p as unknown as { x?: number; y?: number; p: string };
-      if (typeof panel.x === "number" && typeof panel.y === "number") {
-        tx = n.x - panel.x;
-        ty = n.y - panel.y;
-      }
-    }
-  }
+  // Focus asc nodes where they're DRAWN — ascOffset covers both the
+  // PoE2 side panel and the PoE1 in-place anchoring. In-place the
+  // circle must also be open, or the target is invisible.
+  if (ascName && ASC_IN_PLACE) state.ascOpen = true;
+  const tx = n.x + ascOffsetX(n), ty = n.y + ascOffsetY(n);
   // Use a moderately-zoomed view so the user can see surrounding nodes.
   const targetScale = Math.max(state.scale, 0.6);
   state.scale = targetScale;
@@ -129,11 +127,11 @@ export function refreshCmdkResults(q: string): void {
       sub: "New clicks land in the regular passive budget", tag: "main",
       match: "main regular passive switch mode",
       run: () => setAllocationMode("main") },
-    { type: "action", key: "mode-set1", label: "Allocation mode → Weapon Set 1",
+    { type: "action", key: "mode-set1", feature: "weaponSets", label: "Allocation mode → Weapon Set 1",
       sub: "New clicks consume a weapon-swap point (set 1, pink)", tag: "set1",
       match: "set 1 set1 weapon swap pink",
       run: () => setAllocationMode("set1") },
-    { type: "action", key: "mode-set2", label: "Allocation mode → Weapon Set 2",
+    { type: "action", key: "mode-set2", feature: "weaponSets", label: "Allocation mode → Weapon Set 2",
       sub: "New clicks consume a weapon-swap point (set 2, green)", tag: "set2",
       match: "set 2 set2 weapon swap green",
       run: () => setAllocationMode("set2") },
@@ -141,7 +139,7 @@ export function refreshCmdkResults(q: string): void {
       sub: "Reset zoom to show every node", tag: "view",
       match: "fit view zoom reset",
       run: () => { fitToView(); closeCmdk(); } },
-    { type: "action", key: "add-skill", label: "Add skill to this snapshot…",
+    { type: "action", key: "add-skill", feature: "skills", label: "Add skill to this snapshot…",
       sub: "Open the skill-gem socket editor (active + supports + notes)", tag: "skills",
       match: "add skill gem socket support new",
       run: () => { closeCmdk(); document.getElementById("ss-add")?.click(); } },
@@ -177,12 +175,12 @@ export function refreshCmdkResults(q: string): void {
       sub: "Controls, shortcuts, and planner concepts", tag: "view",
       match: "help shortcuts controls keys how what",
       run: () => { closeCmdk(); document.getElementById("help-badge")?.click(); } },
-    { type: "action", key: "export-build", label: "Export .build (for in-game Build Planner)",
+    { type: "action", key: "export-build", feature: "share", label: "Export .build (for in-game Build Planner)",
       sub: "GGG schema v" + GGG_BUILD_SCHEMA + " — passive tree slice (passives + ascendancy + weapon_set)",
       tag: "export",
       match: "export build file ggg in-game planner share download",
       run: () => { closeCmdk(); doExportBuild(); } },
-    { type: "action", key: "share-link", label: "Copy share link",
+    { type: "action", key: "share-link", feature: "share", label: "Copy share link",
       sub: "Compress + encode the current plan into a URL fragment; pastes anywhere",
       tag: "export",
       match: "share link url copy code pob clipboard",
@@ -197,7 +195,7 @@ export function refreshCmdkResults(q: string): void {
       tag: "export",
       match: "export plan save internal backup",
       run: () => { closeCmdk(); doExportPlan(); } },
-    { type: "action", key: "import-build", label: "Import .build file…",
+    { type: "action", key: "import-build", feature: "share", label: "Import .build file…",
       sub: "Load a GGG-format build into the planner",
       tag: "import",
       match: "import build load file open",
@@ -209,6 +207,7 @@ export function refreshCmdkResults(q: string): void {
       run: () => { closeCmdk(); doImportPlan(); } },
   ];
   for (const a of actions) {
+    if (a.feature && !featureOn(a.feature)) continue;
     if (!q || a.match.includes(q) || a.label.toLowerCase().includes(q)) {
       cmdkItems.push(a);
     }

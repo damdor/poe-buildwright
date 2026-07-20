@@ -222,7 +222,7 @@ export function deleteCapture(idx: number): void {
 
 // Declare persistToWizardStore for the snapshotHere typeof check. The
 // function lives in wizard_sync.ts which doesn't export it on the
-// global; the planner_globals.d.ts surfaces it for cross-file calls.
+// global; this local ambient covers the typeof probe.
 declare function persistToWizardStore(): void;
 
 if (capSnapshotBtn) capSnapshotBtn.addEventListener('click', snapshotHere);

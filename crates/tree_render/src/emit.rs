@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use crate::frames::{pick_frame_names, portrait_frame_alias, target_size};
 use crate::geom::{arc_geom_for, edge_path_piece};
 use crate::io::sprite_lookup;
-use crate::model::{Canvas, ClassInfo, Node, Sprite};
+use crate::model::{Canvas, ClassInfo, Node, NodeSize, Sprite};
 use crate::text::{escape_html, json_str, parse_node_options};
 
 /// Resolve a frame sprite NAME to its `/assets/sprites/...` URL. Tries
@@ -17,6 +17,30 @@ use crate::text::{escape_html, json_str, parse_node_options};
 /// → `OracleFrameLargeNormal`). Returns None if neither resolves, so
 /// bespoke frames GGG hasn't shipped sprites for (Blighted, JewelSocketAlt)
 /// simply draw no frame rather than a broken one.
+fn resolve_frame_sprite<'a>(
+    sprites: &'a HashMap<String, Sprite>,
+    name: &str,
+    kind: &str,
+) -> Option<&'a Sprite> {
+    if let Some(s) = sprite_lookup(sprites, name) {
+        return Some(s);
+    }
+    if let Some(alias) = portrait_frame_alias(name, kind)
+        && let Some(s) = sprite_lookup(sprites, &alias)
+    {
+        return Some(s);
+    }
+    if let Some(idx) = name.find("Frame")
+        && idx > 0
+    {
+        let generic = format!("Ascendancy{}", &name[idx..]);
+        if let Some(s) = sprite_lookup(sprites, &generic) {
+            return Some(s);
+        }
+    }
+    None
+}
+
 fn resolve_frame_url(
     sprites: &HashMap<String, Sprite>,
     name: &str,
@@ -29,6 +53,17 @@ fn resolve_frame_url(
         && let Some(s) = sprite_lookup(sprites, &alias) {
             return Some(format!("/assets/sprites/{}", s.png));
         }
+    // PoE1 ships GENERIC ascendancy frames (AscendancyFrameLargeNormal
+    // etc.) instead of PoE2's per-ascendancy sets — swap the asc-name
+    // prefix for "Ascendancy" as a last resort.
+    if let Some(idx) = name.find("Frame")
+        && idx > 0
+    {
+        let generic = format!("Ascendancy{}", &name[idx..]);
+        if let Some(s) = sprite_lookup(sprites, &generic) {
+            return Some(format!("/assets/sprites/{}", s.png));
+        }
+    }
     None
 }
 
@@ -117,6 +152,53 @@ pub(crate) fn build_meta_json(
     out
 }
 
+// --- Node draw-size policy, one function per game -------------------
+// Keep these adjacent so an edit to one is made LOOKING AT the other:
+// they answer the same question ("how big does this node draw?") from
+// different data, and the history of this file is people fixing one
+// game and silently resizing the other.
+
+/// PoE2: the frames.rs `target_size` table — PoB-tuned for PoE2's own
+/// art and orbit spacing.
+fn node_sizes_poe2(n: &Node) -> NodeSize {
+    target_size(n)
+}
+
+/// PoE1 (`--game poe1`, data_sized): sizes come straight from
+/// sprites.tsv, whose w/h are already WORLD units (sheet px ÷ sheet
+/// zoom — the rule GGG's own skilltree.js renderer uses). The PoE2
+/// table would pack PoE1's tighter orbits (orbit-2 chord is 63 units)
+/// with oversized nodes. GGG draws NO skill icon/frame on class-start
+/// nodes (`if(node.classStartIndex!==undefined)return;`) — the
+/// center<class> emblem is their art — and no icon on asc starts
+/// (`spriteName=null`, just the AscendancyMiddle hub).
+fn node_sizes_poe1(
+    n: &Node,
+    sprites: &HashMap<String, Sprite>,
+    icon_sp: Option<&Sprite>,
+    off_name: Option<&str>,
+) -> NodeSize {
+    let mut ts = target_size(n);
+    if let Some(sp) = icon_sp {
+        ts.icon = sp.w as f64;
+    }
+    if let Some(nm) = off_name
+        && let Some(sp) = resolve_frame_sprite(sprites, nm, &n.kind)
+    {
+        ts.frame = sp.w as f64;
+    }
+    match n.kind.as_str() {
+        "class_start" => {
+            ts.icon = 0.0;
+            ts.frame = 0.0;
+        }
+        "asc_start" => ts.icon = 0.0,
+        _ => {}
+    }
+    ts
+}
+
+
 pub(crate) fn build_tree_data(
     nodes: &[Node],
     edges: &[(u32, u32, i32)],
@@ -124,6 +206,7 @@ pub(crate) fn build_tree_data(
     classes: &[ClassInfo],
     sprites: &HashMap<String, Sprite>,
     asc_overrides: &[Vec<String>],
+    data_sized: bool,
 ) -> String {
     let mut node_idx: HashMap<u32, &Node> = HashMap::new();
     for n in nodes {
@@ -182,8 +265,22 @@ pub(crate) fn build_tree_data(
     edges_meta.push('[');
     let mut first_e = true;
     let mut first_m = true;
-    let mut asc_edges: HashMap<String, String> = HashMap::new();
+    // BTreeMap: emitted as JSON keys — deterministic output means a
+    // rebake of unchanged data is byte-identical (diffable, hashable).
+    let mut asc_edges: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    // Multi-choice OPTION nodes render nowhere (the planner offers
+    // them via the parent's popout), so their parent↔option edges
+    // must not render OR join the adjacency graph — an option is
+    // allocated by picking, never by pathing.
+    let mc_option_ids: std::collections::HashSet<u32> = canvas
+        .multi_choice
+        .iter()
+        .flat_map(|(_, opts)| opts.iter().filter_map(|o| o.parse().ok()))
+        .collect();
     for (a, b, orbit) in edges {
+        if mc_option_ids.contains(a) || mc_option_ids.contains(b) {
+            continue;
+        }
         let (Some(na), Some(nb)) = (node_idx.get(a), node_idx.get(b)) else {
             continue;
         };
@@ -195,7 +292,11 @@ pub(crate) fn build_tree_data(
         // graph can pathfind from the class hub — without that, no
         // node in the tree is reachable from the player's start.
         let is_class_start_edge = na.kind == "class_start" || nb.kind == "class_start";
-        if is_class_start_edge {
+        // PoE1 has no central wedge art covering the start hubs — its
+        // start markers must visibly connect to the two (or more)
+        // passives each class may start from, so the edges render
+        // like any other there.
+        if is_class_start_edge && !data_sized {
             if !first_e {
                 edges_for_sel.push(',');
             }
@@ -311,10 +412,14 @@ pub(crate) fn build_tree_data(
             out.push(',');
         }
         first_n = false;
-        let ts = target_size(n);
-        let icon_url =
-            sprite_lookup(sprites, &n.icon).map(|s| format!("/assets/sprites/{}", s.png));
+        let icon_sp = sprite_lookup(sprites, &n.icon);
+        let icon_url = icon_sp.map(|s| format!("/assets/sprites/{}", s.png));
         let (off_name, on_name) = pick_frame_names(n);
+        let ts = if data_sized {
+            node_sizes_poe1(n, sprites, icon_sp, off_name.as_deref())
+        } else {
+            node_sizes_poe2(n)
+        };
         let frame_off_url = off_name
             .as_ref()
             .and_then(|nm| resolve_frame_url(sprites, nm, &n.kind));
@@ -534,6 +639,73 @@ pub(crate) fn build_tree_data(
         }
         out.push('}');
     }
+    if data_sized {
+        // PoE1 class-start markers: the selected class draws its own
+        // center<class> art at the start node; every other start shows
+        // the generic inactive medallion (GGG skilltree.js
+        // drawStartNodeBackground). sprites.tsv w/h are world units.
+        out.push_str(r#","class_markers":{"#);
+        let mut first_cm = true;
+        for n in nodes {
+            if n.kind != "class_start" || n.klass.is_empty() {
+                continue;
+            }
+            let emblem = format!("center{}", n.klass.to_lowercase());
+            let Some(sp) = sprite_lookup(sprites, &emblem) else { continue };
+            if !first_cm {
+                out.push(',');
+            }
+            first_cm = false;
+            let _ = write!(
+                out,
+                r#"{}:{{"x":{},"y":{},"p":{},"w":{},"h":{}}}"#,
+                json_str(&n.klass),
+                n.x as i32,
+                n.y as i32,
+                json_str(&format!("/assets/sprites/{}", sp.png)),
+                sp.w,
+                sp.h,
+            );
+        }
+        out.push('}');
+        if let Some(sp) = sprite_lookup(sprites, "PSStartNodeBackgroundInactive") {
+            let _ = write!(
+                out,
+                r#","start_inactive":{{"p":{},"w":{},"h":{}}}"#,
+                json_str(&format!("/assets/sprites/{}", sp.png)),
+                sp.w,
+                sp.h,
+            );
+        }
+        // Ascendancy plaque drawn at GGG's buttonPoint (270 world
+        // units out from the class start, rotated to face outward).
+        // Three states, same as skilltree.js: normal / Highlight
+        // (hovered) / Pressed (circle open).
+        if let Some(sp) = sprite_lookup(sprites, "AscendancyButton") {
+            let _ = write!(
+                out,
+                r#","asc_button":{{"p":{},"w":{},"h":{}"#,
+                json_str(&format!("/assets/sprites/{}", sp.png)),
+                sp.w,
+                sp.h,
+            );
+            if let Some(hv) = sprite_lookup(sprites, "AscendancyButtonHighlight") {
+                let _ = write!(
+                    out,
+                    r#","hp":{}"#,
+                    json_str(&format!("/assets/sprites/{}", hv.png)),
+                );
+            }
+            if let Some(pr) = sprite_lookup(sprites, "AscendancyButtonPressed") {
+                let _ = write!(
+                    out,
+                    r#","pp":{}"#,
+                    json_str(&format!("/assets/sprites/{}", pr.png)),
+                );
+            }
+            out.push('}');
+        }
+    }
     out.push_str(r#","asc_panels":{"#);
     let mut first_ap = true;
     for p in &canvas.portraits {
@@ -549,11 +721,17 @@ pub(crate) fn build_tree_data(
         first_ap = false;
         // PoB DrawAsset doubles bg.width/height (PassiveTreeView.lua:1239) —
         // we emit the doubled size so the JS draws it at 3000×3000 etc.
-        let dw = p.w * 2.0;
-        let dh = p.h * 2.0;
+        // PoE1 rows already carry WORLD units (sheet px / sheet zoom,
+        // GGG's skilltree.js rule: offsetZoom = zoom/curImgZoom) —
+        // draw them verbatim.
+        let (dw, dh) = if data_sized {
+            (p.w, p.h)
+        } else {
+            (p.w * 2.0, p.h * 2.0)
+        };
         let _ = write!(
             out,
-            r#"{}:{{"p":{},"x":{},"y":{},"w":{},"h":{}}}"#,
+            r#"{}:{{"p":{},"x":{},"y":{},"w":{},"h":{}"#,
             json_str(&p.name),
             json_str(&format!("/assets/sprites/{}", sp.png)),
             p.x as i32,
@@ -561,6 +739,7 @@ pub(crate) fn build_tree_data(
             dw as i32,
             dh as i32,
         );
+        out.push('}');
     }
     out.push('}');
 
@@ -589,7 +768,10 @@ pub(crate) fn build_tree_data(
     // Used by the .build exporter to emit GGG's canonical `ascendancy` value.
     out.push_str(r#","asc_internal":{"#);
     let mut first_ai = true;
-    for (name, (internal, parent)) in &canvas.asc_internal {
+    // Sorted for deterministic output (asc_internal is a lookup map).
+    let mut ai_sorted: Vec<_> = canvas.asc_internal.iter().collect();
+    ai_sorted.sort_by(|a, b| a.0.cmp(b.0));
+    for (name, (internal, parent)) in ai_sorted {
         if !first_ai {
             out.push(',');
         }
@@ -604,6 +786,24 @@ pub(crate) fn build_tree_data(
     }
     out.push('}');
 
+    // multi_choice: parent node id → option node ids ("pick one"
+    // notables, from the shapers' flag-derived meta rows). The planner
+    // builds its MULTI_CHOICE table from this — options cost no extra
+    // point and the picked option's icon overlays the parent.
+    out.push_str(r#","multi_choice":{"#);
+    let mut mc_sorted: Vec<_> = canvas.multi_choice.iter().collect();
+    mc_sorted.sort_by_key(|(p, _)| p.parse::<u64>().unwrap_or(u64::MAX));
+    let mut first_mc = true;
+    for (parent, opts) in mc_sorted {
+        if !first_mc {
+            out.push(',');
+        }
+        first_mc = false;
+        let list: Vec<String> = opts.iter().map(|o| json_str(o)).collect();
+        let _ = write!(out, "{}:[{}]", json_str(parent), list.join(","));
+    }
+    out.push('}');
+
     // Schema version for the static TREE blob. Bumped when the shape
     // of TREE.* fields changes; lets the JS gracefully reject mismatched
     // builds rather than rendering garbled output.
@@ -613,6 +813,14 @@ pub(crate) fn build_tree_data(
     out
 }
 
+// Page-level chrome that isn't tree data: the <title> and the game
+// descriptor JSON embedded as window.PoE2Game.
+pub(crate) struct PageChrome<'a> {
+    pub(crate) title: &'a str,
+    pub(crate) game_json: &'a str,
+    pub(crate) game: &'a str,
+}
+
 pub(crate) fn render_canvas_html(
     nodes: &[Node],
     edges: &[(u32, u32, i32)],
@@ -620,9 +828,10 @@ pub(crate) fn render_canvas_html(
     classes: &[ClassInfo],
     sprites: &HashMap<String, Sprite>,
     asc_overrides: &[Vec<String>],
-    title: &str,
+    chrome: &PageChrome,
 ) -> String {
-    let tree_data = build_tree_data(nodes, edges, canvas, classes, sprites, asc_overrides);
+    let (title, game_json) = (chrome.title, chrome.game_json);
+    let tree_data = build_tree_data(nodes, edges, canvas, classes, sprites, asc_overrides, chrome.game == "poe1");
     let title_e = escape_html(title);
 
     // Sidebar class options — sorted alphabetically (PoE2 has no
@@ -976,12 +1185,13 @@ pub(crate) fn render_canvas_html(
 </div>
 </div>
 <script src="/assets/wizard_chrome.js" defer></script>
-<script>const TREE = {tree_data};</script>
+<script>const TREE = {tree_data};window.PoE2Game = {game_json};</script>
 <script src="/assets/planner.js" defer></script>
 </body>
 </html>
 "##,
         title_e = title_e,
+        game_json = game_json,
         class_opts = class_opts,
         tree_data = tree_data,
     );

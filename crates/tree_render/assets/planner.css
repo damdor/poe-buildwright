@@ -597,6 +597,7 @@ main#viewport {
   contain: strict;
 }
 main#viewport.panning { cursor: grabbing; }
+main#viewport.asc-btn-hover { cursor: pointer; }
 main#viewport canvas { display: block; width: 100%; height: 100%; }
 
 #tooltip,

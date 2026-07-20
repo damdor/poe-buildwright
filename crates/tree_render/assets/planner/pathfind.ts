@@ -6,17 +6,18 @@
 // never traverses through one — option nodes don't exist in the
 // visual tree, only as picker entries on their parent's popout.
 
-import { ASC_EFFECTS, MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, MULTI_CHOICE, MULTI_CHOICE_PARENT, countSelected, gl, isLocked, isMcOption, isMcParent, state } from "./state.ts";
+import { ASC_EFFECTS, MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, MULTI_CHOICE, MULTI_CHOICE_PARENT, ascSel, countSelected, gl, isLocked, isMcOption, isMcParent, state } from "./state.ts";
 import { maybeRebuildStaticForLocks } from "./lock_rebuild.ts";
 import { clientToTree } from "./viewport.ts";
 import { STRIDE_FLOATS, makeVAO } from "./webgl_setup.ts";
 import { Tint, pushArcD, pushLineSegD } from "./vertex_helpers.ts";
 import { tessellateEdgesTexturedFromList } from "./overlay.ts";
 import { POPOUT_FRAME_SIZE, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
+import { ascButtonHit, ascOffsetX, ascOffsetY } from "./asc_present.ts";
 import { computePathAccumulation, findHoverNode, refreshTooltip } from "./hover.ts";
 import { effectiveActiveSet, updateSelectionUI } from "./sidebar.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
-import type { TreeNode } from "../../../../types/poe2.d.ts";
+import type { TreeNode } from "../../../../types/shared.d.ts";
 
 export const adj: Map<string, Set<string>> = new Map();
 for (const [a, b] of TREE.edges_for_sel) {
@@ -528,12 +529,10 @@ export function tessellatePreviewEdges(edgePairs: EdgePair[], tint: Tint, outArr
     const nb = TREE.nodes[String(m[2])];
     if (!na || !nb) continue;
     const asc = m[m.length - 1];
-    let dx = 0, dy = 0;
-    if (asc) {
-      const p = TREE.asc_panels[String(asc)];
-      if (!p || state.asc !== asc) continue;
-      dx = -p.x; dy = -p.y;
-    }
+    if (asc && state.asc !== asc) continue;
+    // Draw asc preview edges where their nodes are drawn (PoE2 side
+    // panel or PoE1 in-place anchoring).
+    const dx = ascOffsetX(na), dy = ascOffsetY(na);
     if (m[0] === 'a') {
       const cx = m[3] as number, cy = m[4] as number, orbitNum = m[6] as number;
       const r = orbitR[orbitNum] || 0;
@@ -826,6 +825,23 @@ export function updatePreview(): void {
 export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; alt?: boolean; meta?: boolean; ctrl?: boolean }): void {
   mods = mods || {};
   const t = clientToTree(cx, cy);
+
+  // Ascendancy plaque (PoE1 in-place): clicking toggles the circle.
+  // With no ascendancy picked yet there's nothing to show — nudge the
+  // user at the sidebar dropdown instead of silently no-opping.
+  if (ascButtonHit(t.x, t.y)) {
+    if (state.asc) {
+      state.ascOpen = !state.ascOpen;
+      state.selDirty = true;         // sel-edge split is per-visibility
+      updatePreview();
+      requestRender();
+    } else {
+      window.PoE2Plan?.flash?.('Pick an ascendancy in the sidebar to open its circle');
+      ascSel?.focus();
+    }
+    return;
+  }
+
   const id = findHoverNode(t.x, t.y);
 
   // Early-out for clicks that won't mutate the tree at all. Without

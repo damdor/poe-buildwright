@@ -3,13 +3,14 @@
 // ---------------------------------------------------------------------
 
 import { texCache } from "./image_preload.ts";
-import { ASC_EFFECTS, MULTI_CHOICE, canvas, gl, isMcOption, pickedMcOption, state , ascNodeOverride} from "./state.ts";
+import { ASC_EFFECTS, ASC_IN_PLACE, MULTI_CHOICE, canvas, gl, isMcOption, pickedMcOption, state , ascNodeOverride} from "./state.ts";
 import { STRIDE_FLOATS, getTex, uClip, uDashMode, uDashPeriod, uDashSolid, uOffsetScale, uPulse, uTranslate, uView, whiteTex } from "./webgl_setup.ts";
 import { Tint, pushSprite, pushSpriteRot, pushSpriteUV } from "./vertex_helpers.ts";
-import { ascStatic, mainConnectorBatches, mainEdgeBatch, staticBatches, staticVAO } from "./static_geom.ts";
+import { type AscPanelStatic, ascStatic, mainConnectorBatches, mainEdgeBatch, staticBatches, staticVAO } from "./static_geom.ts";
 import { buildClusterGlow, clusterGlowBatches, clusterGlowVAO, rebuildSearchGlow, rebuildSelEdges, searchGlowCount, searchGlowTex, searchGlowVAO, selConnectorAscBatches, selConnectorBatches, selEdgeAscCount, selEdgeMainCount, selEdgeProcAscStart, selEdgeProcMainStart, selEdgeVAO, uploadDyn } from "./overlay.ts";
 import { findClassStartHub, previewAscCount, previewConnectorAscBatches, previewConnectorBatches, previewMainCount, previewProcAscStart, previewProcMainStart, previewVAO } from "./pathfind.ts";
-import type { TreeNode } from "../../../../types/poe2.d.ts";
+import { ascAnchorInfo, ascCircleInfo, ascOffsetX, ascOffsetY, buildInPlaceMarkers } from "./asc_present.ts";
+import type { TreeNode } from "../../../../types/shared.d.ts";
 
 export function requestRender(): void {
   if (state.needsRender) return;
@@ -112,7 +113,7 @@ export function render(): void {
     if (tex) dynBatch(tex, false, (arr) => {
       pushSprite(arr, 0, 0, 3000, 3000, [1, 1, 1, 1], false);
     });
-  } else if (state.asc) {
+  } else if (state.asc && !ASC_IN_PLACE) {
     // Variant ascendancy shows its OWN portrait over the parent panel.
     const panel = TREE.asc_panels[state.ascVariant ?? state.asc];
     const tex = panel ? getTex(panel.p) : null;
@@ -305,11 +306,28 @@ export function render(): void {
     gl.drawArrays(gl.TRIANGLES, b.start, b.count);
   }
 
+  // ============== Class start markers (PoE1) ==============
+  // ON TOP of edges and nodes so the start-passive spokes terminate
+  // at the marker's rim. Content (medallions, plaque states, attr
+  // totals) is built by asc_present.buildInPlaceMarkers — this pass
+  // only uploads and draws.
+  {
+    const mk = buildInPlaceMarkers();
+    if (mk.batches.length > 0) {
+      uploadDyn(mk.verts);
+      gl.uniform1f(uClip, 0);
+      for (const b of mk.batches) {
+        gl.bindTexture(gl.TEXTURE_2D, b.tex);
+        gl.drawArrays(gl.TRIANGLES, b.start, b.count);
+      }
+    }
+  }
+
   // ============== Per-frame overlays (selected frames, popout, etc.) ==============
   drawOverlays();
 
   // ============== Ascendancy panel (if active) ==============
-  if (state.asc) drawAscPanel();
+  if (state.asc || ASC_IN_PLACE) drawAscPanel();
 }
 
 // Draw all dynamic overlays in one upload: selected allocated frames
@@ -468,14 +486,37 @@ export function drawOverlays(): void {
 }
 
 export function drawAscPanel(): void {
-  if (!state.asc) return;
-  // Variants have their own baked panel (parent content + overridden
-  // node icons + variant portrait).
-  const asc = ascStatic[state.ascVariant ?? state.asc];
-  if (!asc) return;
+  if (!state.asc && !ASC_IN_PLACE) return;
+  // In-place (PoE1): the circle overlaps main-tree nodes, so — like
+  // GGG's popup — it renders only while open (plaque clicked / asc
+  // just picked). Closed = nothing of the ascendancy shows at all.
+  if (ASC_IN_PLACE && !state.ascOpen) return;
   gl.bindVertexArray(staticVAO);
   gl.uniform2f(uOffsetScale, 0, 0);
   gl.uniform2f(uTranslate, 0, 0);
+  if (!state.asc) return;
+  const selectedKey = state.ascVariant ?? state.asc;
+  // Variants have their own baked panel (parent content + overridden
+  // node icons + variant portrait).
+  const asc = ascStatic[selectedKey];
+  if (!asc) return;
+  // In-place mode (PoE1): ONLY the chosen ascendancy draws, hung off
+  // the class start per GGG's anchoring. The statics are baked at the
+  // raw JSON group coordinates, so the whole panel (backdrop + edges
+  // + nodes) is drawn through a uTranslate of the anchor delta.
+  let ipDX = 0, ipDY = 0;
+  if (ASC_IN_PLACE) {
+    const info = ascAnchorInfo();
+    if (!info) return;
+    ipDX = info.dx;
+    ipDY = info.dy;
+    gl.uniform2f(uTranslate, ipDX, ipDY);
+    if (asc.portraitBatch) {
+      gl.bindTexture(gl.TEXTURE_2D, asc.portraitBatch.tex);
+      gl.uniform1f(uClip, 0);
+      gl.drawArrays(gl.TRIANGLES, asc.portraitBatch.start, asc.portraitBatch.count);
+    }
+  }
   // (Asc portrait was drawn earlier, in the centre-stack dyn pass,
   // so BGTree's frame can overlay it via the quatrefoil opening.
   // Here we only draw the interactive content: edges + nodes.)
@@ -500,7 +541,10 @@ export function drawAscPanel(): void {
     gl.uniform2f(uOffsetScale, 0, 0);
   }
   // 2b. Selected edges for THIS asc — textured _active sprites when
-  //     enabled, procedural strip fallback otherwise.
+  //     enabled, procedural strip fallback otherwise. Their verts are
+  //     built with ascOffset already applied, so in-place mode must
+  //     NOT also translate them.
+  if (ASC_IN_PLACE) gl.uniform2f(uTranslate, 0, 0);
   if (state.useGGGConnectors && selConnectorAscBatches.length > 0) {
     gl.bindVertexArray(selEdgeVAO);
     gl.uniform2f(uOffsetScale, 0, 0);
@@ -546,16 +590,21 @@ export function drawAscPanel(): void {
   }
   // Reset offset scale back to 0 for the sprite passes below.
   gl.uniform2f(uOffsetScale, 0, 0);
-  // 3. Asc node sprites (mastery + icon + frame)
+  // 3. Asc node sprites (mastery + icon + frame) — raw-baked, so the
+  //    in-place translate comes back on.
+  if (ASC_IN_PLACE) gl.uniform2f(uTranslate, ipDX, ipDY);
   for (const b of asc.batches) {
     gl.bindTexture(gl.TEXTURE_2D, b.tex);
     gl.uniform1f(uClip, b.clipIcon ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, b.start, b.count);
   }
-  // 2. Dynamic asc overlays (selected frames, picked icons, popout)
+  // 2. Dynamic asc overlays (selected frames, picked icons, popout).
+  //    Their verts bake the offset directly, so the uniform resets.
+  gl.uniform2f(uTranslate, 0, 0);
   const panel = TREE.asc_panels[state.asc];
   if (!panel) return;
-  const dx = -panel.x, dy = -panel.y;
+  const dx = ASC_IN_PLACE ? ipDX : -panel.x;
+  const dy = ASC_IN_PLACE ? ipDY : -panel.y;
   const verts: number[] = [];
   const buckets = new Map<string, OverlayBucket>();
   function addBucket(
@@ -680,18 +729,8 @@ export function drawAscPanel(): void {
   }
 }
 
-// Asc nodes are drawn translated; for popouts we need to apply the
-// same offset so the popout lands at the visible (relocated) position.
-export function ascOffsetX(n: TreeNode): number {
-  if (!n.a) return 0;
-  const p = TREE.asc_panels[n.a];
-  return p ? -p.x : 0;
-}
-export function ascOffsetY(n: TreeNode): number {
-  if (!n.a) return 0;
-  const p = TREE.asc_panels[n.a];
-  return p ? -p.y : 0;
-}
+// Ascendancy presentation geometry (anchoring, offsets, plaque hit
+// tests) lives in asc_present.ts.
 
 // Attribute-popout layout — also needed by pickFromPopout for hit-
 // tests and by drawOverlays / drawAscPanel for rendering. Keep in

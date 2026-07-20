@@ -393,6 +393,41 @@ DEFAULTS
         run: crate::handlers::manifest,
     },
     Command {
+        name: "poe1-tree",
+        group: Group::Data,
+        badge: Badge::Native,
+        summary: "Ingest GGG's official PoE1 passive-tree JSON (tree TSVs)",
+        help: "\
+buildwright poe1-tree — PoE1 passive tree from the official export
+
+Fetches https://www.pathofexile.com/passive-skill-tree (or reads
+--json <file>), extracts the embedded passiveSkillTreeData, and emits
+data/parsed/poe1_<label>/tree/{nodes,edges,meta}.tsv in the same
+shape the PoE2 pipeline produces — tree_render and the agent
+emitters work unchanged. Re-run each league.
+
+USAGE
+    buildwright poe1-tree [--label <ver>] [--json <file>]",
+        run: crate::handlers::poe1_tree,
+    },
+    Command {
+        name: "poe1-sprites",
+        group: Group::Data,
+        badge: Badge::Native,
+        summary: "Slice PoE1's official sprite atlases into per-icon PNGs",
+        help: "\
+buildwright poe1-sprites — atlases → per-icon sprites
+
+Downloads the sprite atlases the ingested PoE1 tree references,
+normalizes JPG/WEBP to PNG (system sips), slices every icon and
+frame with the in-repo PNG codec, and writes tree/sprites.tsv.
+Files land as /assets/sprites/poe1_*.png.
+
+USAGE
+    buildwright poe1-sprites [--label <ver>]",
+        run: crate::handlers::poe1_sprites,
+    },
+    Command {
         name: "verify",
         group: Group::Data,
         badge: Badge::Native,

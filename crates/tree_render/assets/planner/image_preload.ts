@@ -1,6 +1,11 @@
 // ============================================================================
 // === Image preloading =====================================================
 // ============================================================================
+// game.ts is the one import this module allows itself — it's a
+// zero-import leaf, so pulling it here (before state.ts loads) can't
+// disturb the _main.ts load order.
+import { ASC_IN_PLACE } from "./game.ts";
+
 // imgCache holds the decoded ImageBitmap for each sprite URL until the
 // GPU texture is uploaded (uploadAllTextures). After that the GPU has
 // its own copy in texCache and we never need the bitmap again.
@@ -21,7 +26,10 @@ export function defaultClassName(): string | null {
 // Which class exclusively owns an ascendancy. Variants (Abyssal Lich)
 // resolve through their parent panel's class; asc_internal is the
 // fallback mapping. null = unknown → treated as shared, loads eagerly.
+// In-place asc rendering (PoE1) shows every panel at boot, so no
+// asc art can be deferred behind a class switch.
 function classOfAsc(asc: string): string | null {
+  if (ASC_IN_PLACE) return null;
   for (const c of TREE.classes) if (c.asc.includes(asc)) return c.name;
   const parent = TREE.asc_variants?.[asc]?.parent;
   if (parent) for (const c of TREE.classes) if (c.asc.includes(parent)) return c.name;
@@ -74,6 +82,15 @@ function collectOwnedUrls(): Map<string, { owner: string | null; tier: SpriteTie
   }
   for (const cn in TREE.class_portraits) add(TREE.class_portraits[cn], cn, 2);
   for (const an in TREE.asc_panels) add(TREE.asc_panels[an]?.p, classOfAsc(an), 2);
+  for (const cn in TREE.class_markers ?? {}) {
+    add(TREE.class_markers![cn]?.p, null, 2);
+  }
+  add(TREE.start_inactive?.p, null, 2);
+  // Ascendancy plaque (PoE1 in-place mode): all three GGG states —
+  // normal, Highlight (hover), Pressed (circle open).
+  add(TREE.asc_button?.p, null, 2);
+  add(TREE.asc_button?.hp, null, 2);
+  add(TREE.asc_button?.pp, null, 2);
   // Variant-ascendancy override icons (Abyssal Lich) — referenced only
   // via TREE.asc_variants, so the node loop above never sees them.
   // Without this they're absent from texCache and the panel bake

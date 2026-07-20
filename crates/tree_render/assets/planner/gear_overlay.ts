@@ -11,13 +11,22 @@
 // UniqueStashLayout, base art via BaseItemTypes→ItemVisualIdentity)
 // and GGG rarity colors; hover shows the unique's stats or the note.
 // ============================================================================
+import { featureOn } from "./game.ts";
 import { state, viewport } from "./state.ts";
 import { requestRender } from "./render.ts";
 import { cascadeJewelOrphans } from "./pathfind.ts";
 import { flushPersistNow } from "./wizard_sync.ts";
-import type { Item } from "../../../../types/poe2.d.ts";
+import type { Item } from "../../../../types/shared.d.ts";
 
-{
+// Tree-only games (PoE1 step 1) ship no gear/jewel UI: pull the
+// strip + popover out of the DOM and skip the whole module, so
+// no PoE2 item state or jewel rules ever load on those pages.
+const GEAR_ON = featureOn("gear");
+if (!GEAR_ON) {
+  document.getElementById("gear-strip")?.remove();
+  document.getElementById("gear-popover")?.remove();
+}
+if (GEAR_ON) {
   interface UniqueEntry { name: string; base?: string; slot?: string; icon?: string | null; latest_stats?: string; req_level?: number; variants?: { label: string; stats: string }[]; }
   interface ItemCatalogue { uniques: UniqueEntry[]; }
   interface BaseEntry {

@@ -14,11 +14,17 @@ import { decode as decodeShare } from "./share_codec.ts";
 import type {
   Plan, Capture, Allocation, Skill, Item,
   CommitMeta, PlanIndexEntry, PoE2PlanAPI,
-} from "../../types/poe2.d.ts";
+} from "../../types/shared.d.ts";
 
-const KEY_PREFIX  = "poe2-planner:plan:";
-const KEY_INDEX   = "poe2-planner:index";
-const KEY_CURRENT = "poe2-planner:current";
+// Storage is namespaced per game so a PoE1 page never sees (or
+// clobbers) PoE2 plans. Default base keeps every existing PoE2 key.
+const STORE_BASE =
+  window.PoE2Game && window.PoE2Game.id !== "poe2"
+    ? `${window.PoE2Game.id}-planner`
+    : "poe2-planner";
+const KEY_PREFIX  = `${STORE_BASE}:plan:`;
+const KEY_INDEX   = `${STORE_BASE}:index`;
+const KEY_CURRENT = `${STORE_BASE}:current`;
 const PLAN_FORMAT: "poe2-planner-plan" = "poe2-planner-plan";
 // v2 = captures[] cumulative snapshots. v1 is unsupported — pre-launch
 // we don't carry legacy data forward. loadPlan returns null for non-v2
@@ -205,12 +211,21 @@ if (url.searchParams.has("new") || (hasAgentPayload && !buildId)) {
   if (lastId) {
     url.searchParams.set("build", lastId);
     location.replace(url.toString());
+    // Bail — page is navigating away. We use throw not return because
+    // we're at module top-level (not inside a function) under TS.
+    throw new Error("[wizard_chrome] redirecting; not initialising");
+  }
+  if (window.PoE2Game && window.PoE2Game.id !== "poe2") {
+    // Tree-only games (PoE1) have no landing wizard to bounce to —
+    // a first visit mints a fresh build in place, like ?new=1.
+    buildId = genId();
+    freshlyMinted = true;
+    url.searchParams.set("build", buildId);
+    history.replaceState({}, "", url);
   } else {
     location.replace("/");
+    throw new Error("[wizard_chrome] redirecting; not initialising");
   }
-  // Bail — page is navigating away. We use throw not return because
-  // we're at module top-level (not inside a function) under TS.
-  throw new Error("[wizard_chrome] redirecting; not initialising");
 }
 // After the redirect bail, buildId is definitely a string.
 const resolvedBuildId: string = buildId;
@@ -633,7 +648,29 @@ refreshBuildName();
 // copy and the badge would never appear. Standard revalidate catches
 // the new file via 304 on hit, full download on miss.
 interface BuildMeta { patch?: string; source?: string; }
-fetch("/assets/build_meta.json")
+// Per-game agent dir: the poe1 page's metadata lives under
+// /assets/poe1-agent, and its badge must not claim to be PoE2 data.
+const GAME_ID = window.PoE2Game?.id ?? "poe2";
+const GAME_LABEL = GAME_ID === "poe2" ? "PoE2" : GAME_ID.replace("poe", "PoE");
+// Patch strings are GAME-NAMESPACED: poe1 data patches carry the
+// "poe1." prefix ("poe1.3.26"); poe2 patches are bare ("0.5",
+// "4.5.4.4.native"). A plan can only meaningfully declare a patch
+// from its own game — anything else is a stamp from the pre-split
+// era and treated like the null "I don't know" sentinel (restamped
+// silently, no stale-patch banner comparing across games).
+function patchBelongsToGame(patch: string): boolean {
+  return GAME_ID === "poe2" ? !patch.startsWith("poe1.")
+                            : patch.startsWith(GAME_ID + ".");
+}
+// Human patch label: the badge/banner already names the game, so the
+// game prefix inside the patch string is redundant noise.
+function patchLabelOf(patch: string): string {
+  return patch.startsWith(GAME_ID + ".") ? patch.slice(GAME_ID.length + 1) : patch;
+}
+const META_URL = window.PoE2Game?.agentBase
+  ? window.PoE2Game.agentBase + "/build_meta.json"
+  : "/assets/build_meta.json";
+fetch(META_URL)
   .then(r => r.ok ? r.json() : null)
   .then((meta: BuildMeta | null) => {
     if (!meta || !meta.patch) return;
@@ -645,11 +682,14 @@ fetch("/assets/build_meta.json")
       // canonical PoB2 stable source (e.g. during the preview period
       // before PoB2 ships the new patch). Empty source = legacy
       // manifest without the field, treated as stable.
-      const isPreview = !!meta.source && meta.source !== "pob2-stable";
-      badge.textContent = "PoE2 " + meta.patch + (isPreview ? " preview" : "");
+      const isPreview =
+        GAME_ID === "poe2" && !!meta.source && meta.source !== "pob2-stable";
+      // Patch labels for non-poe2 games carry the game prefix
+      // ("poe1.3.26") — the badge already names the game, so drop it.
+      badge.textContent = GAME_LABEL + " " + patchLabelOf(meta.patch) + (isPreview ? " preview" : "");
       badge.title = isPreview
         ? "Preview data from " + meta.source + " — may differ from final patch"
-        : "PoE2 data version currently loaded";
+        : GAME_LABEL + " data version currently loaded";
       badge.classList.toggle("wc-patch-badge-preview", isPreview);
       badge.hidden = false;
     }
@@ -659,7 +699,10 @@ fetch("/assets/build_meta.json")
     // on subsequent loads. Only stamp when plan.patch is null (the
     // "I don't know" sentinel) — if the plan already declares a
     // patch (even a different one), respect that.
-    if (plan.patch == null) {
+    if (plan.patch == null || !patchBelongsToGame(plan.patch)) {
+      // Null OR a patch from another game's namespace (stamped by the
+      // pre-split code that shared one patch space): adopt the live
+      // patch silently — a cross-game comparison is meaningless.
       plan.patch = meta.patch;
       persistDebounced();
     } else if (plan.patch !== meta.patch) {
@@ -681,8 +724,8 @@ function showStalePatchBanner(planPatch: string, currentPatch: string): void {
   bar.id = "wc-stale-banner";
   bar.className = "wc-stale-banner";
   bar.innerHTML =
-    "<span>This build was authored for <b>PoE2 " + escHtml(planPatch) +
-    "</b>. Loading in <b>PoE2 " + escHtml(currentPatch) +
+    "<span>This build was authored for <b>" + GAME_LABEL + " " + escHtml(patchLabelOf(planPatch)) +
+    "</b>. Loading in <b>" + GAME_LABEL + " " + escHtml(patchLabelOf(currentPatch)) +
     "</b>: allocations referencing moved or removed nodes may have been dropped.</span>" +
     '<button class="wc-stale-dismiss" type="button" aria-label="Dismiss">×</button>';
   wizardHost.parentNode?.insertBefore(bar, wizardHost.nextSibling);

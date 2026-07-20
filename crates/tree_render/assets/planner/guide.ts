@@ -15,12 +15,18 @@
 // - "Copy for agent" serializes the whole story as chronological JSON
 //   with writing hints — the hand-off for a full written guide.
 // ============================================================================
+import { featureOn } from "./game.ts";
 import { state, tooltip } from "./state.ts";
 import { focusNode } from "./cmdk.ts";
 import { requestRender } from "./render.ts";
-import type { Allocation, Capture, Item, Skill } from "../../../../types/poe2.d.ts";
+import type { Allocation, Capture, Item, Skill } from "../../../../types/shared.d.ts";
 
-{
+// The guide typesets the whole PoE2 plan (captures, skills, gear) and
+// its open button lives inside the gear strip — on tree-only games
+// both are gone, so the module must not initialize at all.
+// Rides the gear gate deliberately: the guide narrates gear swaps.
+const GUIDE_ON = featureOn("gear");
+if (GUIDE_ON) {
   interface GuideGem {
     id: string; name: string; gem_type?: string; icon?: string | null;
     description?: string; parts?: string[]; tag_string?: string;
