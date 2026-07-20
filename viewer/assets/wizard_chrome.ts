@@ -652,6 +652,21 @@ interface BuildMeta { patch?: string; source?: string; }
 // /assets/poe1-agent, and its badge must not claim to be PoE2 data.
 const GAME_ID = window.PoE2Game?.id ?? "poe2";
 const GAME_LABEL = GAME_ID === "poe2" ? "PoE2" : GAME_ID.replace("poe", "PoE");
+// Patch strings are GAME-NAMESPACED: poe1 data patches carry the
+// "poe1." prefix ("poe1.3.26"); poe2 patches are bare ("0.5",
+// "4.5.4.4.native"). A plan can only meaningfully declare a patch
+// from its own game — anything else is a stamp from the pre-split
+// era and treated like the null "I don't know" sentinel (restamped
+// silently, no stale-patch banner comparing across games).
+function patchBelongsToGame(patch: string): boolean {
+  return GAME_ID === "poe2" ? !patch.startsWith("poe1.")
+                            : patch.startsWith(GAME_ID + ".");
+}
+// Human patch label: the badge/banner already names the game, so the
+// game prefix inside the patch string is redundant noise.
+function patchLabelOf(patch: string): string {
+  return patch.startsWith(GAME_ID + ".") ? patch.slice(GAME_ID.length + 1) : patch;
+}
 const META_URL = window.PoE2Game?.agentBase
   ? window.PoE2Game.agentBase + "/build_meta.json"
   : "/assets/build_meta.json";
@@ -671,10 +686,7 @@ fetch(META_URL)
         GAME_ID === "poe2" && !!meta.source && meta.source !== "pob2-stable";
       // Patch labels for non-poe2 games carry the game prefix
       // ("poe1.3.26") — the badge already names the game, so drop it.
-      const patchLabel = meta.patch.startsWith(GAME_ID + ".")
-        ? meta.patch.slice(GAME_ID.length + 1)
-        : meta.patch;
-      badge.textContent = GAME_LABEL + " " + patchLabel + (isPreview ? " preview" : "");
+      badge.textContent = GAME_LABEL + " " + patchLabelOf(meta.patch) + (isPreview ? " preview" : "");
       badge.title = isPreview
         ? "Preview data from " + meta.source + " — may differ from final patch"
         : GAME_LABEL + " data version currently loaded";
@@ -687,7 +699,10 @@ fetch(META_URL)
     // on subsequent loads. Only stamp when plan.patch is null (the
     // "I don't know" sentinel) — if the plan already declares a
     // patch (even a different one), respect that.
-    if (plan.patch == null) {
+    if (plan.patch == null || !patchBelongsToGame(plan.patch)) {
+      // Null OR a patch from another game's namespace (stamped by the
+      // pre-split code that shared one patch space): adopt the live
+      // patch silently — a cross-game comparison is meaningless.
       plan.patch = meta.patch;
       persistDebounced();
     } else if (plan.patch !== meta.patch) {
@@ -709,8 +724,8 @@ function showStalePatchBanner(planPatch: string, currentPatch: string): void {
   bar.id = "wc-stale-banner";
   bar.className = "wc-stale-banner";
   bar.innerHTML =
-    "<span>This build was authored for <b>PoE2 " + escHtml(planPatch) +
-    "</b>. Loading in <b>PoE2 " + escHtml(currentPatch) +
+    "<span>This build was authored for <b>" + GAME_LABEL + " " + escHtml(patchLabelOf(planPatch)) +
+    "</b>. Loading in <b>" + GAME_LABEL + " " + escHtml(patchLabelOf(currentPatch)) +
     "</b>: allocations referencing moved or removed nodes may have been dropped.</span>" +
     '<button class="wc-stale-dismiss" type="button" aria-label="Dismiss">×</button>';
   wizardHost.parentNode?.insertBefore(bar, wizardHost.nextSibling);
