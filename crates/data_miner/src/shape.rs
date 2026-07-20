@@ -308,17 +308,7 @@ pub fn shape_bases(ts: &TableSet) -> Result<String, ShapeError> {
         ];
         // Sanitise + join (fields never contain tabs; ids/names may not
         // contain newlines, but be safe).
-        for (j, field) in fields.iter().enumerate() {
-            if j > 0 {
-                out.push('\t');
-            }
-            if field.contains(['\t', '\n', '\r']) {
-                out.push_str(&field.replace(['\t', '\n', '\r'], " "));
-            } else {
-                out.push_str(field);
-            }
-        }
-        out.push('\n');
+        push_row(&mut out, &fields);
     }
     Ok(out)
 }
@@ -516,17 +506,7 @@ pub fn shape_gems(ts: &TableSet) -> Result<String, ShapeError> {
                 .map(|v| v.join("|"))
                 .unwrap_or_default(),
         ];
-        for (j, field) in fields.iter().enumerate() {
-            if j > 0 {
-                out.push('\t');
-            }
-            if field.contains(['\t', '\n', '\r']) {
-                out.push_str(&field.replace(['\t', '\n', '\r'], " "));
-            } else {
-                out.push_str(field);
-            }
-        }
-        out.push('\n');
+        push_row(&mut out, &fields);
     }
     Ok(out)
 }
@@ -1487,8 +1467,18 @@ fn node_xy(g: &crate::psg::Group, orbit: u8, orbit_index: u16) -> (f32, f32) {
         return (g.x, g.y);
     }
     let r = ORBIT_RADII[o];
-    let n = SKILLS_PER_ORBIT[o].max(1) as f32;
-    let a = 2.0 * std::f32::consts::PI * oi / n;
+    let n = SKILLS_PER_ORBIT[o].max(1);
+    // 16/40-slot orbits use GGG's hand-tuned angle tables (see
+    // tree_tsv::orbit_angle — the rule that already bit PoE1). PoE2's
+    // orbit counts are currently all uniform, so the table branch is
+    // dormant here; the uniform branch keeps the exact f32 math the
+    // shipped TSVs were generated with (a silent f64 round-trip could
+    // shift 2-decimal coordinates).
+    let a = if n == 16 || n == 40 {
+        crate::tree_tsv::orbit_angle(f64::from(oi), n as f64) as f32
+    } else {
+        2.0 * std::f32::consts::PI * oi / n as f32
+    };
     (g.x + r * a.sin(), g.y - r * a.cos())
 }
 
@@ -1633,47 +1623,30 @@ pub fn shape_tree(
             .unwrap_or_default()
     };
     // Kind, mirroring the renderer's classification order.
+    // dat flags → the shared canonical ladder (tree_tsv::node_kind).
+    // No class_start flag exists in the dat source; the psg path never
+    // emitted it from here.
     let kind_of = |row: usize| -> &'static str {
-        let has_asc = c_asc
-            .and_then(|c| ps.foreign(row, c).ok().flatten())
-            .is_some();
-        if boolc(row, c_ascstart) {
-            "asc_start"
-        } else if boolc(row, c_jewel) {
-            "jewel"
-        } else if boolc(row, c_justicon) {
+        crate::tree_tsv::node_kind(&crate::tree_tsv::KindFlags {
+            asc_start: boolc(row, c_ascstart),
+            jewel: boolc(row, c_jewel),
             // A mastery *node* is icon-only. A node that merely *belongs*
             // to a mastery group (MasteryGroup set) is a normal cluster
             // node, not a mastery — so don't key on MasteryGroup here.
-            "mastery"
-        } else if has_asc {
-            if boolc(row, c_notable) {
-                "asc_notable"
-            } else {
-                "asc_small"
-            }
-        } else if boolc(row, c_keystone) {
-            "keystone"
-        } else if boolc(row, c_notable) {
-            "notable"
-        } else if boolc(row, c_attr) {
-            "attribute"
-        } else if boolc(row, c_mchoice) {
-            "multichoice"
-        } else if boolc(row, c_mchoiceopt) {
-            "multichoice_opt"
-        } else {
-            "small"
-        }
+            mastery: boolc(row, c_justicon),
+            is_asc: c_asc.and_then(|c| ps.foreign(row, c).ok().flatten()).is_some(),
+            keystone: boolc(row, c_keystone),
+            notable: boolc(row, c_notable),
+            attribute: boolc(row, c_attr),
+            multichoice: boolc(row, c_mchoice),
+            multichoice_opt: boolc(row, c_mchoiceopt),
+            ..Default::default()
+        })
     };
 
     // --- nodes.tsv ---
     let mut nodes = String::with_capacity(graph.nodes.len() * 96);
-    nodes.push_str(
-        "id\tx\ty\tkind\tklass\tascendancy\tname\tstats\tgroup\torbit\t\
-         orbit_index\ticon\tnode_overlay\tactive_effect\tnode_options\t\
-         connection_art\tunlock_constraint\n",
-    );
+    nodes.push_str(crate::tree_tsv::NODES_HEADER);
     // Legacy (PoE1) ascendancies — Templar/Marauder/Duelist/Shadow and
     // deprecated slots (Ranger2 = Piscator, …) persist in the graph but are
     // cut from the live tree. GGG marks each with a "[DNT-UNUSED]" Name, so
@@ -1783,7 +1756,7 @@ pub fn shape_tree(
 
     // --- edges.tsv --- (dedup undirected; keep the source→target order)
     let mut edges = String::with_capacity(graph.nodes.len() * 16);
-    edges.push_str("from\tto\torbit\n");
+    edges.push_str(crate::tree_tsv::EDGES_HEADER);
     let mut seen: std::collections::HashSet<(u16, u16)> = std::collections::HashSet::new();
     for n in &graph.nodes {
         if skip.contains(&n.id) {
@@ -1915,17 +1888,10 @@ pub const TREE_STAT_CSD: &[&str] = &[
 /// Append `fields` as one TSV row (tabs between, newline after),
 /// sanitising any embedded tabs/newlines in a field.
 fn push_row(out: &mut String, fields: &[String]) {
-    for (j, field) in fields.iter().enumerate() {
-        if j > 0 {
-            out.push('\t');
-        }
-        if field.contains(['\t', '\n', '\r']) {
-            out.push_str(&field.replace(['\t', '\n', '\r'], " "));
-        } else {
-            out.push_str(field);
-        }
-    }
-    out.push('\n');
+    // Thin adapter over the shared sanitizing helper (tree_tsv) —
+    // one definition of "what a TSV cell may contain".
+    let refs: Vec<&str> = fields.iter().map(String::as_str).collect();
+    crate::tree_tsv::push_row(out, &refs);
 }
 
 /// Foreignrow-array cell → referenced row indices (the row-id twin of
