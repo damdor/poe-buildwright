@@ -28,5 +28,5 @@
     "Tasalio, Cleansing Water",
     "Ramako, Sun's Light"
   ],
-  "notes": "Modeled on a popular poe.ninja Mirage-league Righteous Fire Chieftain (level 100, 8.2k life), validated against the 3.26 tree. The armour/regen archetype: RF burns you and everything near you; the tree stacks % maximum life (this tree carries ~122% increased life \u2014 tanky archetypes run 115-160%), life regen, endurance charges and Unwavering Stance. Resistances come from gear, not the tree."
+  "notes": "Modeled on a popular poe.ninja Mirage-league Righteous Fire Chieftain (level 100, 8.2k life), validated against this deployment\u2019s tree (3.28.0k Mirage). The armour/regen archetype: RF burns you and everything near you; the tree stacks % maximum life (this tree carries ~122% increased life \u2014 tanky archetypes run 115-160%), life regen, endurance charges and Unwavering Stance. Resistances come from gear, not the tree."
 }

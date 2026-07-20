@@ -31,5 +31,5 @@
     "Far Shot",
     "Ricochet"
   ],
-  "notes": "Modeled on a popular poe.ninja Mirage-league Kinetic Blast Deadeye wander (level 100, ~4k life + ES), validated against the 3.26 tree. The evasion archetype: projectile/wand damage on the dex side with % life (~68% increased on this tree \u2014 ranged evasion builds run 50-100% and compensate with evasion, spell suppression and Ghost Dance-style recovery). Resistances come from gear, not the tree."
+  "notes": "Modeled on a popular poe.ninja Mirage-league Kinetic Blast Deadeye wander (level 100, ~4k life + ES), validated against this deployment\u2019s tree (3.28.0k Mirage). The evasion archetype: projectile/wand damage on the dex side with % life (~68% increased on this tree \u2014 ranged evasion builds run 50-100% and compensate with evasion, spell suppression and Ghost Dance-style recovery). Resistances come from gear, not the tree."
 }
