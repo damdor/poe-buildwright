@@ -2,9 +2,9 @@
 // === Hit-test & hover =====================================================
 // ============================================================================
 
-import { MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, countSelected, isLocked, isMcOption, isMcParent, pickedMcOption, state, tooltip , ascNodeOverride} from "./state.ts";
+import { ASC_IN_PLACE, MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, countSelected, isLocked, isMcOption, isMcParent, pickedMcOption, state, tooltip, viewport , ascNodeOverride} from "./state.ts";
 import { clientToTree } from "./viewport.ts";
-import { POPOUT_FRAME_SIZE, PopoutOptionEntry, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
+import { POPOUT_FRAME_SIZE, PopoutOptionEntry, ascButtonHit, ascCircleInfo, ascOffsetX, ascOffsetY, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
 import { isGlobalNode, updatePreview } from "./pathfind.ts";
 import { effectiveActiveSet } from "./sidebar.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
@@ -13,6 +13,10 @@ import type { Skill } from "../../../../types/poe2.d.ts";
 export function findHoverNode(treeX: number, treeY: number): string | null {
   // Brute-force closest node within hit radius. 4700 nodes × distance
   // check ≈ sub-millisecond on any modern CPU.
+  // In-place mode (PoE1): while the ascendancy circle is open, its
+  // art occludes the main nodes underneath — GGG's foreachClickable
+  // skips anything within classArtRadius, and so do we.
+  const circle = ascCircleInfo();
   let bestId: string | null = null, bestDist = Infinity;
   for (const id in TREE.nodes) {
     const n = TREE.nodes[id];
@@ -32,13 +36,18 @@ export function findHoverNode(treeX: number, treeY: number): string | null {
     if (isLocked(id)) continue;
     if (n.a) {
       if (state.asc !== n.a) continue;
+      // In-place: asc nodes are only visible (and thus clickable)
+      // while the circle is open.
+      if (ASC_IN_PLACE && !state.ascOpen) continue;
+    } else if (circle) {
+      const ox = n.x - circle.x, oy = n.y - circle.y;
+      if (ox * ox + oy * oy < circle.r * circle.r) continue;
     }
-    // For asc nodes, translate query to their native coords
-    let qx = treeX, qy = treeY;
-    if (n.a) {
-      const p = TREE.asc_panels[n.a];
-      if (p) { qx = treeX + p.x; qy = treeY + p.y; }
-    }
+    // Asc nodes are drawn relocated; query them where they're DRAWN.
+    // ascOffset handles both presentations (PoE2 side panel, PoE1
+    // in-place anchoring) — the old panel-only translation here was
+    // why poe1 asc nodes could never be hovered or allocated.
+    const qx = treeX - ascOffsetX(n), qy = treeY - ascOffsetY(n);
     const dx = n.x - qx, dy = n.y - qy;
     const d2 = dx * dx + dy * dy;
     const r = Math.max((n.fw ?? 0) / 2, (n.iw ?? 0) / 2, 30);
@@ -109,6 +118,23 @@ export function handleHover(cx: number, cy: number): void {
     }
   }
   const t = clientToTree(cx, cy);
+  // Ascendancy plaque hover (PoE1): light the eye up (Highlight art +
+  // pointer cursor) so the plaque reads as clickable.
+  const overBtn = ascButtonHit(t.x, t.y);
+  if (overBtn !== state.ascBtnHover) {
+    state.ascBtnHover = overBtn;
+    viewport.classList.toggle('asc-btn-hover', overBtn);
+    requestRender();
+  }
+  if (overBtn) {
+    if (state.hoverId !== null) {
+      state.hoverId = null;
+      updatePreview();
+      requestRender();
+    }
+    hideTooltip();
+    return;
+  }
   const id = findHoverNode(t.x, t.y);
   if (id !== state.hoverId) {
     state.hoverId = id;

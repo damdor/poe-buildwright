@@ -86,6 +86,12 @@ export const state = {
   klass: null as string | null,
   asc:   null as string | null,           // engine/panel ascendancy (always a PARENT panel name)
   ascVariant: null as string | null,      // chosen variant (e.g. 'Abyssal Lich') when asc is its parent
+  // PoE1 in-place presentation: the ascendancy circle overlaps main
+  // nodes, so — like GGG — it only shows while "open". Toggled by
+  // clicking the AscendancyButton plaque (or picking an asc in the
+  // sidebar); the plaque swaps to its Highlight art while hovered.
+  ascOpen: false,
+  ascBtnHover: false,
   // GGG's authored per-orbit kite-quad connector sprites for the
   // unallocated main-tree edges. Default ON; flip to false in the
   // console (and call requestRender()) to fall back to the procedural
