@@ -73,12 +73,31 @@ function portraitFor(b: IndexedBuild): string {
   return '<span class="portrait"><img src="' + escHtml(portraits[key]!) + '" alt="" loading="lazy"></span>';
 }
 
+// Game filter ("all" | game id). Session-scoped on purpose — a
+// returning user starts at the full list.
+let gameFilter = "all";
+const filterEl = document.getElementById("game-filter");
+if (filterEl) {
+  filterEl.addEventListener("click", e => {
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>("button[data-game]");
+    if (!btn) return;
+    gameFilter = btn.dataset.game || "all";
+    filterEl.querySelectorAll("button").forEach(b =>
+      b.classList.toggle("active", b === btn));
+    render();
+  });
+}
+
 function render(): void {
-  const idx = load().sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+  const all = load().sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+  const idx = gameFilter === "all" ? all : all.filter(b => b.game.id === gameFilter);
   const ul = document.getElementById("build-list");
   if (!ul) return;
   if (idx.length === 0) {
-    ul.innerHTML = '<li class="empty">No saved builds yet. Start one above.</li>';
+    const g = GAMES.find(x => x.id === gameFilter);
+    ul.innerHTML = g
+      ? `<li class="empty">No ${escHtml(g.id === "poe2" ? "PoE2" : g.label)} builds yet — <a href="${g.planner}?new=1">start one</a>.</li>`
+      : '<li class="empty">No saved builds yet. Start one above.</li>';
     return;
   }
   ul.innerHTML = idx.map(b => `
@@ -86,8 +105,9 @@ function render(): void {
       ${portraitFor(b)}
       <div class="build-main">
         <a class="name" href="${b.game.planner}?build=${encodeURIComponent(b.id)}">${escHtml(b.name || "(untitled)")}</a>
-        <span class="meta">${b.game.label ? escHtml(b.game.label) + " · " : ""}${escHtml(b.class || "—")}${b.ascendancy ? " · " + escHtml(b.ascendancy) : ""} · <b>${b.nodeCount || 0}</b> nodes · ${escHtml(fmtDate(b.savedAt))}</span>
+        <span class="meta">${escHtml(b.class || "—")}${b.ascendancy ? " · " + escHtml(b.ascendancy) : ""} · <b>${b.nodeCount || 0}</b> nodes · ${escHtml(fmtDate(b.savedAt))}</span>
       </div>
+      <span class="game-badge ${escHtml(b.game.id)}">${escHtml(b.game.id === "poe2" ? "PoE2" : b.game.label)}</span>
       <button class="rm" data-id="${escHtml(b.id)}" data-game="${escHtml(b.game.id)}" title="Delete this build">✕</button>
     </li>
   `).join("");

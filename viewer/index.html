@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PoE2 build planner — passive tree, leveling snapshots, agent-first</title>
-<meta name="description" content="Free, unofficial Path of Exile 2 build planner: the full passive tree in WebGL, leveling snapshots on a scrubable timeline, skills, gear, and exportable .build files. AI agents can create and share builds through documented JSON endpoints. Nothing stored — your builds stay in your browser.">
+<title>Path of Exile build planner — PoE2 &amp; PoE1 passive trees, leveling snapshots, agent-first</title>
+<meta name="description" content="Free, unofficial Path of Exile build planner for PoE2 and PoE1: the full passive trees in WebGL, leveling snapshots on a scrubable timeline, skills, gear, and exportable .build files. AI agents can create and share builds through documented JSON endpoints. Nothing stored — your builds stay in your browser.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="PoE2 build planner — poe-buildwright">
 <meta property="og:description" content="Plan Path of Exile 2 builds on the real passive tree with a scrubable leveling timeline. Agent-first: any AI assistant can build and share through the JSON API. Free, no accounts, no tracking.">
@@ -132,6 +132,36 @@
   ul.build-list .portrait.blank { opacity: 0.4; }
   ul.build-list .build-main { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 
+  /* Per-game accents: PoE2 keeps the site gold; PoE1 gets the ember
+     red of its own branding so the two are tellable at a glance. */
+  :root { --poe1: #d0704a; }
+  a.cta.poe1 {
+    background: linear-gradient(180deg, rgba(208,112,74,0.10), rgba(208,112,74,0.03));
+    border-color: rgba(208, 112, 74, 0.45);
+  }
+  a.cta.poe1 b { color: var(--poe1); }
+  a.cta.poe1:hover { border-color: var(--poe1); }
+
+  /* Builds header: title + game filter chips on one line */
+  section.builds .builds-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+  section.builds .builds-head h2 { margin: 0; flex: 1; }
+  .filter-chips { display: flex; gap: 6px; }
+  .filter-chips button {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    font: inherit; font-size: 11px; padding: 2px 10px; border-radius: 999px; cursor: pointer;
+  }
+  .filter-chips button:hover { border-color: var(--accent); color: var(--fg); }
+  .filter-chips button.active { border-color: var(--accent); color: var(--accent); }
+  .filter-chips button.active[data-game="poe1"] { border-color: var(--poe1); color: var(--poe1); }
+
+  /* Game badge chip on each saved-build card */
+  ul.build-list .game-badge {
+    flex: none; font-size: 10px; letter-spacing: 0.05em; padding: 1px 7px;
+    border-radius: 999px; border: 1px solid var(--border); color: var(--muted);
+  }
+  ul.build-list .game-badge.poe2 { border-color: rgba(240,199,92,0.45); color: var(--accent); }
+  ul.build-list .game-badge.poe1 { border-color: rgba(208,112,74,0.55); color: var(--poe1); }
+
   footer { margin-top: 24px; color: var(--muted); font-size: 11px;
            border-top: 1px solid var(--border); padding-top: 12px; }
   footer code { background: #0a0d12; padding: 1px 5px; border-radius: 3px; color: var(--accent); }
@@ -140,13 +170,17 @@
 </head>
 <body>
 <main>
-  <div class="titlebar"><h1>PoE2 Build Planner</h1><a class="gh-link" href="https://github.com/damdor/poe-buildwright" target="_blank" rel="noopener" title="Source on GitHub — issues &amp; contact"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a></div>
-  <p class="sub">A fan-made build planner for Path of Exile 2 — plan the tree, gems, and gear; snapshot your leveling; read it back as a typeset guide.<br>Exports <code>.build</code> files the game reads directly. Works with any AI assistant.</p>
+  <div class="titlebar"><h1>Path of Exile Build Planner</h1><a class="gh-link" href="https://github.com/damdor/poe-buildwright" target="_blank" rel="noopener" title="Source on GitHub — issues &amp; contact"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a></div>
+  <p class="sub">A fan-made build planner for Path of Exile — both games, one place. PoE2 gets the full toolkit (tree, gems, gear, leveling timeline, typeset guides, <code>.build</code> export); PoE1 gets its real 3.26 passive tree with in-place ascendancies. Your builds stay in this browser, side by side below. Works with any AI assistant.</p>
 
   <div class="row">
     <a class="cta primary" href="/planner.html?new=1" id="new-build-link">
-      <b>+ New build &rarr;</b>
-      <span class="desc">Open the planner with a fresh build. Everything happens on one page: the tree, the gems, the gear, the timeline.</span>
+      <b>+ New PoE2 build &rarr;</b>
+      <span class="desc">The full planner on one page: the 0.5 tree, gems, gear, leveling timeline, and the Build Guide.</span>
+    </a>
+    <a class="cta poe1" href="/planner-poe1.html?new=1" id="new-poe1-build-link">
+      <b>+ New PoE1 build &rarr;</b>
+      <span class="desc">The 3.26 passive tree with in-place ascendancies — pick a class and start pathing. Tree-only for now.</span>
     </a>
   </div>
 
@@ -186,7 +220,14 @@
   </section>
 
   <section class="builds">
-    <h2>Saved builds</h2>
+    <div class="builds-head">
+      <h2>Saved builds</h2>
+      <div class="filter-chips" id="game-filter" role="group" aria-label="Filter builds by game">
+        <button type="button" data-game="all" class="active">All</button>
+        <button type="button" data-game="poe2">PoE2</button>
+        <button type="button" data-game="poe1">PoE1</button>
+      </div>
+    </div>
     <ul class="build-list" id="build-list"><li class="empty">No saved builds yet. Start one above.</li></ul>
   </section>
 
@@ -195,7 +236,7 @@
   </div>
 
   <footer>
-    Wizard + planner saves live in browser <code>localStorage</code> under <code>poe2-planner:plan:&lt;id&gt;</code>. Format: <a href="https://github.com/damdor/poe-buildwright/blob/main/docs/build_contracts.md">poe2-planner-plan v2</a>. Targets GGG <code>.build</code> schema rev 1.
+    Wizard + planner saves live in browser <code>localStorage</code> under <code>poe2-planner:plan:&lt;id&gt;</code> (PoE1: <code>poe1-planner:plan:&lt;id&gt;</code>). Format: <a href="https://github.com/damdor/poe-buildwright/blob/main/docs/build_contracts.md">poe2-planner-plan v2</a>. Targets GGG <code>.build</code> schema rev 1.
     <br><br>
     This product isn't affiliated with or endorsed by Grinding Gear Games in any way.
     All Path of Exile 2 game content, images, and materials are trademarks and copyrights
