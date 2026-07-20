@@ -82,6 +82,11 @@ function collectOwnedUrls(): Map<string, { owner: string | null; tier: SpriteTie
     add(TREE.class_markers![cn]?.p, null, 2);
   }
   add(TREE.start_inactive?.p, null, 2);
+  // Ascendancy plaque (PoE1 in-place mode): all three GGG states —
+  // normal, Highlight (hover), Pressed (circle open).
+  add(TREE.asc_button?.p, null, 2);
+  add(TREE.asc_button?.hp, null, 2);
+  add(TREE.asc_button?.pp, null, 2);
   // Variant-ascendancy override icons (Abyssal Lich) — referenced only
   // via TREE.asc_variants, so the node loop above never sees them.
   // Without this they're absent from texCache and the panel bake

@@ -13,6 +13,7 @@ import { doExportBuild } from "./build_io.ts";
 import { focusNode } from "./cmdk.ts";
 import { flushPersistNow, persistToWizardStore } from "./wizard_sync.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
+import { focusTree } from "./viewport.ts";
 import type { Allocation, Capture } from "../../../../types/poe2.d.ts";
 
 export function refreshAscOptions(): void {
@@ -26,6 +27,7 @@ export function refreshAscOptions(): void {
   void ensureClassArt(klass);
   state.asc = null;
   state.ascVariant = null;
+  state.ascOpen = false;
   ascSel.innerHTML = '';
   const cls = TREE.classes.find(c => c.name === klass);
   if (!cls) {
@@ -50,6 +52,11 @@ export function refreshAscOptions(): void {
     state.selDirty = true;
     updatePreview();
     updateSelectionUI();
+    // PoE1: travel to the new class's start emblem. 0.25 ≈ the emblem
+    // plus a few surrounding rings — enough context to read the first
+    // pathing choices without hunting, not so close it disorients.
+    const marker = klass ? TREE.class_markers?.[klass] : null;
+    if (marker) focusTree(marker.x, marker.y, 0.25);
   }
   requestRender();
 }
@@ -251,6 +258,10 @@ export function applyAsc(): void {
     if (toRemove.length > 0) state.selDirty = true;
   }
   state.asc = newAsc;
+  // PoE1 in-place: picking an ascendancy opens its circle right away
+  // (immediate feedback — the plaque toggles it thereafter); clearing
+  // the pick closes it.
+  if (oldAsc !== newAsc) state.ascOpen = !!newAsc;
 
   // Asc-driven invalidations:
   //   * Pathfinder "Path of the Sorceress / Warrior" options live

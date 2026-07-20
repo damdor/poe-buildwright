@@ -82,6 +82,32 @@ export function fitScale(): number {
   );
 }
 
+// Smoothly pan/zoom so tree-coord (x, y) lands at the viewport centre
+// at `targetScale`. Used when the base class changes: the user should
+// land on their start emblem without losing spatial context — the
+// short ease keeps the movement legible as travel, not a teleport.
+let focusAnim: number | null = null;
+export function focusTree(x: number, y: number, targetScale: number, ms = 450): void {
+  const rect = viewport.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+  const s1 = Math.max(fitScale(), Math.min(1.0, targetScale));
+  const tx1 = rect.width  / 2 - x * s1;
+  const ty1 = rect.height / 2 - y * s1;
+  const s0 = state.scale, tx0 = state.tx, ty0 = state.ty;
+  if (focusAnim !== null) cancelAnimationFrame(focusAnim);
+  const t0 = performance.now();
+  const step = (now: number): void => {
+    const t = Math.min(1, (now - t0) / ms);
+    const e = 1 - Math.pow(1 - t, 3);         // ease-out cubic
+    state.scale = s0 + (s1 - s0) * e;
+    state.tx = tx0 + (tx1 - tx0) * e;
+    state.ty = ty0 + (ty1 - ty0) * e;
+    requestRender();
+    focusAnim = t < 1 ? requestAnimationFrame(step) : null;
+  };
+  focusAnim = requestAnimationFrame(step);
+}
+
 export function clientToTree(cx: number, cy: number): { x: number; y: number } {
   const rect = canvas.getBoundingClientRect();
   return {

@@ -12,10 +12,10 @@
 // (a tree node we'll focus on). Discriminated by `type` so the
 // keydown handler can branch on it without losing type information.
 
-import { allocModeSel, isLocked, isMcOption, state, viewport } from "./state.ts";
+import { ASC_IN_PLACE, allocModeSel, isLocked, isMcOption, state, viewport } from "./state.ts";
 import { fitToView } from "./viewport.ts";
 import { syncPulse } from "./overlay.ts";
-import { requestRender } from "./render.ts";
+import { ascOffsetX, ascOffsetY, requestRender } from "./render.ts";
 import { updatePreview } from "./pathfind.ts";
 import { doShareLink, syncModeBadge } from "./sidebar.ts";
 import { GGG_BUILD_SCHEMA, PLAN_VERSION, doExportBuild, doExportPlan, doImportBuild, doImportPlan } from "./build_io.ts";
@@ -78,19 +78,11 @@ export function focusNode(id: string): void {
   const ascName = (n as unknown as { a?: string }).a;
   if (ascName && ascName !== state.asc) return;
   const rect = viewport.getBoundingClientRect();
-  let tx = n.x, ty = n.y;
-  if (ascName) {
-    const p = TREE.asc_panels[ascName];
-    if (p) {
-      // asc_panels entries carry their own x/y offset on the source
-      // JSON; the typed TreeData only exposes the panel sprite path.
-      const panel = p as unknown as { x?: number; y?: number; p: string };
-      if (typeof panel.x === "number" && typeof panel.y === "number") {
-        tx = n.x - panel.x;
-        ty = n.y - panel.y;
-      }
-    }
-  }
+  // Focus asc nodes where they're DRAWN — ascOffset covers both the
+  // PoE2 side panel and the PoE1 in-place anchoring. In-place the
+  // circle must also be open, or the target is invisible.
+  if (ascName && ASC_IN_PLACE) state.ascOpen = true;
+  const tx = n.x + ascOffsetX(n), ty = n.y + ascOffsetY(n);
   // Use a moderately-zoomed view so the user can see surrounding nodes.
   const targetScale = Math.max(state.scale, 0.6);
   state.scale = targetScale;

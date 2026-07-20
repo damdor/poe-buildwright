@@ -6,13 +6,13 @@
 // never traverses through one — option nodes don't exist in the
 // visual tree, only as picker entries on their parent's popout.
 
-import { ASC_EFFECTS, MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, MULTI_CHOICE, MULTI_CHOICE_PARENT, countSelected, gl, isLocked, isMcOption, isMcParent, state } from "./state.ts";
+import { ASC_EFFECTS, MAX_ASC_POINTS, MAX_MAIN_POINTS, MAX_SET_POINTS, MULTI_CHOICE, MULTI_CHOICE_PARENT, ascSel, countSelected, gl, isLocked, isMcOption, isMcParent, state } from "./state.ts";
 import { maybeRebuildStaticForLocks } from "./lock_rebuild.ts";
 import { clientToTree } from "./viewport.ts";
 import { STRIDE_FLOATS, makeVAO } from "./webgl_setup.ts";
 import { Tint, pushArcD, pushLineSegD } from "./vertex_helpers.ts";
 import { tessellateEdgesTexturedFromList } from "./overlay.ts";
-import { POPOUT_FRAME_SIZE, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
+import { POPOUT_FRAME_SIZE, ascButtonHit, popoutOptionCenter, popoutOptionsFor, requestRender } from "./render.ts";
 import { computePathAccumulation, findHoverNode, refreshTooltip } from "./hover.ts";
 import { effectiveActiveSet, updateSelectionUI } from "./sidebar.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
@@ -826,6 +826,23 @@ export function updatePreview(): void {
 export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; alt?: boolean; meta?: boolean; ctrl?: boolean }): void {
   mods = mods || {};
   const t = clientToTree(cx, cy);
+
+  // Ascendancy plaque (PoE1 in-place): clicking toggles the circle.
+  // With no ascendancy picked yet there's nothing to show — nudge the
+  // user at the sidebar dropdown instead of silently no-opping.
+  if (ascButtonHit(t.x, t.y)) {
+    if (state.asc) {
+      state.ascOpen = !state.ascOpen;
+      state.selDirty = true;         // sel-edge split is per-visibility
+      updatePreview();
+      requestRender();
+    } else {
+      window.PoE2Plan?.flash?.('Pick an ascendancy in the sidebar to open its circle');
+      ascSel?.focus();
+    }
+    return;
+  }
+
   const id = findHoverNode(t.x, t.y);
 
   // Early-out for clicks that won't mutate the tree at all. Without

@@ -327,20 +327,19 @@ export function render(): void {
     }
     // Ascendancy plaque for the selected class at GGG's buttonPoint
     // (270 out along the outward direction, rotated to face it).
+    // Three art states like skilltree.js: Pressed while the circle is
+    // open, Highlight while hovered (the little eye lights up so the
+    // plaque reads as clickable), normal otherwise.
     if (state.klass && TREE.asc_button) {
-      const start = TREE.class_markers[state.klass];
+      const pt = ascButtonPoint();
       const btn = TREE.asc_button;
-      const tex = btn ? getTex(btn.p) : null;
-      if (start && tex) {
-        const d = Math.hypot(start.x, start.y);
-        const centered = Math.abs(start.x) < 10 && Math.abs(start.y) < 10;
-        const dirX = centered ? 0 : start.x / d;
-        const dirY = centered ? 1 : -start.y / d;
-        const rot = Math.atan2(dirX, dirY);
-        const bx = start.x + 270 * Math.cos(rot + Math.PI / 2);
-        const by = start.y + 270 * Math.sin(rot + Math.PI / 2);
+      const art = state.ascOpen ? (btn.pp ?? btn.p)
+                : state.ascBtnHover ? (btn.hp ?? btn.p)
+                : btn.p;
+      const tex = getTex(art) ?? getTex(btn.p);
+      if (pt && tex) {
         const s0 = markers.length / STRIDE_FLOATS;
-        pushSpriteRot(markers, bx, by, btn.w, btn.h, Math.cos(rot), Math.sin(rot), [1, 1, 1, 1]);
+        pushSpriteRot(markers, pt.x, pt.y, btn.w, btn.h, pt.c, pt.s, [1, 1, 1, 1]);
         markerBatches.push({ tex, clipIcon: false, start: s0, count: 6 });
       }
     }
@@ -530,6 +529,10 @@ export function drawOverlays(): void {
 
 export function drawAscPanel(): void {
   if (!state.asc && !ASC_IN_PLACE) return;
+  // In-place (PoE1): the circle overlaps main-tree nodes, so — like
+  // GGG's popup — it renders only while open (plaque clicked / asc
+  // just picked). Closed = nothing of the ascendancy shows at all.
+  if (ASC_IN_PLACE && !state.ascOpen) return;
   gl.bindVertexArray(staticVAO);
   gl.uniform2f(uOffsetScale, 0, 0);
   gl.uniform2f(uTranslate, 0, 0);
@@ -802,6 +805,50 @@ export function ascAnchorInfo(): {
       s: Math.sin(rot),
     },
   };
+}
+
+// Plaque point for the SELECTED CLASS — unlike ascAnchorInfo this
+// doesn't need an ascendancy chosen (the plaque shows as soon as a
+// class is picked, inviting the click). Same outward-direction math.
+export function ascButtonPoint(): { x: number; y: number; c: number; s: number } | null {
+  if (!state.klass) return null;
+  const start = TREE.class_markers?.[state.klass];
+  if (!start) return null;
+  const d = Math.hypot(start.x, start.y);
+  const centered = Math.abs(start.x) < 10 && Math.abs(start.y) < 10;
+  const dirX = centered ? 0 : start.x / d;
+  const dirY = centered ? 1 : -start.y / d;
+  const rot = Math.atan2(dirX, dirY);
+  return {
+    x: start.x + ASC_BUTTON_DIST * Math.cos(rot + Math.PI / 2),
+    y: start.y + ASC_BUTTON_DIST * Math.sin(rot + Math.PI / 2),
+    c: Math.cos(rot),
+    s: Math.sin(rot),
+  };
+}
+
+// Is a tree-coord point on the plaque? Circle test with the plaque's
+// half-width — generous like GGG's Clickable image bounds, and the
+// slack keeps the eye ornament (which pokes past the art box toward
+// the medallion) inside the hit area.
+export function ascButtonHit(tx: number, ty: number): boolean {
+  if (!ASC_IN_PLACE || !TREE.asc_button) return false;
+  const pt = ascButtonPoint();
+  if (!pt) return false;
+  const r = Math.max(TREE.asc_button.w, TREE.asc_button.h) / 2;
+  return (tx - pt.x) ** 2 + (ty - pt.y) ** 2 < r * r;
+}
+
+// Centre + radius of the OPEN ascendancy circle (in-place mode) — the
+// art overlaps main-tree nodes, so hit-testing needs to know the
+// occluded disc: skilltree.js foreachClickable skips main nodes
+// within classArtRadius of the popup centre.
+export function ascCircleInfo(): { x: number; y: number; r: number } | null {
+  if (!ASC_IN_PLACE || !state.ascOpen || !state.asc) return null;
+  const info = ascAnchorInfo();
+  const panel = TREE.asc_panels[state.ascVariant ?? state.asc];
+  if (!info || !panel) return null;
+  return { x: info.dx + panel.x, y: info.dy + panel.y, r: panel.h / 2 };
 }
 
 export function ascOffsetX(n: TreeNode): number {

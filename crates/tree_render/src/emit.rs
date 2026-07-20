@@ -644,14 +644,31 @@ pub(crate) fn build_tree_data(
         }
         // Ascendancy plaque drawn at GGG's buttonPoint (270 world
         // units out from the class start, rotated to face outward).
+        // Three states, same as skilltree.js: normal / Highlight
+        // (hovered) / Pressed (circle open).
         if let Some(sp) = sprite_lookup(sprites, "AscendancyButton") {
             let _ = write!(
                 out,
-                r#","asc_button":{{"p":{},"w":{},"h":{}}}"#,
+                r#","asc_button":{{"p":{},"w":{},"h":{}"#,
                 json_str(&format!("/assets/sprites/{}", sp.png)),
                 sp.w,
                 sp.h,
             );
+            if let Some(hv) = sprite_lookup(sprites, "AscendancyButtonHighlight") {
+                let _ = write!(
+                    out,
+                    r#","hp":{}"#,
+                    json_str(&format!("/assets/sprites/{}", hv.png)),
+                );
+            }
+            if let Some(pr) = sprite_lookup(sprites, "AscendancyButtonPressed") {
+                let _ = write!(
+                    out,
+                    r#","pp":{}"#,
+                    json_str(&format!("/assets/sprites/{}", pr.png)),
+                );
+            }
+            out.push('}');
         }
     }
     out.push_str(r#","asc_panels":{"#);
