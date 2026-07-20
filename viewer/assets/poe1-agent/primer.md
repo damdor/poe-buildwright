@@ -1,7 +1,8 @@
-# PoE1 (3.26) tree primer for agents
+# PoE1 tree primer for agents
 
-This deployment also plans the ORIGINAL Path of Exile's passive tree at
-`/planner-poe1.html`. It is tree-only: class + ascendancy + a passive
+This deployment also plans the ORIGINAL Path of Exile's passive tree
+(current league data — see build_meta.json's patch field for the
+exact version) at `/planner-poe1.html`. It is tree-only: class + ascendancy + a passive
 route. No gems, gear, jewel socketing, or mastery-effect picking here
 (those are PoE2-planner features). The `#agent=` URL contract is the
 same one documented in /llms.txt — hand the user
@@ -70,7 +71,7 @@ lists to cluster.
   about routes yourself.
 - /assets/poe1-agent/examples/index.json — two known-good plans
   modeled on popular poe.ninja Mirage-league builds, validated against
-  this 3.26 tree: an RF Chieftain (armour/regen archetype) and a
+  this deployment's tree: an RF Chieftain (armour/regen archetype) and a
   Kinetic Blast Deadeye (evasion archetype). Imitate their shape.
 - There is no server-side /agent/validate for PoE1 yet — the `#agent=`
   import is forgiving: unknown names are skipped and reported in-page.

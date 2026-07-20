@@ -4628,17 +4628,50 @@ fn arg_value(args: &[String], name: &str) -> Option<String> {
     None
 }
 
+/// The tree version the passive-skill-tree page declares (e.g.
+/// "3.28.0k"): scan for `version: '<digits...>'`. This is the page's
+/// own metadata — the ONE honest label for what the embed contains.
+fn poe1_page_version(html: &str) -> Option<String> {
+    let mut rest = html;
+    while let Some(i) = rest.find("version: '") {
+        let after = &rest[i + "version: '".len()..];
+        if let Some(end) = after.find('\'') {
+            let v = &after[..end];
+            if v.len() < 24
+                && v.starts_with(|c: char| c.is_ascii_digit())
+                && v.contains('.')
+                && v.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+            {
+                return Some(v.to_string());
+            }
+        }
+        rest = &rest[i + 10..];
+    }
+    None
+}
+
 pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
-    let label = arg_value(args, "--label").unwrap_or_else(|| "current".into());
-    let out_dir = ctx.root.join(format!("data/parsed/poe1_{label}"));
-    let tree_dir = out_dir.join("tree");
-    std::fs::create_dir_all(&tree_dir).map_err(|e| e.to_string())?;
+    // Label discipline: the dataset label IS the tree version, and the
+    // page tells us the version — a hand-passed --label used to be
+    // trusted blindly, which is how a July fetch of the live (3.28)
+    // tree shipped labeled "3.26". Rules:
+    //   * live fetch, no --label   → label = the page's own version
+    //   * live fetch + --label     → must MATCH the page, else error
+    //   * --json (offline) + --label → trusted verbatim (no page to
+    //     check against; the output notes it's unverified)
+    //   * --json without --label   → error (nothing to derive from)
+    let label_arg = arg_value(args, "--label");
+    let json_arg = arg_value(args, "--json");
 
     // 1. Obtain the JSON: --json <file> or fetch the live page.
-    let raw = if let Some(p) = arg_value(args, "--json") {
-        std::fs::read_to_string(&p).map_err(|e| format!("read {p}: {e}"))?
+    let (raw_html, label) = if json_arg.is_some() {
+        let Some(label) = label_arg else {
+            return Err("--json needs an explicit --label (an offline file carries no version marker)".into());
+        };
+        ui::note(ctx.style, &format!("offline --json: label \"{label}\" is UNVERIFIED"));
+        (None, label)
     } else {
-        let page_path = out_dir.join("page.html");
+        let page_path = ctx.root.join("data/parsed/.poe1_page.tmp.html");
         let status = std::process::Command::new("curl")
             .args(["-fsSL", "--retry", "3", "-A",
                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "-o"])
@@ -4650,6 +4683,29 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             return Err("fetching the passive-skill-tree page failed".into());
         }
         let html = std::fs::read_to_string(&page_path).map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&page_path);
+        let Some(version) = poe1_page_version(&html) else {
+            return Err("page has no `version: '<x.y…>'` marker — pass --label after checking the page by hand".into());
+        };
+        let label = match label_arg {
+            Some(l) if l != version => {
+                return Err(format!(
+                    "--label {l} does not match the page's own version {version} — drop --label (it self-labels) or pass the real version"
+                ));
+            }
+            _ => version.clone(),
+        };
+        ui::note(ctx.style, &format!("page declares tree version {version}"));
+        (Some(html), label)
+    };
+    let out_dir = ctx.root.join(format!("data/parsed/poe1_{label}"));
+    let tree_dir = out_dir.join("tree");
+    std::fs::create_dir_all(&tree_dir).map_err(|e| e.to_string())?;
+
+    let raw = if let Some(p) = &json_arg {
+        std::fs::read_to_string(p).map_err(|e| format!("read {p}: {e}"))?
+    } else {
+        let html = raw_html.expect("live path always has the page html");
         let marker = "var passiveSkillTreeData = ";
         let start = html
             .find(marker)
@@ -4685,7 +4741,6 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         };
         let json_text = html[start..start + end].to_string();
         std::fs::write(out_dir.join("tree.json"), &json_text).map_err(|e| e.to_string())?;
-        let _ = std::fs::remove_file(&page_path);
         json_text
     };
     let tree = json::parse(&raw).map_err(|e| format!("tree JSON: {e}"))?;

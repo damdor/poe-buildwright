@@ -8,12 +8,13 @@ event/bloodline ascendancies present in the data are also deferred.
 ## Pipeline (fully CLI, no hand fixing)
 
 ```
-./bw poe1-tree --label 3.26        # fetch + shape the official tree
-./bw poe1-sprites --label 3.26     # fetch + slice the official atlases
-./bw manifest --patch poe1_3.26    # hash everything (same contract as PoE2)
-./bw verify   --patch poe1_3.26    # integrity + referential ship gate
+./bw poe1-tree                     # fetch + shape; SELF-LABELS from
+                                   # the page's own version marker
+./bw poe1-sprites --label <ver>    # fetch + slice the official atlases
+./bw manifest --patch poe1_<ver>   # hash everything (same contract as PoE2)
+./bw verify   --patch poe1_<ver>   # integrity + referential ship gate
 ./bw render \
-  --tree-dir data/parsed/poe1_3.26/tree \
+  --tree-dir data/parsed/poe1_<ver>/tree \
   --output viewer/planner-poe1.html \
   --title "PoE1 Passive Tree" \
   --agent-subdir poe1-agent --game poe1
@@ -23,9 +24,12 @@ event/bloodline ascendancies present in the data are also deferred.
 tree_render, so the agent sidecars regenerate with every bake — never
 call tree_render directly for a shipped page.
 
-`poe1-tree` fetches `pathofexile.com/passive-skill-tree` itself and
-brace-matches the `passiveSkillTreeData` embed (pass `--json` to reuse
-an already-fetched copy offline). `poe1-sprites` needs the saved
+`poe1-tree` fetches `pathofexile.com/passive-skill-tree` itself,
+brace-matches the `passiveSkillTreeData` embed, and LABELS THE
+DATASET FROM THE PAGE'S OWN `version:` MARKER — an explicit `--label`
+must match it or the command errors (the first ingest trusted a
+hand-passed "3.26" while fetching the live 3.28 tree). Offline
+`--json` reuse requires an explicit label and is marked unverified. `poe1-sprites` needs the saved
 `tree.json` and converts non-PNG atlases (JPG/WEBP) via macOS `sips` —
 the one platform-specific step in the import.
 
@@ -55,7 +59,7 @@ the one platform-specific step in the import.
   from flags + adjacency — never hardcoded per ascendancy. Covers
   Ascendant's six class picks, the Reliquarian displays, Assassin's
   Assassination Style, and the event ascendancies alike (16 parents
-  in 3.26). tree_render bakes them as TREE.multi_choice; the planner's
+  in 3.28.0k). tree_render bakes them as TREE.multi_choice; the planner's
   popout/zero-cost/icon-overlay machinery (shared with PoE2) runs off
   that map, and parent↔option edges are excluded from every render
   path (options are picked, never pathed).
@@ -112,7 +116,7 @@ the official tree.json — re-run it after any rebake.
   pathofexile.com. Ours: `attr_totals.ts`, which derives the sums by
   parsing the shipped stats text ("+N to X", "+N to X and Y", "+N to
   all Attributes") — verified equal to the embed's grantedStrength/
-  Dexterity/Intelligence for all 3337 nodes of 3.26.
+  Dexterity/Intelligence for all 3337 nodes of the embed.
 - Mastery edges never render (structural only), same as PoE2.
 
 ## Page isolation (`--game poe1` descriptor)
@@ -124,7 +128,7 @@ the official tree.json — re-run it after any rebake.
 - `ascInPlace`: the in-place ascendancy presentation above.
 - budgets 123 main + 8 ascendancy; storage namespaced to
   `poe1-planner:*`; agent assets under `/assets/poe1-agent`; the
-  wizard patch badge reads that dir (shows "PoE1 3.26").
+  wizard patch badge reads that dir (shows "PoE1 3.28.0k").
 - First visit with no `?build=` mints a fresh build in place instead
   of bouncing to the (PoE2) landing wizard.
 - PoE2's node-id-keyed rule table `ASC_EFFECTS` is empty on

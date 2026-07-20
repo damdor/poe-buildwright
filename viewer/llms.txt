@@ -7,7 +7,8 @@ them a single URL. No login, no API key, no session.
 ## This site also plans PoE1 (original Path of Exile)
 
 Everything below is about the PoE2 planner. The same deployment also
-serves the ORIGINAL game's 3.26 passive tree at /planner-poe1.html —
+serves the ORIGINAL game's current-league passive tree at
+/planner-poe1.html —
 tree-only (no gems/gear), same #agent= URL contract. If the user asks
 for a "PoE1" / "Path of Exile 1" / league-named (Mirage, Keepers...)
 build, use:

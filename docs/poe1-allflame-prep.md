@@ -42,22 +42,21 @@ Building a "plan for 3.29 now" tree from those would mean hand-forging
 unofficial data — explicitly out of scope for this project's
 "official sources only" stance.
 
-**Labeling correction:** our `poe1_3.26` dataset was fetched from the
-live site in July 2026 — it IS the 3.28 Mirage tree (poe.ninja Mirage
-characters match it 100% node-for-node). The label is cosmetic but
-wrong; the launch re-ingest should use the real version, and ideally
-`poe1-tree` should read the version out of the page embed instead of
-trusting `--label`.
+**Labeling correction — DONE:** the dataset previously labeled
+`poe1_3.26` was the live 3.28.0k Mirage tree (poe.ninja Mirage
+characters match it 100% node-for-node). `poe1-tree` now self-labels
+from the page's own `version:` marker and errors on a mismatching
+`--label`; the dataset ships as `poe1_3.28.0k`.
 
 ## Launch-day play (the actual opportunity)
 
 The pipeline is ready TODAY; the whole 3.29 ingest is:
 
 ```
-./bw poe1-tree --label 3.29      # fetch the fresh embed
-./bw poe1-sprites --label 3.29   # new atlases (Luminary art etc.)
-./bw manifest --patch poe1_3.29 && ./bw verify --patch poe1_3.29
-./bw render --tree-dir data/parsed/poe1_3.29/tree ... --game poe1
+./bw poe1-tree                    # self-labels from the page (3.29.x)
+./bw poe1-sprites --label <ver>   # new atlases (Luminary art etc.)
+./bw manifest --patch poe1_<ver> && ./bw verify --patch poe1_<ver>
+./bw render --tree-dir data/parsed/poe1_<ver>/tree ... --game poe1
 scripts/deploy.sh
 ```
 
