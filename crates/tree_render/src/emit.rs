@@ -369,6 +369,21 @@ pub(crate) fn build_tree_data(
             {
                 ts.frame = sp.w as f64;
             }
+            // GGG's renderer draws NO skill icon/frame on class-start
+            // nodes (`if(node.classStartIndex!==undefined)return;`) —
+            // the center<class> emblem is their art. Ascendancy-start
+            // nodes draw the AscendancyMiddle hub but NO icon
+            // (`spriteName=null`). We were painting the node's stat
+            // icon (an attribute / "damage" glyph) in the middle of
+            // every start emblem and every ascendancy circle.
+            match n.kind.as_str() {
+                "class_start" => {
+                    ts.icon = 0.0;
+                    ts.frame = 0.0;
+                }
+                "asc_start" => ts.icon = 0.0,
+                _ => {}
+            }
         }
         let frame_off_url = off_name
             .as_ref()
