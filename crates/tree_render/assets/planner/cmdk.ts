@@ -13,6 +13,7 @@
 // keydown handler can branch on it without losing type information.
 
 import { ASC_IN_PLACE, allocModeSel, isLocked, isMcOption, state, viewport } from "./state.ts";
+import { featureOn } from "./game.ts";
 import { fitToView } from "./viewport.ts";
 import { syncPulse } from "./overlay.ts";
 import { ascOffsetX, ascOffsetY, requestRender } from "./render.ts";
@@ -29,6 +30,10 @@ export interface CmdkActionItem {
   sub: string;
   tag: string;
   match: string;
+  /** Game feature this action needs (featureOn name). Actions without
+   *  one are game-agnostic. Filtered at palette build so poe1 pages
+   *  never surface poe2-only verbs the sidebar chrome already hides. */
+  feature?: string;
   run: () => void;
 }
 export interface CmdkNodeItem {
@@ -121,11 +126,11 @@ export function refreshCmdkResults(q: string): void {
       sub: "New clicks land in the regular passive budget", tag: "main",
       match: "main regular passive switch mode",
       run: () => setAllocationMode("main") },
-    { type: "action", key: "mode-set1", label: "Allocation mode → Weapon Set 1",
+    { type: "action", key: "mode-set1", feature: "weaponSets", label: "Allocation mode → Weapon Set 1",
       sub: "New clicks consume a weapon-swap point (set 1, pink)", tag: "set1",
       match: "set 1 set1 weapon swap pink",
       run: () => setAllocationMode("set1") },
-    { type: "action", key: "mode-set2", label: "Allocation mode → Weapon Set 2",
+    { type: "action", key: "mode-set2", feature: "weaponSets", label: "Allocation mode → Weapon Set 2",
       sub: "New clicks consume a weapon-swap point (set 2, green)", tag: "set2",
       match: "set 2 set2 weapon swap green",
       run: () => setAllocationMode("set2") },
@@ -133,7 +138,7 @@ export function refreshCmdkResults(q: string): void {
       sub: "Reset zoom to show every node", tag: "view",
       match: "fit view zoom reset",
       run: () => { fitToView(); closeCmdk(); } },
-    { type: "action", key: "add-skill", label: "Add skill to this snapshot…",
+    { type: "action", key: "add-skill", feature: "skills", label: "Add skill to this snapshot…",
       sub: "Open the skill-gem socket editor (active + supports + notes)", tag: "skills",
       match: "add skill gem socket support new",
       run: () => { closeCmdk(); document.getElementById("ss-add")?.click(); } },
@@ -169,12 +174,12 @@ export function refreshCmdkResults(q: string): void {
       sub: "Controls, shortcuts, and planner concepts", tag: "view",
       match: "help shortcuts controls keys how what",
       run: () => { closeCmdk(); document.getElementById("help-badge")?.click(); } },
-    { type: "action", key: "export-build", label: "Export .build (for in-game Build Planner)",
+    { type: "action", key: "export-build", feature: "share", label: "Export .build (for in-game Build Planner)",
       sub: "GGG schema v" + GGG_BUILD_SCHEMA + " — passive tree slice (passives + ascendancy + weapon_set)",
       tag: "export",
       match: "export build file ggg in-game planner share download",
       run: () => { closeCmdk(); doExportBuild(); } },
-    { type: "action", key: "share-link", label: "Copy share link",
+    { type: "action", key: "share-link", feature: "share", label: "Copy share link",
       sub: "Compress + encode the current plan into a URL fragment; pastes anywhere",
       tag: "export",
       match: "share link url copy code pob clipboard",
@@ -189,7 +194,7 @@ export function refreshCmdkResults(q: string): void {
       tag: "export",
       match: "export plan save internal backup",
       run: () => { closeCmdk(); doExportPlan(); } },
-    { type: "action", key: "import-build", label: "Import .build file…",
+    { type: "action", key: "import-build", feature: "share", label: "Import .build file…",
       sub: "Load a GGG-format build into the planner",
       tag: "import",
       match: "import build load file open",
@@ -201,6 +206,7 @@ export function refreshCmdkResults(q: string): void {
       run: () => { closeCmdk(); doImportPlan(); } },
   ];
   for (const a of actions) {
+    if (a.feature && !featureOn(a.feature)) continue;
     if (!q || a.match.includes(q) || a.label.toLowerCase().includes(q)) {
       cmdkItems.push(a);
     }

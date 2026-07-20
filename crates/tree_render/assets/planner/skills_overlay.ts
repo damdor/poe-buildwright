@@ -8,12 +8,13 @@
 // Writes go through window.PoE2Plan.data.commit(skills, 'skills'),
 // so the snapshot timeline + .build run-collapse export Just Work.
 // ============================================================================
+import { featureOn } from "./game.ts";
 import { spiritCapAt, state } from "./state.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
 import type { Skill } from "../../../../types/shared.d.ts";
 
 // Tree-only games ship no skills/spirit UI either.
-const SKILLS_ON = window.PoE2Game?.features?.skills !== false;
+const SKILLS_ON = featureOn("skills");
 if (!SKILLS_ON) {
   document.getElementById('skills-strip')?.remove();
   document.getElementById('skill-popover')?.remove();

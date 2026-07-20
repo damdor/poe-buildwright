@@ -1,6 +1,11 @@
 // ============================================================================
 // === Image preloading =====================================================
 // ============================================================================
+// game.ts is the one import this module allows itself — it's a
+// zero-import leaf, so pulling it here (before state.ts loads) can't
+// disturb the _main.ts load order.
+import { ASC_IN_PLACE } from "./game.ts";
+
 // imgCache holds the decoded ImageBitmap for each sprite URL until the
 // GPU texture is uploaded (uploadAllTextures). After that the GPU has
 // its own copy in texCache and we never need the bitmap again.
@@ -23,11 +28,8 @@ export function defaultClassName(): string | null {
 // fallback mapping. null = unknown → treated as shared, loads eagerly.
 // In-place asc rendering (PoE1) shows every panel at boot, so no
 // asc art can be deferred behind a class switch.
-// globalThis.window (not bare `window`): this module is imported by
-// unit tests under deno 2, where the window global no longer exists.
-const IN_PLACE = globalThis.window?.PoE2Game?.features?.ascInPlace === true;
 function classOfAsc(asc: string): string | null {
-  if (IN_PLACE) return null;
+  if (ASC_IN_PLACE) return null;
   for (const c of TREE.classes) if (c.asc.includes(asc)) return c.name;
   const parent = TREE.asc_variants?.[asc]?.parent;
   if (parent) for (const c of TREE.classes) if (c.asc.includes(parent)) return c.name;
