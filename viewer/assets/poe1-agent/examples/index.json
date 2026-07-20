@@ -1,7 +1,7 @@
 {
   "format": "poe1-agent-examples",
   "version": 1,
-  "note": "Known-good PoE1 agent plans for this deployment (planner-poe1.html#agent=<base64url JSON>). Both are modeled on popular poe.ninja Mirage-league builds and validated against the 3.26 tree. Fetch by url; imitate the shape.",
+  "note": "Known-good PoE1 agent plans for this deployment (planner-poe1.html#agent=<base64url JSON>). Both are modeled on popular poe.ninja Mirage-league builds and validated against this deployment\u2019s tree. Fetch by url; imitate the shape.",
   "examples": [
     {
       "id": "rf-chieftain",

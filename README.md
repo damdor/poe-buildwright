@@ -5,7 +5,7 @@ Exile 2 — and the original Path of Exile's passive tree** — rendered
 with the games' own art. PoE2 gets the full toolkit: skill gems with
 real per-level numbers, gear, leveling snapshots, a scrubable
 timeline, a typeset Build Guide, and `.build` files the game reads
-directly. PoE1 gets its real 3.26 tree with GGG-exact presentation
+directly. PoE1 gets its real current-league tree with GGG-exact presentation
 (in-place ascendancy circles, attribute totals, pick-one notables),
 planned from the same one-page planner.
 
