@@ -425,6 +425,27 @@ export function updateSelectionUI(): void {
     selList.appendChild(liSum);
   }
 
+  // Jewel sockets: how many jewel-socket nodes the tree has picked up.
+  // A socket holds a jewel that can swing a build hard, so surfacing
+  // the count (like the attribute summary above) tells the author how
+  // much jewel budget they've opened. Both games have kind==='jewel'
+  // socket nodes. Ascendancy sockets count too (they're real sockets).
+  let jewelSockets = 0;
+  for (const id of state.selected.keys()) {
+    if (TREE.nodes[id]?.k === 'jewel') jewelSockets++;
+  }
+  if (jewelSockets > 0) {
+    const liJ = document.createElement('li');
+    liJ.className = 'alloc-attr-sum';
+    liJ.innerHTML =
+      '<div class="alloc-body">' +
+        '<div class="alloc-name"><span class="alloc-attr-label">Jewel sockets</span></div>' +
+        '<div class="alloc-attr-pills"><span class="attr-pill jewel" title="Passive jewel sockets allocated — each holds a jewel">' +
+          jewelSockets + ' socket' + (jewelSockets === 1 ? '' : 's') + '</span></div>' +
+      '</div>';
+    selList.appendChild(liJ);
+  }
+
   // Accumulated stat summary — replaces the per-node row list. Same
   // pattern as the attribute pills above: anything that stacks gets
   // summed; unique lines render as-is. Not a PoB replacement, just

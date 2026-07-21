@@ -227,9 +227,14 @@ fn run() -> Result<(), String> {
         "poe1" => concat!(
             "{\"id\":\"poe1\",\"agentBase\":\"/assets/poe1-agent\",",
             "\"budgets\":{\"main\":123,\"asc\":8},",
-            "\"features\":{\"gear\":false,\"skills\":false,\"jewels\":false,",
+            // skills ON with the socket-link model (support count comes
+            // from the item slot's sockets, not PoE2 spirit); catalogue
+            // + gem art live in the poe1-agent namespace.
+            "\"features\":{\"gear\":false,\"skills\":true,\"jewels\":false,",
             "\"spirit\":false,\"weaponSets\":false,\"share\":false,",
-            "\"ascInPlace\":true}}",
+            "\"ascInPlace\":true},",
+            "\"socketModel\":\"links\",",
+            "\"catalogueBase\":\"/assets/poe1-agent\"}",
         )
         .to_string(),
         _ => "{\"id\":\"poe2\"}".to_string(),
@@ -778,7 +783,7 @@ fn run() -> Result<(), String> {
     } else {
         assets_dir.join(&args.agent_subdir).join("build_meta.json")
     };
-    let meta = build_meta_json(&classes, &canvas, &patch, &source, &sprites);
+    let meta = build_meta_json(&classes, &canvas, &patch, &source, &sprites, &args.game);
     fs::write(&meta_path, meta).map_err(|e| format!("writing {}: {e}", meta_path.display()))?;
     eprintln!(
         "Build wizard metadata → {} (patch={}, source={})",

@@ -10,6 +10,7 @@
 // ============================================================================
 import { featureOn } from "./game.ts";
 import { spiritCapAt, state } from "./state.ts";
+import { CATALOGUE_BASE, SOCKET_MODEL } from "./game.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
 import type { Skill } from "../../../../types/shared.d.ts";
 
@@ -54,10 +55,35 @@ if (SKILLS_ON) {
     level: number;
     quality: number;
     set: 'main' | 'set1' | 'set2';
+    slot: string;
     note: string;
     supports: SupportDraft[];
   }
   type SetTag = 'main' | 'set1' | 'set2';
+
+  // PoE1 links model: item slots and their MAXIMUM socket count. A
+  // linked group holds one active + (sockets-1) supports. These are
+  // stable game facts (max white-socket counts); the special 1-socket
+  // bases (Unset Ring, Black Sun Crest) are offered as their own slot.
+  // Verified against GGG's ItemClasses/BaseItemTypes in dat.
+  const SLOT_SOCKETS: Array<{ id: string; label: string; sockets: number }> = [
+    { id: 'body',   label: 'Body Armour (6)',      sockets: 6 },
+    { id: 'twohand',label: 'Two-Handed Weapon (6)', sockets: 6 },
+    { id: 'helmet', label: 'Helmet (4)',           sockets: 4 },
+    { id: 'gloves', label: 'Gloves (4)',           sockets: 4 },
+    { id: 'boots',  label: 'Boots (4)',            sockets: 4 },
+    { id: 'onehand',label: 'One-Handed / Shield (3)', sockets: 3 },
+    { id: 'unset',  label: 'Unset Ring (1)',       sockets: 1 },
+    { id: 'unsetamu', label: 'Unset Amulet (1)',    sockets: 1 },
+  ];
+  const socketsOfSlot = (id: string): number =>
+    SLOT_SOCKETS.find(x => x.id === id)?.sockets ?? 6;
+  // Max supports for the current draft. Links model → slot sockets − 1
+  // (the active gem takes one socket); spirit model → PoE2's flat 5.
+  function maxSupports(): number {
+    if (SOCKET_MODEL === 'links' && draft) return Math.max(0, socketsOfSlot(draft.slot) - 1);
+    return 5;
+  }
 
   const stripEl    = document.getElementById('skills-strip')  as HTMLElement;
   const listEl     = document.getElementById('ss-list')       as HTMLElement;
@@ -72,6 +98,10 @@ if (SKILLS_ON) {
   const popLevel   = document.getElementById('sp-level')      as HTMLSelectElement;
   const popSupports = document.getElementById('sp-supports')  as HTMLElement;
   const popSetTabs = document.getElementById('sp-set-tabs')   as HTMLElement;
+  const popSlotSel = document.getElementById('sp-slot')       as HTMLSelectElement | null;
+  const popSlotSec = document.getElementById('sp-slot-section') as HTMLElement | null;
+  const popSupLabel = document.getElementById('sp-supports-label') as HTMLElement | null;
+  const popSetSec  = popSetTabs?.closest('.sp-section') as HTMLElement | null;
   const popActiveInput = document.getElementById('sp-active-input') as HTMLInputElement;
   const popActiveList  = document.getElementById('sp-active-list')  as HTMLElement;
 
@@ -102,7 +132,7 @@ if (SKILLS_ON) {
   function loadCatalogue(): Promise<Catalogue> {
     if (catalogue) return Promise.resolve(catalogue);
     if (catalogueLoading) return catalogueLoading;
-    catalogueLoading = fetch('/assets/skill_catalogue.json')
+    catalogueLoading = fetch(CATALOGUE_BASE + '/skill_catalogue.json')
       .then(r => r.ok ? r.json() : Promise.reject('catalogue fetch ' + r.status))
       .then((raw: unknown) => {
         const data = raw as Catalogue;
@@ -539,12 +569,13 @@ if (SKILLS_ON) {
           quality: s.quality || 0,
           set: (s.set as SetTag) || 'main',
           note: s.note || '',
+          slot: s.slot || 'body',
           supports: (s.supports || []).map(x => ({
             id: x.id || '', level: x.level || 1, quality: x.quality || 0, note: x.note || ''
           })),
         };
       } else {
-        draft = { id: '', level: 1, quality: 0, set: 'main', note: '', supports: [] };
+        draft = { id: '', level: 1, quality: 0, set: 'main', slot: 'body', note: '', supports: [] };
       }
       expandedSupportIdx = -1;
       renderPopover();
@@ -587,6 +618,27 @@ if (SKILLS_ON) {
     for (const tab of popSetTabs.querySelectorAll<HTMLElement>('.sp-set-tab')) {
       tab.classList.toggle('is-active', tab.dataset.set === draft.set);
     }
+    // Links model (PoE1): show the item-slot selector, hide the
+    // weapon-set section (no weapon-set points in PoE1). Populate the
+    // slot dropdown from SLOT_SOCKETS and reflect the draft's slot.
+    if (SOCKET_MODEL === 'links' && popSlotSel && popSlotSec) {
+      if (!popSlotSel.options.length) {
+        for (const sl of SLOT_SOCKETS) {
+          const opt = document.createElement('option');
+          opt.value = sl.id; opt.textContent = sl.label;
+          popSlotSel.appendChild(opt);
+        }
+      }
+      popSlotSel.value = draft.slot;
+      popSlotSec.hidden = false;
+      if (popSetSec) popSetSec.hidden = true;
+    }
+    // Support label reflects the real cap.
+    if (popSupLabel) {
+      const cap = maxSupports();
+      popSupLabel.innerHTML = 'Support Skill Gems <span class="sp-muted">(optional, up to '
+        + cap + ')</span>';
+    }
     // Supports — pill rows; click a pill to expand into a combobox.
     popSupports.innerHTML = '';
     for (let i = 0; i < draft.supports.length; i++) {
@@ -600,7 +652,7 @@ if (SKILLS_ON) {
     const last = draft.supports[draft.supports.length - 1];
     const lastIsEmptyExpanded = last && !last.id
       && expandedSupportIdx === draft.supports.length - 1;
-    if (draft.supports.length < 5 && !lastIsEmptyExpanded) {
+    if (draft.supports.length < maxSupports() && !lastIsEmptyExpanded) {
       const addLi = document.createElement('li');
       const addBtnEl = document.createElement('button');
       addBtnEl.type = 'button';
@@ -877,7 +929,7 @@ if (SKILLS_ON) {
   // ---------------------------------------------------------------
   interface SkillEntry {
     id: string; level: number; quality: number; set: SetTag;
-    note?: string; supports?: SupportDraft[];
+    slot?: string; note?: string; supports?: SupportDraft[];
   }
   function applyDraft(): void {
     if (!draft || !window.PoE2Plan) return;
@@ -893,6 +945,7 @@ if (SKILLS_ON) {
       id: draft.id, level: draft.level, quality: draft.quality || 0,
       set: draft.set,
     };
+    if (SOCKET_MODEL === 'links') entry.slot = draft.slot;
     if (draft.note && draft.note.trim()) entry.note = draft.note.trim();
     if (draft.supports.length > 0) entry.supports = draft.supports;
     if (editingIdx >= 0) skills[editingIdx] = entry;
@@ -939,6 +992,15 @@ if (SKILLS_ON) {
   popCancel.addEventListener('click', closePopover);
   popApply.addEventListener('click', applyDraft);
   popRemove.addEventListener('click', removeDraft);
+  popSlotSel?.addEventListener('change', () => {
+    if (!draft) return;
+    draft.slot = popSlotSel.value;
+    // Shrinking the slot may over-fill supports — trim the tail so the
+    // saved skill never exceeds its slot's sockets.
+    const cap = maxSupports();
+    if (draft.supports.length > cap) draft.supports.length = cap;
+    renderPopover();
+  });
   popSetTabs.addEventListener('click', (e) => {
     const tab = (e.target as HTMLElement | null)?.closest<HTMLElement>('.sp-set-tab');
     if (!tab || !draft) return;

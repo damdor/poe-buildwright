@@ -73,6 +73,7 @@ pub(crate) fn build_meta_json(
     patch: &str,
     source: &str,
     sprites: &HashMap<String, Sprite>,
+    game: &str,
 ) -> String {
     let mut out = String::with_capacity(2048);
     out.push('{');
@@ -123,29 +124,50 @@ pub(crate) fn build_meta_json(
     // ascendancies, falling back to the big illustration art.
     out.push_str(r#","portraits":{"#);
     let mut first_p = true;
-    for p in &canvas.portraits {
-        let face_key = format!(
-            "Face{}",
-            p.name
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric())
-                .collect::<String>()
-        );
-        let sp = sprite_lookup(sprites, &face_key)
-            .or_else(|| sprite_lookup(sprites, &p.image));
-        let Some(sp) = sp else {
-            continue;
-        };
-        if !first_p {
-            out.push(',');
+    if game == "poe1" {
+        // PoE1: the real character illustrations extracted by
+        // `buildwright poe1-portraits` (BaseClassIllustrations — faces,
+        // not tree-panel art), one PNG per display name. Every class +
+        // ascendancy name gets one (Scion group falls back to the
+        // medallion inside that command), so emit by name uniformly;
+        // index_page's <img onerror> degrades if any file is absent.
+        for p in &canvas.portraits {
+            if !first_p {
+                out.push(',');
+            }
+            first_p = false;
+            let _ = write!(
+                out,
+                "{}:{}",
+                json_str(&p.name),
+                json_str(&format!("/assets/poe1-agent/portraits/{}.png", p.name)),
+            );
         }
-        first_p = false;
-        let _ = write!(
-            out,
-            "{}:{}",
-            json_str(&p.name),
-            json_str(&format!("/assets/sprites/{}", sp.png)),
-        );
+    } else {
+        for p in &canvas.portraits {
+            let face_key = format!(
+                "Face{}",
+                p.name
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric())
+                    .collect::<String>()
+            );
+            let sp = sprite_lookup(sprites, &face_key)
+                .or_else(|| sprite_lookup(sprites, &p.image));
+            let Some(sp) = sp else {
+                continue;
+            };
+            if !first_p {
+                out.push(',');
+            }
+            first_p = false;
+            let _ = write!(
+                out,
+                "{}:{}",
+                json_str(&p.name),
+                json_str(&format!("/assets/sprites/{}", sp.png)),
+            );
+        }
     }
     out.push('}');
     out.push('}');
@@ -1058,8 +1080,12 @@ pub(crate) fn render_canvas_html(
           <button type="button" data-set="set2" class="sp-set-tab">Weapon Set 2</button>
         </div>
       </section>
+      <section class="sp-section" id="sp-slot-section" hidden>
+        <label class="sp-label" for="sp-slot">Item Slot <span class="sp-muted">(sockets bound the support count)</span></label>
+        <select class="sp-level" id="sp-slot" aria-label="Item slot"></select>
+      </section>
       <section class="sp-section">
-        <label class="sp-label">Support Skill Gems <span class="sp-muted">(optional, up to 5)</span></label>
+        <label class="sp-label" id="sp-supports-label">Support Skill Gems <span class="sp-muted">(optional, up to 5)</span></label>
         <ol id="sp-supports" class="sp-supports"></ol>
       </section>
       <section class="sp-section">
