@@ -36,6 +36,35 @@ use std::time::Duration;
 
 /// PoE2 patch server (LibGGPK3 `PatchClient.cs` endpoints).
 pub const PATCH_SERVER: &str = "patch.pathofexile2.com:13060";
+/// PoE1 patch server — same handshake protocol, its own host
+/// (verified live 2026-07-20 → https://patch.poecdn.com/3.28.0.15/).
+pub const POE1_PATCH_SERVER: &str = "patch.pathofexile.com:12995";
+
+/// Which game's CDN/schema universe a pipeline call operates in. The
+/// formats (bundles, .datc64, .csd, DDS) are identical; the patch
+/// server, cache namespace, and schema `validFor` filter differ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Game {
+    Poe1,
+    Poe2,
+}
+
+impl Game {
+    pub fn patch_server(self) -> &'static str {
+        match self {
+            Game::Poe1 => POE1_PATCH_SERVER,
+            Game::Poe2 => PATCH_SERVER,
+        }
+    }
+    /// Cache subdirectory — the two games' CDN trees must never share
+    /// a cache (same relative paths, different content + versions).
+    pub fn cache_name(self) -> &'static str {
+        match self {
+            Game::Poe1 => "cdn-poe1",
+            Game::Poe2 => "cdn",
+        }
+    }
+}
 
 /// The two-byte "get patch info" request, protocol version 6.
 const PATCH_REQUEST: [u8; 2] = [0x01, 0x06];
@@ -181,12 +210,19 @@ impl CdnClient {
     /// Resolve the current patch and return a client caching under
     /// `~/.cache/poe-buildwright/cdn/` (or `$XDG_CACHE_HOME`).
     pub fn connect() -> Result<Self, FetchError> {
+        Self::connect_for(Game::Poe2)
+    }
+
+    /// Game-parameterized connect: handshake that game's patch server
+    /// and cache under its own namespace.
+    pub fn connect_for(game: Game) -> Result<Self, FetchError> {
         let cache_root = std::env::var_os("XDG_CACHE_HOME")
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
             .unwrap_or_else(|| PathBuf::from(".cache"))
-            .join("poe-buildwright/cdn");
-        Ok(Self::new(patch_info()?, &cache_root))
+            .join("poe-buildwright")
+            .join(game.cache_name());
+        Ok(Self::new(patch_info_from(game.patch_server())?, &cache_root))
     }
 
     /// Fetch a game-relative path (e.g. `Bundles2/_.index.bin`) into
