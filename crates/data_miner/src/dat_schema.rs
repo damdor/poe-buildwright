@@ -52,6 +52,12 @@ pub struct SchemaSet {
 impl SchemaSet {
     /// Parse a `schema.min.json` document.
     pub fn from_json(src: &str) -> Result<Self, SchemaError> {
+        Self::from_json_for(src, crate::fetch::Game::Poe2)
+    }
+
+    /// Game-aware variant: the schema file carries BOTH games' tables
+    /// (validFor 1 = PoE1, 2 = PoE2, 3 = shared).
+    pub fn from_json_for(src: &str, game: crate::fetch::Game) -> Result<Self, SchemaError> {
         let root = json::parse(src).map_err(SchemaError::Json)?;
         let version = root.get("version").and_then(|v| v.as_i64()).unwrap_or(0);
         let tables_v = root
@@ -59,13 +65,18 @@ impl SchemaSet {
             .and_then(|v| v.as_array())
             .ok_or(SchemaError::Shape("no `tables` array"))?;
 
-        // name -> (validFor, schema); keep validFor==2 over ==3 on clash.
+        // name -> (validFor, schema); keep the game-exclusive variant
+        // (validFor == this game) over the shared one (== 3) on clash.
+        let exclusive: i64 = match game {
+            crate::fetch::Game::Poe1 => 1,
+            crate::fetch::Game::Poe2 => 2,
+        };
         let mut chosen: HashMap<String, (i64, TableSchema)> = HashMap::new();
 
         for t in tables_v {
             let valid_for = t.get("validFor").and_then(|v| v.as_i64()).unwrap_or(0);
-            if valid_for != 2 && valid_for != 3 {
-                continue; // PoE1-only
+            if valid_for != exclusive && valid_for != 3 {
+                continue; // the other game's exclusive tables
             }
             let name = t
                 .get("name")
@@ -104,8 +115,9 @@ impl SchemaSet {
 
             let schema = TableSchema::new(columns);
             match chosen.get(&name) {
-                // A PoE2-specific def already won; don't overwrite with a shared one.
-                Some((2, _)) => {}
+                // A game-exclusive def already won; don't overwrite
+                // with the shared one.
+                Some((v, _)) if *v == exclusive => {}
                 _ => {
                     chosen.insert(name, (valid_for, schema));
                 }

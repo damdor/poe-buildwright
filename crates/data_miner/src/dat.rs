@@ -425,19 +425,39 @@ pub fn autofit(data: &[u8], schema: &TableSchema) -> Option<TableSchema> {
     };
     let actual = (boundary - 4) / rc;
     let cur = schema.row_width();
-    if actual <= cur || actual - cur > 16 {
-        return None;
+    if actual > cur && actual - cur <= 128 {
+        // Schema BEHIND the live table: pad trailing unknown columns
+        // with unnamed bytes. Cap generous — only trailing bytes are
+        // added and Dat::parse re-validates every offset, so a wrong
+        // boundary can't slip through. (PoE1's BaseItemTypes is 48B
+        // wider than the community schema's named columns.)
+        let mut cols = schema.columns.clone();
+        for _ in 0..(actual - cur) {
+            cols.push(Column::unnamed(ColumnType::U8));
+        }
+        let fixed = TableSchema::new(cols);
+        return if Dat::parse(data, &fixed).is_ok() { Some(fixed) } else { None };
     }
-    let mut cols = schema.columns.clone();
-    for _ in 0..(actual - cur) {
-        cols.push(Column::unnamed(ColumnType::U8));
+    if actual < cur && cur - actual <= 128 {
+        // Schema AHEAD of the live table (the community schema tracks
+        // the newest patch of each game; an older live table can be
+        // narrower): drop trailing columns until we fit, then pad the
+        // remainder with unnamed bytes. Only TRAILING columns are ever
+        // dropped — if a shaper needs one of them by name it fails
+        // loudly with MissingColumn instead of misreading offsets.
+        let mut cols = schema.columns.clone();
+        let mut width = cur;
+        while width > actual {
+            let last = cols.pop()?;
+            width -= last.width();
+        }
+        for _ in 0..(actual - width) {
+            cols.push(Column::unnamed(ColumnType::U8));
+        }
+        let fixed = TableSchema::new(cols);
+        return if Dat::parse(data, &fixed).is_ok() { Some(fixed) } else { None };
     }
-    let fixed = TableSchema::new(cols);
-    if Dat::parse(data, &fixed).is_ok() {
-        Some(fixed)
-    } else {
-        None
-    }
+    None
 }
 
 /// Decode a NUL-terminated UTF-16LE string starting at `off` in `var`.
