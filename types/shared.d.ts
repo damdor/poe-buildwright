@@ -52,6 +52,7 @@ export interface Skill {
   level: number;                        // gem level 1-20+
   quality?: number;                     // gem quality 0-20
   set?: "main" | "set1" | "set2";
+  slot?: string;                        // PoE1 links model: item slot (helmet/body/…) that bounds support count
   note?: string;                        // optional gem note
   supports?: SupportGem[];              // attached support gems
   level_interval?: [number, number];    // transient — only on .build-import normalize stage
@@ -339,6 +340,12 @@ declare global {
       agentBase?: string;
       budgets?: { main?: number; asc?: number };
       features?: Record<string, boolean>;
+      /** Base URL for skill_catalogue.json / gem art. Default /assets;
+       *  PoE1 uses /assets/poe1-agent (its own catalogue namespace). */
+      catalogueBase?: string;
+      /** How the support-gem count is bounded: "spirit" (PoE2 spirit
+       *  reservation) or "links" (PoE1 item-slot socket count). */
+      socketModel?: "spirit" | "links";
     };
     PoE2Plan?: PoE2PlanAPI;
     PoE2SliderDebug?: PoE2SliderDebugAPI;

@@ -428,6 +428,41 @@ USAGE
         run: crate::handlers::poe1_sprites,
     },
     Command {
+        name: "poe1-gem-icons",
+        group: Group::Data,
+        badge: Badge::Native,
+        summary: "Extract PoE1 gem/support inventory art (DDS → PNG)",
+        help: "\
+buildwright poe1-gem-icons — gem inventory art for the skills overlay
+
+Reads the shaped skills/gems.tsv icon_dds paths, pulls each .dds from
+PoE1's patch CDN, decodes with the in-repo DDS codec, and writes PNGs
+to /assets/poe1-agent/gem_icons/. The catalogue's icon field points
+here. Run after `shape gems --patch poe1_<ver>`.
+
+USAGE
+    buildwright poe1-gem-icons [--patch poe1_<ver>]",
+        run: crate::handlers::poe1_gem_icons,
+    },
+    Command {
+        name: "poe1-portraits",
+        group: Group::Data,
+        badge: Badge::Native,
+        summary: "Extract PoE1 character portraits (base + ascendancy faces)",
+        help: "\
+buildwright poe1-portraits — real character illustrations for build cards
+
+Pulls GGG's own Art/2DArt/BaseClassIllustrations (the in-game class +
+ascendancy character art, faces and all), centre-crops + downscales
+each, and writes PNGs to /assets/poe1-agent/portraits/ keyed by
+display name. build_meta's portraits map points here. Scion + its
+ascendancies fall back to the centre medallion.
+
+USAGE
+    buildwright poe1-portraits [--patch poe1_<ver>]",
+        run: crate::handlers::poe1_portraits,
+    },
+    Command {
         name: "verify",
         group: Group::Data,
         badge: Badge::Native,
