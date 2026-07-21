@@ -1,5 +1,20 @@
 {
   "datasets": {
+    "skills/active_skills.tsv": {
+      "bytes": 469706,
+      "rows": 1919,
+      "sha256": "e156befac69150221e5cda4add6c3fb5f83df8a5ff90d6d5c11dc23485c9452b"
+    },
+    "skills/gems.tsv": {
+      "bytes": 144113,
+      "rows": 840,
+      "sha256": "90fb339a4835d4e6f63667aeb05ef542aa03871268a9bb3510abb94371e47530"
+    },
+    "skills/support_skills.tsv": {
+      "bytes": 80745,
+      "rows": 453,
+      "sha256": "d2c213dfb35c28f3c9b1eacbccbc9f04e06f42bd45931d42b0f2b96bc489fc3f"
+    },
     "tree.json": {
       "bytes": 6522692,
       "rows": null,
@@ -28,7 +43,7 @@
   },
   "generated_by": "buildwright",
   "patch": "poe1.3.28.0k",
-  "rollup": "39b7fbb427a7504e796da731727043e9fd83f27e7e0962463a317bb4abde16f9",
+  "rollup": "142caa557166bdf11fe350a295052e00f18229a3bac1b7e18265461c4a765f9b",
   "schema_version": 2,
   "source": "pathofexile.com/passive-skill-tree (3.28.0k)"
 }

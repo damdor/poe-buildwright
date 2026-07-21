@@ -351,16 +351,23 @@ pub fn shape_gems(ts: &TableSet) -> Result<String, ShapeError> {
         ss.column(n)
             .ok_or(ShapeError::MissingColumn("SkillGems", n))
     };
-    let c_base = scol("BaseItemType")?;
+    // Column names drift between the games' schema variants — resolve
+    // with the PoE2 name first, the PoE1 alias second, and treat the
+    // concepts PoE1 doesn't have (GemType enum, Tier, MinLevelReq) as
+    // optional with documented fallbacks.
+    let scol_any = |names: &[&'static str]| names.iter().find_map(|n| ss.column(n));
+    let c_base = scol_any(&["BaseItemType", "BaseItemTypesKey"])
+        .ok_or(ShapeError::MissingColumn("SkillGems", "BaseItemType"))?;
     let c_str = scol("StrengthRequirementPercent")?;
     let c_dex = scol("DexterityRequirementPercent")?;
     let c_int = scol("IntelligenceRequirementPercent")?;
     let c_colour = scol("GemColour")?;
-    let c_type = scol("GemType")?;
-    let c_tier = scol("Tier")?;
-    let c_minlvl = scol("MinLevelReq")?;
+    let c_type = ss.column("GemType");             // PoE2 only
+    let c_tier = ss.column("Tier");                // PoE2 only
+    let c_minlvl = ss.column("MinLevelReq");       // PoE2 only; PoE1 falls back to the base item's DropLevel
     let c_vaal = scol("IsVaalVariant")?;
-    let c_effects = scol("GemEffects")?;
+    let c_effects = scol_any(&["GemEffects", "GemVariants"])
+        .ok_or(ShapeError::MissingColumn("SkillGems", "GemEffects"))?;
 
     let bit = ts
         .dat("BaseItemTypes")
@@ -372,10 +379,14 @@ pub fn shape_gems(ts: &TableSet) -> Result<String, ShapeError> {
         bs.column(n)
             .ok_or(ShapeError::MissingColumn("BaseItemTypes", n))
     };
+    let bcol_any = |names: &[&'static str]| names.iter().find_map(|n| bs.column(n));
     let b_id = bcol("Id")?;
     let b_name = bcol("Name")?;
-    let b_tags = bcol("Tags")?;
+    // PoE1 names the tags foreignrow `TagsKeys`; PoE2 uses `Tags`.
+    let b_tags = bcol_any(&["Tags", "TagsKeys"])
+        .ok_or(ShapeError::MissingColumn("BaseItemTypes", "Tags"))?;
     let b_iv = bcol("ItemVisualIdentity")?;
+    let b_drop = bs.column("DropLevel");   // min-level fallback (PoE1)
     // Gem inventory art: BaseItemType → ItemVisualIdentity.DDSFile
     // (resolves for 100% of gems — the audit-proven chain).
     let iv = ts.dat("ItemVisualIdentity");
@@ -485,15 +496,27 @@ pub fn shape_gems(ts: &TableSet) -> Result<String, ShapeError> {
             _ => (String::new(), String::new(), String::new(), String::new()),
         };
         let colour = sg.i32(row, c_colour).unwrap_or(0);
+        // Min level: PoE2 reads SkillGems.MinLevelReq; PoE1 has no such
+        // column, so fall back to the gem ITEM's DropLevel (the level
+        // the gem becomes obtainable — the same meaning consumers use).
+        let min_level = match c_minlvl {
+            Some(c) => g(sg.i32(row, c).map(|v| v.to_string())),
+            None => match (sg.foreign(row, c_base), b_drop) {
+                (Ok(Some(br)), Some(bd)) => {
+                    g(bit.i32(br as usize, bd).map(|v| v.to_string()))
+                }
+                _ => String::new(),
+            },
+        };
         let fields = [
             id,
             name,
             tags,
             colour.to_string(),
             gem_colour_name(colour).to_string(),
-            g(sg.i32(row, c_type).map(|v| v.to_string())),
-            g(sg.i32(row, c_tier).map(|v| v.to_string())),
-            g(sg.i32(row, c_minlvl).map(|v| v.to_string())),
+            c_type.map(|c| g(sg.i32(row, c).map(|v| v.to_string()))).unwrap_or_default(),
+            c_tier.map(|c| g(sg.i32(row, c).map(|v| v.to_string()))).unwrap_or_default(),
+            min_level,
             g(sg.i32(row, c_str).map(|v| v.to_string())),
             g(sg.i32(row, c_dex).map(|v| v.to_string())),
             g(sg.i32(row, c_int).map(|v| v.to_string())),
@@ -548,9 +571,14 @@ pub fn shape_active_skills(ts: &TableSet) -> Result<String, ShapeError> {
     let c_name = col("DisplayedName")?;
     let c_desc = col("Description")?;
     let c_types = col("ActiveSkillTypes")?;
-    let c_wreq = col("WeaponRequirements")?;
     let c_manual = col("IsManuallyCasted")?;
-    let c_hidden = col("HideOnWebsite")?;
+    // Weapon restriction and the website-hide flag differ between the
+    // games (PoE1 restricts by ItemClasses foreignrow; PoE2 has a
+    // dedicated WeaponRequirements table + HideOnWebsite). Neither is
+    // needed for the socket/support UX — resolve optionally, empty
+    // when absent.
+    let c_wreq = sa.column("WeaponRequirements");
+    let c_hidden = sa.column("HideOnWebsite");
 
     let type_ids = ts.id_list("ActiveSkillType");
     let wreq_ids = ts.id_list("ActiveSkillWeaponRequirement");
@@ -569,9 +597,9 @@ pub fn shape_active_skills(ts: &TableSet) -> Result<String, ShapeError> {
     );
     let g = |r: Result<String, crate::dat::DatError>| r.unwrap_or_default();
     for row in 0..a.row_count() {
-        let weapon_req = match a.foreign(row, c_wreq) {
-            Ok(Some(rid)) => wreq_ids.get(rid as usize).cloned().unwrap_or_default(),
-            _ => String::new(),
+        let weapon_req = match c_wreq.and_then(|c| a.foreign(row, c).ok().flatten()) {
+            Some(rid) => wreq_ids.get(rid as usize).cloned().unwrap_or_default(),
+            None => String::new(),
         };
         let granted_effect_id = ge_by_active
             .get(&(row as u64))
@@ -585,7 +613,7 @@ pub fn shape_active_skills(ts: &TableSet) -> Result<String, ShapeError> {
             resolve_array(&a, row, c_types, &type_ids),
             weapon_req,
             g(a.bool(row, c_manual).map(|b| b.to_string())),
-            g(a.bool(row, c_hidden).map(|b| b.to_string())),
+            c_hidden.map(|c| g(a.bool(row, c).map(|b| b.to_string()))).unwrap_or_default(),
             "active".to_string(),
             granted_effect_id,
         ];

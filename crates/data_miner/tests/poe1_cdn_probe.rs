@@ -9,17 +9,14 @@
 //!   cargo test -p data_miner --test poe1_cdn_probe -- --ignored --nocapture
 
 use data_miner::bundle_decode;
-use data_miner::fetch::{patch_info_from, CdnClient};
+use data_miner::fetch::{patch_info_from, CdnClient, Game, POE1_PATCH_SERVER};
 use data_miner::index::Index;
-
-/// PoE1 patch server (LibGGPK3 PatchClient endpoints — verified live
-/// 2026-07-20: returns e.g. https://patch.poecdn.com/3.28.0.15/).
-const POE1_PATCH_SERVER: &str = "patch.pathofexile.com:12995";
 
 #[test]
 #[ignore = "network probe — run explicitly with --ignored --nocapture"]
 fn poe1_cdn_serves_the_gem_tables() {
     let info = patch_info_from(POE1_PATCH_SERVER).expect("poe1 patch handshake");
+    assert_eq!(POE1_PATCH_SERVER, Game::Poe1.patch_server());
     eprintln!("poe1 cdn base : {}", info.cdn_base);
     eprintln!("poe1 version  : {}", info.version);
 

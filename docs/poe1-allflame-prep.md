@@ -120,6 +120,35 @@ GROUND-TRUTHED 2026-07-20 (tests/poe1_cdn_probe.rs, run it with
    sockets; a build typically runs one 6-link + several 4-links. Gate
    with `featureOn("skills")` flipping on for poe1 when the catalogue
    ships, exactly like the game-split rules in poe1-tree.md.
+## Step 2 status: PoE1 skill data pipeline — LANDED (2026-07-21)
+
+The data half is done and verified against the live 3.28.0k CDN. No
+new shaper code — the PoE2 shapers run on PoE1 data via a `Game` enum
+(fetch.rs) that swaps the patch server + cache namespace, plus a
+`validFor`-aware schema mode (dat_schema.rs). Column-name drift is
+absorbed with documented aliases in the shapers (e.g. SkillGems
+`BaseItemTypesKey`/`GemVariants`, BaseItemTypes `TagsKeys`), and
+optional columns for concepts PoE1 lacks (GemType/Tier/MinLevelReq →
+DropLevel fallback; PoE2's WeaponRequirements table). `autofit` gained
+a shrink path for when the community schema runs ahead of a live
+table (PoE1 BaseItemTypes is 48B wider by named-column count).
+
+Flow (poe1 datasets keep their `poe1_<label>` dir, no `_native`):
+
+```
+./bw shape gems          --patch poe1_3.28.0k
+./bw shape active_skills  --patch poe1_3.28.0k
+./bw shape support_skills --patch poe1_3.28.0k
+./bw catalogues           --patch poe1_3.28.0k   # → viewer/assets/poe1-agent/skill_catalogue.json
+./bw manifest --patch poe1_3.28.0k && ./bw verify --patch poe1_3.28.0k
+```
+
+Output: 683-gem catalogue with tag strings, colour, req level/attrs,
+and the support require/exclude skill-type lists the compat filter
+needs — same schema as PoE2's, in PoE1's own asset namespace. Gem
+ICON extraction + the skills OVERLAY (slot-based socket budgets) are
+the next commit (Stage C).
+
 4. Sequencing: 3.29 tree ingest (launch day) → miner poe1 endpoint →
    gems.tsv/supports shaping + verify gates → skills_overlay
    enablement behind the feature flag → gear later.
