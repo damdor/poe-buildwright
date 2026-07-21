@@ -986,11 +986,21 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         }
     };
 
+    // The patch prefix IS the game selector: poe1_* datasets pull
+    // from PoE1's patch CDN with the schema's validFor==1 variants —
+    // same formats, same shapers, different universe.
+    let game = if patch.starts_with("poe1_") {
+        data_miner::fetch::Game::Poe1
+    } else {
+        data_miner::fetch::Game::Poe2
+    };
     let schema_path = dat_schema_path(ctx)?;
-    let set =
-        SchemaSet::from_json(&std::fs::read_to_string(&schema_path).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
-    let client = CdnClient::connect().map_err(|e| e.to_string())?;
+    let set = SchemaSet::from_json_for(
+        &std::fs::read_to_string(&schema_path).map_err(|e| e.to_string())?,
+        game,
+    )
+    .map_err(|e| e.to_string())?;
+    let client = CdnClient::connect_for(game).map_err(|e| e.to_string())?;
     let index = load_index(&client)?;
     let paths = resolve_table_paths(&index)?;
 
@@ -1050,10 +1060,19 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         _ => unreachable!(),
     };
 
+    // PoE1 datasets live in `poe1_<label>` (established by poe1-tree);
+    // PoE2's convention is `<patch>_native`. Keep shaped output in the
+    // SAME dir as that game's tree so manifest/verify/catalogues see
+    // one patch dir.
+    let parsed_dir = if game == data_miner::fetch::Game::Poe1 {
+        patch.clone()
+    } else {
+        format!("{patch}_native")
+    };
     let out_path = ctx
         .root
         .join("data/parsed")
-        .join(format!("{patch}_native"))
+        .join(parsed_dir)
         .join(out_rel);
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -3312,8 +3331,22 @@ fn json_arr(cell: &str) -> json::Value {
 pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let patch = resolve_patch(ctx, args)?;
     let parsed = ctx.root.join("data/parsed").join(&patch);
-    let assets = ctx.root.join("viewer/assets");
-    let patch_label = patch.trim_end_matches("_native").replace('_', ".");
+    // Per-game asset namespace: PoE1's catalogue lives under
+    // /assets/poe1-agent/ (its own planner fetches from there), so it
+    // never clobbers PoE2's /assets/skill_catalogue.json. Same schema,
+    // different source + destination — the game-parameterized data
+    // abstraction the pipeline uses everywhere.
+    let is_poe1 = patch.starts_with("poe1_");
+    let assets = if is_poe1 {
+        ctx.root.join("viewer/assets/poe1-agent")
+    } else {
+        ctx.root.join("viewer/assets")
+    };
+    let patch_label = if is_poe1 {
+        patch.replacen("poe1_", "poe1.", 1)
+    } else {
+        patch.trim_end_matches("_native").replace('_', ".")
+    };
     let idx = |h: &[String], name: &str| h.iter().position(|c| c == name);
 
     // ---- Skill catalogue (gems ⋈ granted skill) ----
@@ -3515,6 +3548,17 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     std::fs::write(assets.join("skill_catalogue.json"), json::emit_pretty(&json::Value::Object(skill)) + "\n")
         .map_err(|e| e.to_string())?;
+
+    // PoE1 ships the skill catalogue only for now — uniques/bases/grants
+    // (the item catalogue + agent base grounding below) are the gear
+    // step and aren't shaped for PoE1 yet.
+    if is_poe1 {
+        ui::ok(
+            ctx.style,
+            &format!("poe1 skill catalogue: {gem_count} gems → {}", assets.join("skill_catalogue.json").display()),
+        );
+        return Ok(());
+    }
 
     // ---- Item catalogue (uniques ⋈ base ⋈ unique_art) ----
     // Unique inventory art is first-party (UniqueStashLayout → Words →
