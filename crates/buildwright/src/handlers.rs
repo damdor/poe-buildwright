@@ -3410,16 +3410,21 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     let mut gems: Vec<json::Value> = Vec::with_capacity(grows.len());
     for r in &grows {
-        // GGG marks dev/unreleased gems with a literal "[DNT-UNUSED]"
-        // name prefix (Do Not Translate). They're real table rows but
-        // not obtainable; the picker must never offer them. (The old
-        // PoB-derived catalogue filtered these upstream — keep parity.)
+        // GGG marks dev/unreleased gems with a bracketed prefix — PoE2
+        // uses "[DNT-UNUSED]" (Do Not Translate), PoE1 uses "[UNUSED]".
+        // They're real table rows but not obtainable, and their art is
+        // stale (cut PoE1 gems point at other gems' icons — [UNUSED]
+        // Blitz shows Quake art), so the picker must never offer them.
         // Template entries ("Companion: {0}", "Spectre: {0}") are
         // parameterized runtime names, equally un-referenceable — the
         // fresh-agent audit flagged them as hallucination bait.
         let name = get(r, g_name);
         if name.starts_with("[DNT")
+            || name.starts_with("[UNUSED")
             || name.trim().is_empty()
+            // Placeholder names with no letters at all — GGG ships cut
+            // skills like Combo Strike with the literal name "..." .
+            || !name.chars().any(|c| c.is_alphabetic())
             || name.contains("{0}")
             || name == "Coming Soon"
             || name == "Removed Skill"
@@ -3486,10 +3491,15 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         if icon_dds.is_empty() {
             m.insert("icon".into(), json::Value::Null);
         } else {
-            m.insert(
-                "icon".into(),
-                json::Value::Str(format!("/assets/sprites/{}.png", sprite_safe_name(&icon_dds))),
-            );
+            // Per-game icon namespace: PoE1's gem art lives under
+            // /assets/poe1-agent/gem_icons/ (buildwright poe1-gem-icons);
+            // PoE2's is in the shared sprite dir (buildwright sprites).
+            let icon_url = if is_poe1 {
+                format!("/assets/poe1-agent/gem_icons/{}.png", sprite_safe_name(&icon_dds))
+            } else {
+                format!("/assets/sprites/{}.png", sprite_safe_name(&icon_dds))
+            };
+            m.insert("icon".into(), json::Value::Str(icon_url));
         }
         m.insert("gem_icon".into(), json::Value::Null);
         // Display parts (stat-set labels): what the skill consists of —
@@ -5206,5 +5216,226 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     std::fs::write(out_dir.join("tree/sprites.tsv"), &out).map_err(|e| e.to_string())?;
     ui::ok(ctx.style, &format!("poe1 sprites: {count} sliced → viewer/assets/sprites (poe1_*)"));
+    Ok(())
+}
+
+/// Composite a PoE1 active-gem strip into its inventory icon: a wide
+/// [symbol | gap | gem] sheet becomes one square by alpha-compositing
+/// the leftmost cell (the skill symbol) over the rightmost cell (the
+/// coloured gem crystal) — exactly what the game shows in the socket.
+fn composite_gem_strip(w: u32, h: u32, rgba: &[u8]) -> (u32, u32, Vec<u8>) {
+    let (w, h) = (w as usize, h as usize);
+    let gem_x0 = w - h; // right cell (gem)
+    let mut out = vec![0u8; h * h * 4];
+    for y in 0..h {
+        for x in 0..h {
+            let gi = (y * w + gem_x0 + x) * 4; // gem (dst)
+            let si = (y * w + x) * 4; // symbol (src)
+            let (sr, sg, sb, sa) = (rgba[si] as f32, rgba[si + 1] as f32, rgba[si + 2] as f32, rgba[si + 3] as f32 / 255.0);
+            let (dr, dg, db, da) = (rgba[gi] as f32, rgba[gi + 1] as f32, rgba[gi + 2] as f32, rgba[gi + 3] as f32 / 255.0);
+            let oa = sa + da * (1.0 - sa);
+            let o = (y * h + x) * 4;
+            if oa > 0.0 {
+                out[o] = ((sr * sa + dr * da * (1.0 - sa)) / oa) as u8;
+                out[o + 1] = ((sg * sa + dg * da * (1.0 - sa)) / oa) as u8;
+                out[o + 2] = ((sb * sa + db * da * (1.0 - sa)) / oa) as u8;
+            }
+            out[o + 3] = (oa * 255.0) as u8;
+        }
+    }
+    (h as u32, h as u32, out)
+}
+
+/// Extract PoE1 gem/support inventory art (DDS → PNG) for the skills
+/// overlay. Reads the shaped `skills/gems.tsv` icon_dds column, pulls
+/// each `.dds` from PoE1's patch CDN (Game::Poe1), decodes with the
+/// in-repo DDS codec, and writes PNGs to /assets/poe1-agent/gem_icons/.
+/// The catalogue's per-gem icon field points here (set by `catalogues`
+/// for poe1 patches). Idempotent; skips a gem whose art is absent.
+pub fn poe1_gem_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    let patch = resolve_patch(ctx, args)?;
+    if !patch.starts_with("poe1_") {
+        return Err("poe1-gem-icons is a PoE1 command — pass --patch poe1_<ver>".into());
+    }
+    let gems_path = ctx
+        .root
+        .join("data/parsed")
+        .join(&patch)
+        .join("skills/gems.tsv");
+    let text = std::fs::read_to_string(&gems_path)
+        .map_err(|e| format!("read {} (run `shape gems` first): {e}", gems_path.display()))?;
+    let hdr: Vec<&str> = text.lines().next().unwrap_or("").split('\t').collect();
+    let ic = hdr
+        .iter()
+        .position(|h| *h == "icon_dds")
+        .ok_or("gems.tsv missing icon_dds column")?;
+    let nc = hdr.iter().position(|h| *h == "name");
+    // Unique DDS paths (many gems share art across quality/alt variants).
+    // Skip dev/unreleased gems — same filter the catalogue applies:
+    // their art is stale (cut PoE1 gems point at other gems' icons), so
+    // extracting it would ship 11 wrong PNGs the catalogue never uses.
+    let mut ddses: BTreeSet<String> = BTreeSet::new();
+    for line in text.lines().skip(1) {
+        let cols: Vec<&str> = line.split('\t').collect();
+        if let Some(n) = nc.and_then(|i| cols.get(i))
+            && (n.starts_with("[DNT") || n.starts_with("[UNUSED"))
+        {
+            continue;
+        }
+        if let Some(v) = cols.get(ic)
+            && !v.is_empty()
+        {
+            ddses.insert(v.to_string());
+        }
+    }
+    ui::note(ctx.style, &format!("{} distinct gem icons", ddses.len()));
+
+    let client = CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
+    let index = load_index(&client)?;
+    let out_dir = ctx.root.join("viewer/assets/poe1-agent/gem_icons");
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+
+    let mut cache: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    let (mut ok, mut missing) = (0usize, 0usize);
+    for dds in &ddses {
+        let low = dds.to_ascii_lowercase();
+        let bytes = match extract_cached(&client, &index, &low, &mut cache) {
+            Ok(b) => b,
+            Err(_) => {
+                missing += 1;
+                continue;
+            }
+        };
+        let img = match data_miner::dds::decode(&bytes) {
+            Ok(i) => i,
+            Err(e) => {
+                ui::warn(ctx.style, &format!("{dds}: {e} — skipped"));
+                missing += 1;
+                continue;
+            }
+        };
+        // PoE1 ACTIVE gem art (Art/2DItems/Gems/*.dds) is a wide
+        // 3-cell strip [skill symbol | gap | coloured gem]; the game
+        // composites the symbol over the gem for the inventory icon.
+        // Reproduce that: overlay the left cell on the right cell into
+        // one square. Support gems already ship a single square icon —
+        // pass them through unchanged.
+        let (ow, oh, opx) = if img.width >= img.height * 2 {
+            composite_gem_strip(img.width, img.height, &img.rgba)
+        } else {
+            (img.width, img.height, img.rgba)
+        };
+        let png = data_miner::png::encode_rgba(ow, oh, &opx);
+        let name = format!("{}.png", sprite_safe_name(dds));
+        std::fs::write(out_dir.join(&name), &png).map_err(|e| format!("write {name}: {e}"))?;
+        ok += 1;
+    }
+    ui::ok(
+        ctx.style,
+        &format!("poe1 gem icons: {ok} extracted{} → /assets/poe1-agent/gem_icons",
+            if missing > 0 { format!(", {missing} missing") } else { String::new() }),
+    );
+    Ok(())
+}
+
+/// Crop a centred square from an RGBA image and box-downscale it to
+/// `target` px. Used for character-illustration → card portrait: the
+/// centre square (side = min dim) reliably contains the character even
+/// when GGG framed them off-centre, and the face sits in its upper
+/// portion (the card biases toward the top via CSS object-position).
+fn crop_square_downscale(w: u32, h: u32, rgba: &[u8], target: u32) -> (u32, Vec<u8>) {
+    let (w, h) = (w as usize, h as usize);
+    let side = w.min(h);
+    let (ox, oy) = ((w - side) / 2, (h - side) / 2);
+    let t = (target as usize).min(side);
+    let mut out = vec![0u8; t * t * 4];
+    // Box average: each output pixel averages a src_box × src_box region.
+    for ty in 0..t {
+        for tx in 0..t {
+            let (sx0, sy0) = (ox + tx * side / t, oy + ty * side / t);
+            let (sx1, sy1) = (ox + (tx + 1) * side / t, oy + (ty + 1) * side / t);
+            let (mut r, mut g, mut b, mut a, mut n) = (0u32, 0u32, 0u32, 0u32, 0u32);
+            for sy in sy0..sy1.max(sy0 + 1) {
+                for sx in sx0..sx1.max(sx0 + 1) {
+                    let i = (sy * w + sx) * 4;
+                    r += rgba[i] as u32; g += rgba[i + 1] as u32;
+                    b += rgba[i + 2] as u32; a += rgba[i + 3] as u32; n += 1;
+                }
+            }
+            let n = n.max(1);
+            let o = (ty * t + tx) * 4;
+            out[o] = (r / n) as u8; out[o + 1] = (g / n) as u8;
+            out[o + 2] = (b / n) as u8; out[o + 3] = (a / n) as u8;
+        }
+    }
+    (t as u32, out)
+}
+
+/// Extract PoE1 character portraits (base classes + ascendancies) from
+/// GGG's own `Art/2DArt/BaseClassIllustrations` — the real in-game
+/// character illustrations, not the tree-panel art. One PNG per display
+/// name at /assets/poe1-agent/portraits/, centre-cropped + downscaled,
+/// which build_meta's portraits map points at. Scion and its
+/// ascendancies (Ascendant/Reliquarian) have no corner illustration —
+/// they fall back to the centerscion medallion.
+pub fn poe1_portraits(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    let patch = resolve_patch(ctx, args)?;
+    if !patch.starts_with("poe1_") {
+        return Err("poe1-portraits is a PoE1 command — pass --patch poe1_<ver>".into());
+    }
+    // (display name, illustration stem under BaseClassIllustrations).
+    // GGG's filenames carry historical typos (juggernaught, beserker)
+    // and old ascendancy names (Warden's art is `raider`).
+    const MAP: &[(&str, &str)] = &[
+        ("Marauder", "str"), ("Ranger", "dex"), ("Witch", "int"),
+        ("Duelist", "strdex"), ("Templar", "strint"), ("Shadow", "dexint"),
+        ("Juggernaut", "juggernaughtascendency"), ("Berserker", "beserkerascendency"),
+        ("Chieftain", "chieftainascendency"), ("Warden", "raiderascendency"),
+        ("Deadeye", "deadeyeascendency"), ("Pathfinder", "pathfinderascendency"),
+        ("Occultist", "occultistascendency"), ("Elementalist", "elementalistascendency"),
+        ("Necromancer", "necromancerascendency"), ("Slayer", "slayerascendency"),
+        ("Gladiator", "gladiatorascendency"), ("Champion", "championascendency"),
+        ("Inquisitor", "inquisitorascendency"), ("Hierophant", "hierophantascendency"),
+        ("Guardian", "guardianascendency"), ("Assassin", "assassinascendency"),
+        ("Trickster", "tricksterascendency"), ("Saboteur", "saboteurascendency"),
+    ];
+    // No illustration → the Scion medallion (its own in-game centre art).
+    const SCION_FALLBACK: &[&str] = &["Scion", "Ascendant", "Reliquarian"];
+    const TARGET: u32 = 384;
+
+    let client = CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
+    let index = load_index(&client)?;
+    let out_dir = ctx.root.join("viewer/assets/poe1-agent/portraits");
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let mut cache: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    let mut ok = 0usize;
+    let mut extract = |stem: &str| -> Option<data_miner::dds::Image> {
+        let path = format!("art/2dart/baseclassillustrations/{stem}.dds");
+        let bytes = extract_cached(&client, &index, &path, &mut cache).ok()?;
+        data_miner::dds::decode(&bytes).ok()
+    };
+    for (name, stem) in MAP {
+        let Some(img) = extract(stem) else {
+            ui::warn(ctx.style, &format!("{name}: illustration {stem} missing — skipped"));
+            continue;
+        };
+        let (side, px) = crop_square_downscale(img.width, img.height, &img.rgba, TARGET);
+        let png = data_miner::png::encode_rgba(side, side, &px);
+        std::fs::write(out_dir.join(format!("{name}.png")), &png).map_err(|e| e.to_string())?;
+        ok += 1;
+    }
+    // Scion medallion fallback for the 3 Scion-related entries.
+    let scion = std::fs::read(ctx.root.join("viewer/assets/sprites/poe1_centerscion.png")).ok();
+    if let Some(bytes) = scion
+        && let Ok((w, h, rgba)) = data_miner::png::decode_rgba(&bytes)
+    {
+        let (side, px) = crop_square_downscale(w, h, &rgba, TARGET);
+        let png = data_miner::png::encode_rgba(side, side, &px);
+        for name in SCION_FALLBACK {
+            std::fs::write(out_dir.join(format!("{name}.png")), &png).map_err(|e| e.to_string())?;
+            ok += 1;
+        }
+    }
+    ui::ok(ctx.style, &format!("poe1 portraits: {ok} → /assets/poe1-agent/portraits"));
     Ok(())
 }

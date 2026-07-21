@@ -32,3 +32,11 @@ export const ASC_IN_PLACE = GAME.features?.ascInPlace === true;
 export const MAX_MAIN_POINTS = GAME.budgets?.main ?? 99;
 export const MAX_SET_POINTS  = featureOn("weaponSets") ? 24 : 0;
 export const MAX_ASC_POINTS  = GAME.budgets?.asc ?? 8;
+
+// Skill catalogue + gem-art base URL. PoE2 serves from /assets; PoE1
+// from its own /assets/poe1-agent namespace (see the --game poe1
+// descriptor).
+export const CATALOGUE_BASE = GAME.catalogueBase ?? "/assets";
+// Support-count model: "spirit" (PoE2 reservation) or "links" (PoE1
+// item-slot sockets). Drives the skills overlay's cap + chip.
+export const SOCKET_MODEL: "spirit" | "links" = GAME.socketModel === "links" ? "links" : "spirit";
