@@ -27,7 +27,7 @@ mod io;
 mod model;
 mod text;
 
-use emit::{CANVAS_CSS, build_meta_json, render_canvas_html};
+use emit::{CANVAS_CSS, build_meta_json, render_canvas_html, validate_frame_coverage};
 use io::{
     read_active_skills, read_buffs, read_edges, read_masteries, read_meta, read_nodes, read_sprites,
 };
@@ -217,6 +217,7 @@ fn run() -> Result<(), String> {
     let edges = read_edges(&args.tree_dir.join("edges.tsv"))?;
     let (canvas, classes) = read_meta(&args.tree_dir.join("meta.tsv"))?;
     let sprites = read_sprites(&args.tree_dir.join("sprites.tsv")).unwrap_or_default();
+    validate_frame_coverage(&nodes, &sprites, &args.game)?;
     let asc_overrides = io::read_asc_overrides(&args.tree_dir.join("asc_overrides.tsv"));
 
     // Complete per-game client descriptor. Every game-owned data file is

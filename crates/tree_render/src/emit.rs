@@ -2,7 +2,7 @@
 //! is a single self-contained .html file: a window.TREE blob followed
 //! by the bundled planner JS (sourced from assets/planner.js).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 
 use crate::frames::{pick_frame_names, portrait_frame_alias, target_size};
@@ -65,6 +65,69 @@ fn resolve_frame_url(
         }
     }
     None
+}
+
+/// Refuse to bake a tree whose generated sprite manifest has silently lost
+/// most of its node frames. A few bespoke GGG overlays legitimately have no
+/// matching sprite, hence the 95% threshold.
+///
+/// Main-tree and ascendancy coverage are checked independently so one
+/// complete group cannot hide a broken other group in the aggregate.
+pub(crate) fn validate_frame_coverage(
+    nodes: &[Node],
+    sprites: &HashMap<String, Sprite>,
+    game: &str,
+) -> Result<(), String> {
+    #[derive(Default)]
+    struct Coverage {
+        expected: usize,
+        resolved: usize,
+        missing: BTreeMap<String, usize>,
+    }
+
+    let mut main = Coverage::default();
+    let mut asc = Coverage::default();
+    for node in nodes {
+        if target_size(node).frame <= 0.0 {
+            continue;
+        }
+        let coverage = if node.ascendancy.is_empty() {
+            &mut main
+        } else {
+            &mut asc
+        };
+        let (off, on) = pick_frame_names(node);
+        for name in [off, on].into_iter().flatten() {
+            coverage.expected += 1;
+            if resolve_frame_sprite(sprites, &name, &node.kind).is_some() {
+                coverage.resolved += 1;
+            } else {
+                *coverage.missing.entry(name).or_default() += 1;
+            }
+        }
+    }
+
+    for (label, coverage) in [("main tree", main), ("ascendancy tree", asc)] {
+        if coverage.expected < 20 || coverage.resolved * 100 >= coverage.expected * 95 {
+            continue;
+        }
+        let mut missing: Vec<_> = coverage.missing.into_iter().collect();
+        missing.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let examples = missing
+            .into_iter()
+            .take(5)
+            .map(|(name, count)| format!("{name} ({count})"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "{game} {label} frame coverage is {}/{} ({:.1}%); missing {examples}. \
+             Regenerate the game's complete sprites.tsv before rendering",
+            coverage.resolved,
+            coverage.expected,
+            coverage.resolved as f64 * 100.0 / coverage.expected as f64,
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn build_meta_json(
@@ -1240,6 +1303,62 @@ pub(crate) fn render_canvas_html(
         tree_data = tree_data,
     );
     out
+}
+
+#[cfg(test)]
+mod frame_coverage_tests {
+    use super::*;
+
+    fn small_node(id: u32) -> Node {
+        Node {
+            id,
+            x: 0.0,
+            y: 0.0,
+            kind: "small".into(),
+            klass: String::new(),
+            ascendancy: String::new(),
+            name: format!("Node {id}"),
+            stats: String::new(),
+            group: 0,
+            orbit: 0,
+            orbit_index: 0,
+            icon: String::new(),
+            node_overlay: String::new(),
+            active_effect: String::new(),
+            node_options: String::new(),
+            connection_art: String::new(),
+            unlock_constraint: String::new(),
+            lights_mastery: Vec::new(),
+            granted: Vec::new(),
+        }
+    }
+
+    fn sprite(name: &str) -> (String, Sprite) {
+        (
+            name.into(),
+            Sprite {
+                png: format!("{name}.png"),
+                w: 64,
+                h: 64,
+            },
+        )
+    }
+
+    #[test]
+    fn frame_coverage_rejects_a_missing_common_state() {
+        let nodes: Vec<Node> = (0..20).map(small_node).collect();
+        let sprites = HashMap::from([sprite("PSSkillFrame")]);
+        let err = validate_frame_coverage(&nodes, &sprites, "poe2").unwrap_err();
+        assert!(err.contains("20/40"), "{err}");
+        assert!(err.contains("PSSkillFrameActive (20)"), "{err}");
+    }
+
+    #[test]
+    fn frame_coverage_accepts_complete_common_states() {
+        let nodes: Vec<Node> = (0..20).map(small_node).collect();
+        let sprites = HashMap::from([sprite("PSSkillFrame"), sprite("PSSkillFrameActive")]);
+        validate_frame_coverage(&nodes, &sprites, "poe2").unwrap();
+    }
 }
 
 pub(crate) const CANVAS_CSS: &str = include_str!("../assets/planner.css");

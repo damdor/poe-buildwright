@@ -136,6 +136,13 @@ if [ -z "$NODE_BIN" ]; then
 fi
 echo "==> node: $NODE_BIN ($($NODE_BIN --version))"
 
+# ---- rendered-tree frame guard ---------------------------------------------
+# planner.html is generated and intentionally gitignored. Validate the actual
+# artifact about to be uploaded, not merely the renderer source, so a stale or
+# partial sprites.tsv can never silently deploy bare node icons again.
+echo "==> Verifying planner node-frame coverage ..."
+"$NODE_BIN" scripts/verify_planner_frames.mjs
+
 # ---- agent metadata (needs node, so generated here) ------------------------
 "$NODE_BIN" scripts/gen_agent_meta.mjs --game poe2
 "$NODE_BIN" scripts/gen_agent_meta.mjs --game poe1
