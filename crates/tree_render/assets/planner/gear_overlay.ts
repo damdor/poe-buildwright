@@ -1,5 +1,5 @@
 // ============================================================================
-// === Gear strip (top-right, under skills) + edit-slot popover ==============
+// === Gear + flask strips (top-right, under skills) + shared item editor ====
 // ============================================================================
 // Per-capture equipment as author guidance, not stat math: each slot
 // carries an item NAME (a unique picked from item_catalogue.json, or
@@ -11,64 +11,74 @@
 // UniqueStashLayout, base art via BaseItemTypes→ItemVisualIdentity)
 // and GGG rarity colors; hover shows the unique's stats or the note.
 // ============================================================================
-import { featureOn } from "./game.ts";
+import {
+  CHARM_SLOTS, FLASK_SLOTS, GAME, GEAR_SLOTS, ITEM_SLOTS,
+  baseAllowedForPlannerSlot, featureOn, groundingSlot, plannerSlot,
+} from "./game.ts";
+import { loadGameAsset } from "./asset_loader.ts";
+import { canRollFamily, itemDomain } from "./item_rules.ts";
 import { state, viewport } from "./state.ts";
 import { requestRender } from "./render.ts";
 import { cascadeJewelOrphans } from "./pathfind.ts";
 import { flushPersistNow } from "./wizard_sync.ts";
 import type { Item } from "../../../../types/shared.d.ts";
 
-// Tree-only games (PoE1 step 1) ship no gear/jewel UI: pull the
-// strip + popover out of the DOM and skip the whole module, so
-// no PoE2 item state or jewel rules ever load on those pages.
+// Games may independently gate gear and jewels. Pull the gear UI out
+// only when gear itself is disabled; PoE1 enables the shared item flow
+// while keeping the separate jewel subsystem dormant.
 const GEAR_ON = featureOn("gear");
+const JEWELS_ON = featureOn("jewels");
 if (!GEAR_ON) {
   document.getElementById("gear-strip")?.remove();
+  document.getElementById("flask-strip")?.remove();
+  document.getElementById("charm-strip")?.remove();
+  document.getElementById("guide-open")?.remove();
   document.getElementById("gear-popover")?.remove();
 }
 if (GEAR_ON) {
-  interface UniqueEntry { name: string; base?: string; slot?: string; icon?: string | null; latest_stats?: string; req_level?: number; variants?: { label: string; stats: string }[]; }
+  interface UniqueEntry { name: string; base?: string; slot?: string; allowed_slots?: string[]; icon?: string | null; latest_stats?: string; req_level?: number; variants?: { label: string; stats: string }[]; }
   interface ItemCatalogue { uniques: UniqueEntry[]; }
   interface BaseEntry {
     name: string; slot?: string; class?: string; lvl?: number; icon?: string;
     str?: number; dex?: number; int?: number;
     ar?: number; ev?: number; es?: number; ward?: number; block?: number;
+    ar_range?: [number, number]; ev_range?: [number, number];
+    es_range?: [number, number]; ward_range?: [number, number];
     dmg?: [number, number]; aps?: number; crit?: number;
+    life_recovery?: number; mana_recovery?: number; recovery_seconds?: number;
+    implicits?: string[];
+    allowed_slots?: string[];
     tags?: string[];
     /** Granted while equipped (mined ItemSpirit / ModGrantedSkills):
      *  base Spirit (sceptres carry 100) and item-granted skills. */
     spirit?: number;
     grants?: string[];
   }
-  interface ModFamily { type: string; kind: string; slots: string[]; text?: string; gates?: [string, number][][]; }
+  interface ModFamily { type: string; kind: string; domains?: string[]; slots: string[]; text?: string; gates?: [string, number][][]; }
 
   // Slot board. `cat` = item_catalogue slot families the picker offers
   // for that slot; freetext is always allowed on top.
-  const WEAPON_CATS = ["bow", "crossbow", "mace", "sceptre", "spear", "staff", "wand"];
-  const OFFHAND_CATS = ["shield", "focus", "quiver"];
-  const SLOTS: { key: string; label: string; cat: string[] }[] = [
-    { key: "weapon1",  label: "Weapon 1",    cat: WEAPON_CATS },
-    { key: "offhand1", label: "Offhand 1",   cat: OFFHAND_CATS },
-    { key: "weapon2",  label: "Weapon 2",    cat: WEAPON_CATS },
-    { key: "offhand2", label: "Offhand 2",   cat: OFFHAND_CATS },
-    { key: "helmet",   label: "Helmet",      cat: ["helmet"] },
-    { key: "body",     label: "Body Armour", cat: ["body"] },
-    { key: "gloves",   label: "Gloves",      cat: ["gloves"] },
-    { key: "boots",    label: "Boots",       cat: ["boots"] },
-    { key: "amulet",   label: "Amulet",      cat: ["amulet", "talisman"] },
-    { key: "ring1",    label: "Ring 1",      cat: ["ring"] },
-    { key: "ring2",    label: "Ring 2",      cat: ["ring"] },
-    { key: "belt",     label: "Belt",        cat: ["belt"] },
-    { key: "flask",    label: "Flask",       cat: ["flask"] },
-    { key: "jewel",    label: "Jewel",       cat: ["jewel"] },
-  ];
+  const SLOTS = ITEM_SLOTS;
   const slotByKey = new Map(SLOTS.map(s => [s.key, s]));
+  const flaskKeys = new Set(FLASK_SLOTS.map(s => s.key));
+  const charmKeys = new Set(CHARM_SLOTS.map(s => s.key));
+  const isFlaskSlot = (slot: string): boolean => flaskKeys.has(plannerSlot(slot));
+  const isCharmSlot = (slot: string): boolean => charmKeys.has(plannerSlot(slot));
 
   const stripEl  = document.getElementById("gear-strip")   as HTMLElement;
   const listEl   = document.getElementById("gs-list")      as HTMLElement;
   const capLabel = document.getElementById("gs-cap-label") as HTMLElement;
   const addBtn   = document.getElementById("gs-add")       as HTMLElement;
+  const flaskStripEl = document.getElementById("flask-strip") as HTMLElement;
+  const flaskListEl  = document.getElementById("fs-list") as HTMLElement;
+  const flaskCapLabel = document.getElementById("fs-cap-label") as HTMLElement;
+  const flaskAddBtn = document.getElementById("fs-add") as HTMLElement;
+  const charmStripEl = document.getElementById("charm-strip") as HTMLElement;
+  const charmListEl = document.getElementById("cs-list") as HTMLElement;
+  const charmCapLabel = document.getElementById("cs-cap-label") as HTMLElement;
+  const charmAddBtn = document.getElementById("cs-add") as HTMLElement;
   const popEl    = document.getElementById("gear-popover") as HTMLElement;
+  const popTitle = document.getElementById("gp-title") as HTMLElement;
   const popClose = document.getElementById("gp-close")     as HTMLElement;
   const popCancel = document.getElementById("gp-cancel")   as HTMLElement;
   const popApply = document.getElementById("gp-apply")     as HTMLElement;
@@ -81,18 +91,20 @@ if (GEAR_ON) {
   const rarityTabs = document.getElementById("gp-rarity")      as HTMLElement;
   const statsInput = document.getElementById("gp-stats")       as HTMLInputElement;
   const statChips  = document.getElementById("gp-stat-chips")  as HTMLElement;
-  if (!stripEl || !listEl || !capLabel || !addBtn || !popEl || !popClose ||
+  if (!stripEl || !listEl || !capLabel || !addBtn || !flaskStripEl ||
+      !flaskListEl || !flaskCapLabel || !flaskAddBtn || !charmStripEl || !charmListEl ||
+      !charmCapLabel || !charmAddBtn || !popEl || !popTitle || !popClose ||
       !popCancel || !popApply || !popRemove || !popSlot || !popInput ||
       !popList || !popNote || !baseOpts || !rarityTabs || !statsInput || !statChips) {
     throw new Error("gear overlay: missing required DOM element");
   }
+  if (!CHARM_SLOTS.length) charmStripEl.remove();
 
   // Uniques catalogue — fetched lazily; the strip works without it
   // (freetext-only picker) if the fetch fails.
   let uniques: UniqueEntry[] = [];
   const uniqueByName = new Map<string, UniqueEntry>();
-  fetch("/assets/item_catalogue.json")
-    .then(r => (r.ok ? r.json() : null))
+  loadGameAsset<ItemCatalogue>("itemCatalogue")
     .then((d: ItemCatalogue | null) => {
       if (d && Array.isArray(d.uniques)) {
         uniques = d.uniques;
@@ -108,8 +120,7 @@ if (GEAR_ON) {
   let bases: BaseEntry[] = [];
   const baseIconByName = new Map<string, string>();
   const baseByName = new Map<string, BaseEntry>();
-  fetch("/assets/agent/bases.json")
-    .then(r => (r.ok ? r.json() : null))
+  loadGameAsset<{ bases?: BaseEntry[] }>("bases")
     .then((d: { bases?: BaseEntry[] } | null) => {
       bases = d?.bases ?? [];
       for (const b of bases) {
@@ -122,8 +133,7 @@ if (GEAR_ON) {
       // agent file (bases.json won't carry spirit/grants until the
       // full bake pipeline decodes the current patch again) — merged
       // after the base map exists; absent locally → no badges.
-      return fetch("/assets/agent/granted_skills.json")
-        .then(r => (r.ok ? r.json() : null))
+      return loadGameAsset<{ bases?: Record<string, { grants?: string[]; spirit?: number }> }>("grantedSkills")
         .then((g: { bases?: Record<string, { grants?: string[]; spirit?: number }> } | null) => {
           const gb = g?.bases ?? {};
           let hit = false;
@@ -144,8 +154,7 @@ if (GEAR_ON) {
   // and the spawn tags that gate where each can roll). Optional — the
   // stats input stays freetext without it.
   let modFams: ModFamily[] = [];
-  fetch("/assets/agent/mods.json")
-    .then(r => (r.ok ? r.json() : null))
+  loadGameAsset<{ mods?: ModFamily[] }>("mods")
     .then((d: { mods?: ModFamily[] } | null) => { modFams = d?.mods ?? []; })
     .catch(() => { /* freetext-only stats */ });
 
@@ -157,11 +166,13 @@ if (GEAR_ON) {
   // catalogue name), then the item's grounded base/rarity fields, then
   // a "Rare <Base>" name-prefix parse for freetext/agent items.
   const RARITY_RE = /^(rare|magic|normal)\s+(.+)$/i;
+  const uniqueIcon = (u: UniqueEntry): string | null =>
+    u.icon ?? (u.base ? (baseIconByName.get(u.base.toLowerCase()) ?? null) : null);
   function resolveRow(it: Item): { rarity: string; icon: string | null; hover: string } {
     const nm = (it.name || it.uniqueName || "").trim();
     const uq = uniqueByName.get((it.uniqueName || nm).toLowerCase());
     if (uq) {
-      return { rarity: "unique", icon: uq.icon ?? null, hover: uq.latest_stats || it.note || "" };
+      return { rarity: "unique", icon: uniqueIcon(uq), hover: uq.latest_stats || it.note || "" };
     }
     let rarity = (it.rarity || "").toLowerCase();
     let base = it.base || "";
@@ -174,6 +185,21 @@ if (GEAR_ON) {
     const hover = [it.mods?.length ? it.mods.join(" · ") : "", it.note || ""]
       .filter(Boolean).join(" — ");
     return { rarity: rarity || "normal", icon, hover };
+  }
+
+  // The old PoE2 picker persisted both recovery flasks and Charms as
+  // `slot: "flask"`. Use the item's grounded base to display legacy
+  // Charms in Charm 1; editing naturally rewrites the explicit slot.
+  function itemPlannerSlot(it: Item): string {
+    const slot = plannerSlot(it.slot ?? "");
+    if (GAME.id !== "poe2" || it.slot !== "flask") return slot;
+    const nm = (it.name || it.uniqueName || "").trim();
+    const uq = uniqueByName.get((it.uniqueName || nm).toLowerCase());
+    const baseName = it.base || uq?.base || nm;
+    const b = baseByName.get(baseName.toLowerCase());
+    return baseAllowedForPlannerSlot(GAME.id, "charm1", b?.class, baseName)
+      ? "charm1"
+      : "flask1";
   }
 
   // ---------------------------------------------------------------
@@ -189,14 +215,21 @@ if (GEAR_ON) {
   function baseStatsHtml(b: BaseEntry | undefined, reqLevel?: number): string {
     if (!b && !reqLevel) return "";
     const rows: [string, string][] = [];
+    const ranged = (range: [number, number] | undefined, scalar: number | undefined): string => {
+      if (range && range[1] > 0) return range[0] === range[1] ? String(range[0]) : range[0] + "–" + range[1];
+      return scalar ? String(scalar) : "";
+    };
     if (b?.dmg) rows.push(["Physical Damage", b.dmg[0] + "–" + b.dmg[1]]);
     if (b?.crit) rows.push(["Critical Hit Chance", b.crit + "%"]);
     if (b?.aps) rows.push(["Attacks per Second", String(b.aps)]);
-    if (b?.ar) rows.push(["Armour", String(b.ar)]);
-    if (b?.ev) rows.push(["Evasion Rating", String(b.ev)]);
-    if (b?.es) rows.push(["Energy Shield", String(b.es)]);
-    if (b?.ward) rows.push(["Ward", String(b.ward)]);
+    const ar = ranged(b?.ar_range, b?.ar); if (ar) rows.push(["Armour", ar]);
+    const ev = ranged(b?.ev_range, b?.ev); if (ev) rows.push(["Evasion Rating", ev]);
+    const es = ranged(b?.es_range, b?.es); if (es) rows.push(["Energy Shield", es]);
+    const ward = ranged(b?.ward_range, b?.ward); if (ward) rows.push(["Ward", ward]);
     if (b?.block) rows.push(["Block Chance", b.block + "%"]);
+    if (b?.life_recovery) rows.push(["Recovers", b.life_recovery + " Life"]);
+    if (b?.mana_recovery) rows.push(["Recovers", b.mana_recovery + " Mana"]);
+    if (b?.recovery_seconds) rows.push(["Recovery Time", b.recovery_seconds + " sec"]);
     const reqs: string[] = [];
     const lvl = reqLevel ?? b?.lvl;
     if (lvl && lvl > 1) reqs.push("Level " + lvl);
@@ -220,6 +253,10 @@ if (GEAR_ON) {
       '<div><div class="tt-name r-' + esc(rarity) + '">' + esc(name) + "</div>" +
       '<div class="tt-meta">' + esc(metaLine) + "</div></div></div></div>";
     html += baseStatsHtml(base, reqLevel);
+    if (base?.implicits?.length) {
+      html += '<div class="tt-modlist tt-implicit">' + base.implicits.map(m =>
+        '<div class="tt-modline">' + esc(m) + "</div>").join("") + "</div>";
+    }
     if (mods.length) {
       html += '<div class="tt-modlist">' + mods.map(m =>
         '<div class="tt-modline">' + esc(m) + "</div>").join("") + "</div>";
@@ -241,7 +278,7 @@ if (GEAR_ON) {
       if (!u) return null;
       const b = u.base ? baseByName.get(u.base.toLowerCase()) : undefined;
       const mods = (u.latest_stats || "").split(" · ").filter(Boolean);
-      return itemTipHtml(u.name, "unique", u.icon ?? null,
+      return itemTipHtml(u.name, "unique", uniqueIcon(u),
         ["Unique", u.base || "", u.slot || ""].filter(Boolean).join(" · "),
         b, u.req_level, mods, "");
     }
@@ -257,14 +294,14 @@ if (GEAR_ON) {
       const hash = ref.indexOf("#");
       const it = hash >= 0
         ? shownItems().filter(x => (x.slot ?? "") === ref.slice(0, hash))[Number(ref.slice(hash + 1))]
-        : shownItems().find(x => x.slot === ref);
+        : shownItems().find(x => itemPlannerSlot(x) === plannerSlot(ref));
       if (!it) return null;
       const nm = (it.name || it.uniqueName || "").trim();
       const uq = uniqueByName.get((it.uniqueName || nm).toLowerCase());
       if (uq) {
         const b = uq.base ? baseByName.get(uq.base.toLowerCase()) : undefined;
         const mods = (uq.latest_stats || "").split(" · ").filter(Boolean);
-        return itemTipHtml(uq.name, "unique", uq.icon ?? null,
+        return itemTipHtml(uq.name, "unique", uniqueIcon(uq),
           ["Unique", uq.base || "", it.slot || ""].filter(Boolean).join(" · "),
           b, uq.req_level, mods, it.note || "");
       }
@@ -326,30 +363,69 @@ if (GEAR_ON) {
   // ---------------------------------------------------------------
   // Strip
   // ---------------------------------------------------------------
+  function renderItemBelt(
+    target: HTMLElement,
+    slots: typeof FLASK_SLOTS,
+    bySlot: Map<string, Item>,
+  ): void {
+    target.innerHTML = "";
+    for (const [i, s] of slots.entries()) {
+      const it = bySlot.get(s.key);
+      const li = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "fs-slot" + (!it ? " is-empty" : "") + (it?.note ? " has-note" : "");
+      button.dataset.slot = s.key;
+      button.setAttribute("aria-label", s.label + (it ? ": " + (it.name || it.uniqueName || "item") : ": empty"));
+      const num = '<span class="fs-slot-num">' + (i + 1) + "</span>";
+      if (it) {
+        const rv = resolveRow(it);
+        button.dataset.itemTip = "slot:" + s.key;
+        const art = rv.icon
+          ? '<img class="fs-item-ic" src="' + esc(rv.icon) + '" alt="" loading="lazy">'
+          : '<span class="fs-item-ic fs-empty-ic r-' + esc(rv.rarity) + '"></span>';
+        // Art-only in the in-tree belt. The accessible label and hover
+        // card still expose the complete name, rarity, mods and notes.
+        button.innerHTML = num + art;
+      } else {
+        button.innerHTML = num + '<span class="fs-empty-ic" aria-hidden="true"></span>';
+      }
+      li.appendChild(button);
+      target.appendChild(li);
+    }
+  }
+
   function renderStrip(): void {
     if (!window.PoE2Plan) return;
     stripEl.hidden = false;
+    flaskStripEl.hidden = false;
+    if (CHARM_SLOTS.length) charmStripEl.hidden = false;
     const list = window.PoE2Plan.captures.list();
     const idx  = shownCapIdx();
     const replaying = state.replayActive && state.replayCapIdx >= 0;
-    capLabel.textContent = list.length > 1
+    const captureText = list.length > 1
       ? (replaying ? "replay · " : "") + "snap " + (idx + 1) + "/" + list.length
       : "";
+    capLabel.textContent = captureText;
+    flaskCapLabel.textContent = captureText;
+    if (CHARM_SLOTS.length) charmCapLabel.textContent = captureText;
     const items = shownItems();
     listEl.innerHTML = "";
-    if (items.length === 0) {
+    const gearKeys = new Set(GEAR_SLOTS.map(s => s.key));
+    const hasGear = items.some(it => gearKeys.has(itemPlannerSlot(it)));
+    if (!hasGear) {
       const li = document.createElement("li");
       li.className = "ss-empty";
       li.textContent = "No gear in this snapshot yet.";
       listEl.appendChild(li);
-      return;
     }
     // Board order, not insertion order. Jewels are multi-instance
     // (one per tree socket) — every jewel renders its own row.
-    const bySlot = new Map(items.filter(it => (it.slot ?? "") !== "jewel").map(it => [it.slot ?? "", it]));
+    const bySlot = new Map(items.filter(it => (it.slot ?? "") !== "jewel")
+      .map(it => [itemPlannerSlot(it), it]));
     const jewels = items.filter(it => (it.slot ?? "") === "jewel");
     const rowPlan: { s: { key: string; label: string }; it: Item; ji: number | null }[] = [];
-    for (const s of SLOTS) {
+    for (const s of GEAR_SLOTS) {
       if (s.key === "jewel") {
         jewels.forEach((it, ji) => rowPlan.push({ s, it, ji }));
         continue;
@@ -402,6 +478,12 @@ if (GEAR_ON) {
         (it.note ? '<span class="ss-note-dot" title="has note">✎</span>' : "");
       listEl.appendChild(li);
     }
+
+    // Consumable positions stay visible even while empty, mirroring
+    // the horizontal belts in-game and making each section a direct
+    // slot picker rather than another vertical equipment list.
+    renderItemBelt(flaskListEl, FLASK_SLOTS, bySlot);
+    if (CHARM_SLOTS.length) renderItemBelt(charmListEl, CHARM_SLOTS, bySlot);
   }
 
   // ---------------------------------------------------------------
@@ -434,22 +516,23 @@ if (GEAR_ON) {
   }
   let jewelData: JewelData | null = null;
   const socketById = new Map<number, JewelSocket>();
-  fetch("/assets/agent/jewels.json")
-    .then(r => (r.ok ? r.json() : null))
-    .then((d: JewelData | null) => {
-      if (!d) return;
-      jewelData = d;
-      for (const sk of d.sockets) socketById.set(sk.id, sk);
-      // Warm the overlay sprites — first locate/ring paint must not
-      // wait on a network fetch.
-      for (const src of ["/assets/sprites/Jewel_glow.png", "/assets/sprites/Jewel_ring.png"]) {
-        new Image().src = src;
-      }
-      renderStrip();
-      syncJewelOverlays();
-      publishJewelRules();
-    })
-    .catch(() => { /* optional */ });
+  if (JEWELS_ON) {
+    loadGameAsset<JewelData>("jewels")
+      .then((d: JewelData | null) => {
+        if (!d) return;
+        jewelData = d;
+        for (const sk of d.sockets) socketById.set(sk.id, sk);
+        // Warm the overlay sprites — first locate/ring paint must not
+        // wait on a network fetch.
+        for (const src of ["/assets/sprites/Jewel_glow.png", "/assets/sprites/Jewel_ring.png"]) {
+          new Image().src = src;
+        }
+        renderStrip();
+        syncJewelOverlays();
+        publishJewelRules();
+      })
+      .catch(() => { /* optional */ });
+  }
 
   const sanitizeArt = (n: string): string => n.replace(/[^A-Za-z0-9]/g, "_");
   // Socket-fill art fallback chain: not every unique has its own
@@ -1110,12 +1193,7 @@ if (GEAR_ON) {
   // the list reveals the rarity toggle + priority-stats input; the
   // result persists exactly like agent-composed gear ({base, rarity,
   // mods-in-note}) so the strip renders art + rarity color for both.
-  const canonSlot = (k: string): string => k.replace(/[12]$/, "");
-  // bases.json slot vocabulary uses the "first" slot of each pair.
-  const baseSlotOf = (k: string): string => {
-    const c = canonSlot(k);
-    return c === "weapon" || c === "offhand" || c === "ring" ? c + "1" : c;
-  };
+  const baseSlotOf = groundingSlot;
 
   // The base side of the spawn-weight gate: the base's real GGG tags
   // (int_armour, ezomyte_basetype, …) plus the class-level tags the
@@ -1129,31 +1207,28 @@ if (GEAR_ON) {
     "Focus": ["focus"], "Quiver": ["quiver"],
     "Amulet": ["amulet"], "Talisman": ["amulet"],
     "Ring": ["ring"], "Belt": ["belt"],
+    "Claw": ["claw", "weapon"],
+    "Dagger": ["dagger", "weapon"], "Rune Dagger": ["rune_dagger", "dagger", "weapon"],
+    "One Hand Sword": ["sword", "one_hand_weapon", "weapon"],
+    "Thrusting One Hand Sword": ["sword", "thrusting_sword", "one_hand_weapon", "weapon"],
+    "Two Hand Sword": ["sword", "two_hand_weapon", "weapon"],
+    "One Hand Axe": ["axe", "one_hand_weapon", "weapon"],
+    "Two Hand Axe": ["axe", "two_hand_weapon", "weapon"],
     "One Hand Mace": ["mace", "weapon"], "Two Hand Mace": ["mace", "weapon"],
     "Sceptre": ["sceptre"],
     "Spear": ["spear", "weapon"], "Bow": ["bow", "weapon"],
     "Crossbow": ["crossbow", "weapon"], "Wand": ["wand", "weapon"],
     "Staff": ["staff", "weapon"], "Warstaff": ["staff", "weapon"],
+    "FishingRod": ["fishing_rod", "weapon"],
+    "LifeFlask": ["life_flask", "flask"], "ManaFlask": ["mana_flask", "flask"],
+    "HybridFlask": ["life_flask", "mana_flask", "flask"],
+    "UtilityFlask": ["utility_flask", "flask"], "Tincture": ["tincture"],
   };
   function baseTags(b: BaseEntry): Set<string> {
     const t = new Set<string>(b.tags ?? []);
     for (const ct of CLASS_TAGS[b.class ?? ""] ?? []) t.add(ct);
     return t;
   }
-  // Game-faithful gating: walk a gate list in order; the FIRST tag the
-  // base carries ("default" matches everything) decides — weight 0 is
-  // an exclusion even if a later tag is positive. A family rolls if
-  // any of its gate lists says yes.
-  function canRoll(fam: ModFamily, tags: Set<string>): boolean {
-    if (!fam.gates?.length) return fam.slots.some(s => tags.has(s));
-    return fam.gates.some(gl => {
-      for (const [tag, w] of gl) {
-        if (tag === "default" || tags.has(tag)) return w > 0;
-      }
-      return false;
-    });
-  }
-
   let draftBase: BaseEntry | null = null;  // picked base, or null
   let draftRarity = "rare";
   const RARITY_ORDER = ["normal", "magic", "rare"];
@@ -1173,11 +1248,17 @@ if (GEAR_ON) {
   function enforceRarity(): void {
     const n = selectedMods.length;
     const floor = n > 2 ? "rare" : n > 0 ? "magic" : "normal";
-    const fi = RARITY_ORDER.indexOf(floor);
+    const max = (isFlaskSlot(popSlot.value) || isCharmSlot(popSlot.value)) ? "magic" : "rare";
+    const maxIdx = RARITY_ORDER.indexOf(max);
+    // Imported/freetext flask data may contain more than two lines;
+    // it remains editable without pretending flasks can become rare.
+    const fi = Math.min(RARITY_ORDER.indexOf(floor), maxIdx);
     for (const b of Array.from(rarityTabs.querySelectorAll("button"))) {
-      b.disabled = RARITY_ORDER.indexOf(b.dataset.rarity ?? "") < fi;
+      const rank = RARITY_ORDER.indexOf(b.dataset.rarity ?? "");
+      b.disabled = rank < fi || rank > maxIdx;
     }
-    if (RARITY_ORDER.indexOf(draftRarity) < fi) setRarity(floor);
+    const rank = RARITY_ORDER.indexOf(draftRarity);
+    if (rank < fi || rank > maxIdx) setRarity(RARITY_ORDER[fi]!);
   }
   // The composition controls exist only while the input names the
   // picked base EXACTLY — deriving visibility on every refresh means
@@ -1266,11 +1347,13 @@ if (GEAR_ON) {
       if (i >= 0) variantSel.value = String(i);
     }
   }
-  // Affix caps, like the game: rare jewels take at most 2 prefixes +
-  // 2 suffixes; other rare gear 3 + 3. (Bases that bend the rule are
-  // out of scope — notes cover them.)
+  // Affix caps, like the game: flasks/Charms take one prefix + one
+  // suffix, rare jewels take at most 2 + 2, and other rare gear 3 + 3.
+  // (Bases that bend the rule are out of scope — notes cover them.)
   function affixCap(): number {
-    return popSlot.value === "jewel" ? 2 : 3;
+    return (isFlaskSlot(popSlot.value) || isCharmSlot(popSlot.value))
+      ? 1
+      : popSlot.value === "jewel" ? 2 : 3;
   }
   function kindOf(label: string): string {
     return modFams.find(f => (f.text || f.type) === label)?.kind ?? "";
@@ -1304,10 +1387,11 @@ if (GEAR_ON) {
   function refreshChips(): void {
     statChips.innerHTML = "";
     if (!draftBase) return;
+    const base = draftBase;
     const q = statsInput.value.trim().toLowerCase();
-    const tags = baseTags(draftBase);
+    const tags = baseTags(base);
     const pool = modFams
-      .filter(f => canRoll(f, tags))
+      .filter(f => canRollFamily(f, tags, itemDomain(base.class)))
       .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "prefix" ? -1 : 1));
     const isSel = (label: string): boolean =>
       selectedMods.some(m => m.toLowerCase() === label.toLowerCase());
@@ -1371,7 +1455,14 @@ if (GEAR_ON) {
     const slot = slotByKey.get(popSlot.value);
     const q = (popInput.value || "").toLowerCase().trim();
     const cats = new Set(slot ? slot.cat : []);
-    let pool = uniques.filter(u => !u.slot || cats.size === 0 || cats.has(u.slot));
+    const wanted = baseSlotOf(popSlot.value);
+    let pool = uniques.filter(u => u.allowed_slots?.length
+      ? u.allowed_slots.includes(wanted)
+      : (!u.slot || cats.size === 0 || cats.has(u.slot)));
+    pool = pool.filter(u => {
+      const b = u.base ? baseByName.get(u.base.toLowerCase()) : undefined;
+      return baseAllowedForPlannerSlot(GAME.id, popSlot.value, b?.class, u.base ?? "");
+    });
     if (q) pool = pool.filter(u => u.name.toLowerCase().includes(q) || (u.base || "").toLowerCase().includes(q));
     const shown = pool.slice(0, q ? 8 : 12);
     popList.innerHTML = "";
@@ -1380,8 +1471,9 @@ if (GEAR_ON) {
       const li = document.createElement("li");
       li.dataset.unique = u.name;
       li.dataset.itemTip = "unique:" + u.name;
-      const art = u.icon
-        ? '<img class="gp-item-ic" src="' + esc(u.icon) + '" alt="" loading="lazy">'
+      const icon = uniqueIcon(u);
+      const art = icon
+        ? '<img class="gp-item-ic" src="' + esc(icon) + '" alt="" loading="lazy">'
         : '<span class="gp-item-ic gs-ic-blank r-unique"></span>';
       li.innerHTML =
         art +
@@ -1392,7 +1484,10 @@ if (GEAR_ON) {
     // Base rows: endgame tiers first (highest drop level), filtered to
     // the slot; picking one opens the rarity + priority-stats controls.
     const bslot = baseSlotOf(popSlot.value);
-    let bpool = bases.filter(b => b.slot === bslot);
+    let bpool = bases.filter(b => b.allowed_slots?.length
+      ? b.allowed_slots.includes(bslot)
+      : b.slot === bslot);
+    bpool = bpool.filter(b => baseAllowedForPlannerSlot(GAME.id, popSlot.value, b.class, b.name));
     if (q) bpool = bpool.filter(b => b.name.toLowerCase().includes(q));
     bpool = bpool.slice().sort((a, b2) => (b2.lvl ?? 0) - (a.lvl ?? 0));
     const bshown = bpool.slice(0, q ? 8 : 6);
@@ -1446,7 +1541,16 @@ if (GEAR_ON) {
   // 'jewel' slot; identity is the index within the jewel sub-list).
   // null = editing a normal slot, or adding a NEW jewel.
   let popJewelIdx: number | null = null;
-  function openPopover(slotKey: string | null, jewelIdx: number | null = null): void {
+  function syncPopoverKind(): void {
+    popTitle.textContent = isFlaskSlot(popSlot.value)
+      ? "Edit Flask Slot"
+      : isCharmSlot(popSlot.value) ? "Edit Charm Slot" : "Edit Gear Slot";
+  }
+  function openPopover(
+    slotKey: string | null,
+    jewelIdx: number | null = null,
+    preferredSlots = GEAR_SLOTS,
+  ): void {
     if (!popSlot.options.length) {
       for (const s of SLOTS) {
         const o = document.createElement("option");
@@ -1458,11 +1562,13 @@ if (GEAR_ON) {
     const items = activeItems();
     // Default to the first EMPTY slot when adding fresh (jewels are
     // never "full" — the jewel option always means "add another").
-    const firstEmpty = SLOTS.find(s => s.key !== "jewel" && !items.some(it => it.slot === s.key));
-    popSlot.value = slotKey ?? (firstEmpty ? firstEmpty.key : SLOTS[0]!.key);
+    const firstEmpty = preferredSlots.find(s => s.key !== "jewel" &&
+      !items.some(it => itemPlannerSlot(it) === s.key));
+    popSlot.value = plannerSlot(slotKey ?? (firstEmpty ? firstEmpty.key : preferredSlots[0]!.key));
+    syncPopoverKind();
     const existing = popSlot.value === "jewel"
       ? (jewelIdx !== null ? items.filter(it => (it.slot ?? "") === "jewel")[jewelIdx] : undefined)
-      : items.find(it => it.slot === popSlot.value);
+      : items.find(it => itemPlannerSlot(it) === popSlot.value);
     seedFromExisting(existing);
     popRemove.hidden = !existing;
     refreshItemList();
@@ -1519,7 +1625,7 @@ if (GEAR_ON) {
         }
       }
     } else {
-      items = activeItems().filter(it => it.slot !== popSlot.value);
+      items = activeItems().filter(it => itemPlannerSlot(it) !== popSlot.value);
     }
     let entry: Item = { slot: popSlot.value, name };
     if (keptSocket != null) entry.socket = keptSocket;
@@ -1575,7 +1681,7 @@ if (GEAR_ON) {
       const prev = jl[popJewelIdx];
       commitItems(items.filter(it => it !== prev));
     } else {
-      commitItems(activeItems().filter(it => it.slot !== popSlot.value));
+      commitItems(activeItems().filter(it => itemPlannerSlot(it) !== popSlot.value));
     }
     closePopover();
   });
@@ -1587,9 +1693,10 @@ if (GEAR_ON) {
     // Switching TO jewel means "new jewel" (instances are edited from
     // their own rows, not via the slot dropdown).
     if (popSlot.value === "jewel") popJewelIdx = null;
+    syncPopoverKind();
     const existing = popSlot.value === "jewel"
       ? undefined
-      : activeItems().find(it => it.slot === popSlot.value);
+      : activeItems().find(it => itemPlannerSlot(it) === popSlot.value);
     seedFromExisting(existing);
     popRemove.hidden = !existing;
     refreshItemList();
@@ -1626,6 +1733,14 @@ if (GEAR_ON) {
     }
   }
   addBtn.addEventListener("click", () => { exitReplayForEdit(); openPopover(null); });
+  flaskAddBtn.addEventListener("click", () => {
+    exitReplayForEdit();
+    openPopover(null, null, FLASK_SLOTS);
+  });
+  charmAddBtn.addEventListener("click", () => {
+    exitReplayForEdit();
+    openPopover(null, null, CHARM_SLOTS);
+  });
   listEl.addEventListener("click", e => {
     const loc = (e.target as HTMLElement | null)?.closest("[data-jewel-locate]") as HTMLElement | null;
     if (loc) {
@@ -1640,6 +1755,18 @@ if (GEAR_ON) {
       exitReplayForEdit();
       openPopover(row.dataset.slot, row.dataset.jewelIdx != null ? Number(row.dataset.jewelIdx) : null);
     }
+  });
+  flaskListEl.addEventListener("click", e => {
+    const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>(".fs-slot")?.dataset.slot;
+    if (!slot) return;
+    exitReplayForEdit();
+    openPopover(slot, null, FLASK_SLOTS);
+  });
+  charmListEl.addEventListener("click", e => {
+    const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>(".fs-slot")?.dataset.slot;
+    if (!slot) return;
+    exitReplayForEdit();
+    openPopover(slot, null, CHARM_SLOTS);
   });
   // Esc closes (popover is modal-lite; backdrop-less like the skill one).
   window.addEventListener("keydown", e => {

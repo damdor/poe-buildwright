@@ -10,7 +10,8 @@
 // ============================================================================
 import { featureOn } from "./game.ts";
 import { spiritCapAt, state } from "./state.ts";
-import { CATALOGUE_BASE, SOCKET_MODEL } from "./game.ts";
+import { SOCKET_MODEL } from "./game.ts";
+import { loadGameAsset } from "./asset_loader.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
 import type { Skill } from "../../../../types/shared.d.ts";
 
@@ -132,9 +133,9 @@ if (SKILLS_ON) {
   function loadCatalogue(): Promise<Catalogue> {
     if (catalogue) return Promise.resolve(catalogue);
     if (catalogueLoading) return catalogueLoading;
-    catalogueLoading = fetch(CATALOGUE_BASE + '/skill_catalogue.json')
-      .then(r => r.ok ? r.json() : Promise.reject('catalogue fetch ' + r.status))
+    catalogueLoading = loadGameAsset<Catalogue>('skillCatalogue')
       .then((raw: unknown) => {
+        if (!raw) throw new Error('skill catalogue is not configured for this game');
         const data = raw as Catalogue;
         catalogue = data;
         activeGems  = data.gems.filter(g => g.gem_type !== 'Support')
@@ -200,16 +201,14 @@ if (SKILLS_ON) {
   function loadSkillStats(): void {
     if (skillStats || skillStatsLoading) return;
     skillStatsLoading = true;
-    fetch('/assets/skill_stats.json')
-      .then(r => (r.ok ? r.json() : null))
+    loadGameAsset<{ effects?: Record<string, EffectStats> }>('skillStats')
       .then((d: { effects?: Record<string, EffectStats> } | null) => {
         skillStats = d?.effects ?? {};
         // The spirit chip needs these ladders — repaint once loaded.
         renderStrip();
       })
       .catch(() => { skillStats = {}; });
-    fetch('/assets/agent/spirit.json')
-      .then(r => (r.ok ? r.json() : null))
+    loadGameAsset<{ support_cost_multipliers?: Record<string, Record<string, number>> }>('spirit')
       .then((d: { support_cost_multipliers?: Record<string, Record<string, number>> } | null) => {
         spiritMultipliers = d?.support_cost_multipliers ?? {};
         renderStrip();
@@ -328,7 +327,10 @@ if (SKILLS_ON) {
       const cost = ladderAt(st.cost, lvl);
       if (cost) req.push('cost <b>' + cost + '</b>');
       const resv = ladderAt(st.reservation, lvl);
-      if (resv) req.push('reserves <b>' + resv + ' Spirit</b>');
+      if (resv) {
+        const unit = SOCKET_MODEL === 'spirit' ? ' Spirit' : '% Mana';
+        req.push('reserves <b>' + resv + unit + '</b>');
+      }
       const cd = ladderAt(st.cooldown_ms, lvl);
       if (cd) req.push('cooldown <b>' + (cd / 1000) + 's</b>');
     }

@@ -219,25 +219,56 @@ fn run() -> Result<(), String> {
     let sprites = read_sprites(&args.tree_dir.join("sprites.tsv")).unwrap_or_default();
     let asc_overrides = io::read_asc_overrides(&args.tree_dir.join("asc_overrides.tsv"));
 
-    // Per-game client descriptor. poe2 = the defaults every module
-    // assumes; poe1 step 1 is TREE-ONLY: gear/skills/jewels/spirit/
-    // weapon-set features off, own storage namespace + agent dir,
-    // budgets from the official export (123 + 8).
+    // Complete per-game client descriptor. Every game-owned data file is
+    // named explicitly: browser code never reconstructs a path from a
+    // directory convention, and `null` means an intentionally unsupported
+    // capability. Keep both profiles complete so adding a third game is a
+    // compile-visible change rather than another set of implicit defaults.
     let game_json = match args.game.as_str() {
         "poe1" => concat!(
-            "{\"id\":\"poe1\",\"agentBase\":\"/assets/poe1-agent\",",
+            "{\"schema\":1,\"id\":\"poe1\",\"storageNamespace\":\"poe1-planner\",",
             "\"budgets\":{\"main\":123,\"asc\":8},",
-            // skills ON with the socket-link model (support count comes
-            // from the item slot's sockets, not PoE2 spirit); catalogue
-            // + gem art live in the poe1-agent namespace.
-            "\"features\":{\"gear\":false,\"skills\":true,\"jewels\":false,",
+            "\"features\":{\"gear\":true,\"skills\":true,\"jewels\":false,",
             "\"spirit\":false,\"weaponSets\":false,\"share\":false,",
             "\"ascInPlace\":true},",
             "\"socketModel\":\"links\",",
-            "\"catalogueBase\":\"/assets/poe1-agent\"}",
+            "\"assets\":{",
+            "\"skillCatalogue\":\"/assets/poe1-agent/skill_catalogue.json\",",
+            "\"skillStats\":\"/assets/poe1-agent/skill_stats.json\",",
+            "\"itemCatalogue\":\"/assets/poe1-agent/item_catalogue.json\",",
+            "\"bases\":\"/assets/poe1-agent/bases.json\",",
+            "\"mods\":\"/assets/poe1-agent/mods.json\",",
+            "\"grantedSkills\":null,\"jewels\":null,\"spirit\":null,",
+            "\"buildMeta\":\"/assets/poe1-agent/build_meta.json\",",
+            "\"nodes\":\"/assets/poe1-agent/nodes.json\",",
+            "\"graph\":\"/assets/poe1-agent/graph.json\",",
+            "\"supportCompat\":\"/assets/poe1-agent/support_compat.json\",",
+            "\"capabilities\":\"/assets/poe1-agent/capabilities.json\"}}",
         )
         .to_string(),
-        _ => "{\"id\":\"poe2\"}".to_string(),
+        "poe2" => concat!(
+            "{\"schema\":1,\"id\":\"poe2\",\"storageNamespace\":\"poe2-planner\",",
+            "\"budgets\":{\"main\":99,\"asc\":8},",
+            "\"features\":{\"gear\":true,\"skills\":true,\"jewels\":true,",
+            "\"spirit\":true,\"weaponSets\":true,\"share\":true,",
+            "\"ascInPlace\":false},\"socketModel\":\"spirit\",",
+            "\"assets\":{",
+            "\"skillCatalogue\":\"/assets/skill_catalogue.json\",",
+            "\"skillStats\":\"/assets/skill_stats.json\",",
+            "\"itemCatalogue\":\"/assets/item_catalogue.json\",",
+            "\"bases\":\"/assets/agent/bases.json\",",
+            "\"mods\":\"/assets/agent/mods.json\",",
+            "\"grantedSkills\":\"/assets/agent/granted_skills.json\",",
+            "\"jewels\":\"/assets/agent/jewels.json\",",
+            "\"spirit\":\"/assets/agent/spirit.json\",",
+            "\"buildMeta\":\"/assets/build_meta.json\",",
+            "\"nodes\":\"/assets/agent/nodes.json\",",
+            "\"graph\":\"/assets/agent/graph.json\",",
+            "\"supportCompat\":\"/assets/agent/support_compat.json\",",
+            "\"capabilities\":\"/assets/agent/capabilities.json\"}}",
+        )
+        .to_string(),
+        other => return Err(format!("unsupported game {other:?}; expected poe1 or poe2")),
     };
     let chrome = emit::PageChrome { title: &args.title, game_json: &game_json, game: &args.game };
     let html = render_canvas_html(&nodes, &edges, &canvas, &classes, &sprites, &asc_overrides, &chrome);
@@ -360,7 +391,11 @@ fn run() -> Result<(), String> {
             near.insert(start, found);
         }
 
-        let mut out = String::from("{\"format\":\"poe2-agent-nodes\",\"version\":2,");
+        let mut out = format!(
+            "{{\"format\":\"{}-agent-nodes\",\"version\":2,\"game\":{},",
+            args.game,
+            text::json_str(&args.game),
+        );
         // classes block: name → ascendancies + start hub id.
         out.push_str("\"classes\":[");
         let mut first_c = true;
@@ -456,7 +491,11 @@ fn run() -> Result<(), String> {
         // Function needs to run the SAME greedy BFS the importer runs,
         // headlessly. Node entries: name, kind, asc, unlock gate;
         // edges: pathable pairs (masteries + multichoice options out).
-        let mut g = String::from("{\"format\":\"poe2-agent-graph\",\"version\":1,");
+        let mut g = format!(
+            "{{\"format\":\"{}-agent-graph\",\"version\":1,\"game\":{},",
+            args.game,
+            text::json_str(&args.game),
+        );
         g.push_str("\"classes\":{");
         let mut first = true;
         for (cls, hub, _) in &class_dist {
@@ -580,7 +619,11 @@ fn run() -> Result<(), String> {
             let affectable = |n: &model::Node| {
                 matches!(n.kind.as_str(), "small" | "notable" | "keystone" | "attribute" | "jewel")
             };
-            let mut out = String::from("{\"format\":\"poe2-agent-jewels\",\"version\":1,");
+            let mut out = format!(
+                "{{\"format\":\"{}-agent-jewels\",\"version\":1,\"game\":{},",
+                args.game,
+                text::json_str(&args.game),
+            );
             out.push_str("\"units\":\"tree coordinates (same space as node positions)\",");
             out.push_str("\"rings\":{");
             let mut first = true;
@@ -838,13 +881,24 @@ fn parse_args() -> Result<Args, String> {
     // docs/plan.md; pointing at it means re-running tree_render after a
     // patch update Just Works without flag changes.
     let tree_dir = tree_dir.unwrap_or_else(|| PathBuf::from("data/parsed/CURRENT/tree"));
-    let agent_subdir = agent_subdir.unwrap_or_else(|| "agent".into());
+    let game = game.unwrap_or_else(|| "poe2".into());
+    let expected_agent_subdir = match game.as_str() {
+        "poe1" => "poe1-agent",
+        "poe2" => "agent",
+        other => return Err(format!("--game must be poe1 or poe2, got {other:?}")),
+    };
+    let agent_subdir = agent_subdir.unwrap_or_else(|| expected_agent_subdir.into());
+    if agent_subdir != expected_agent_subdir {
+        return Err(format!(
+            "--game {game} owns --agent-subdir {expected_agent_subdir:?}; refusing cross-game output {agent_subdir:?}"
+        ));
+    }
     let output = output.ok_or_else(|| format!("--output required\n\n{USAGE}"))?;
     Ok(Args {
         tree_dir,
         output,
         title,
         agent_subdir,
-        game: game.unwrap_or_else(|| "poe2".into()),
+        game,
     })
 }

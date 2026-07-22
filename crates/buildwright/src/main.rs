@@ -16,6 +16,7 @@
 //! of this.
 
 mod handlers;
+mod game_profile;
 mod help;
 mod ui;
 

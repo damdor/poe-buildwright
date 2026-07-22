@@ -7,7 +7,8 @@
 
 import type { Plan, PlanIndexEntry } from "../../types/shared.d.ts";
 
-const PLAN_FORMAT: "poe2-planner-plan" = "poe2-planner-plan";
+const PLAN_FORMAT = "buildwright-planner-plan" as const;
+const LEGACY_PLAN_FORMAT = "poe2-planner-plan" as const;
 // Captures-era plans are v2. Anything older (v1) is from the
 // pre-launch prototype and gets refused with a clean error instead
 // of silently corrupting state.
@@ -74,8 +75,12 @@ function err(msg: string, detail?: unknown): void {
         (e as Error).message);
     return;
   }
-  if (!plan || plan.format !== PLAN_FORMAT) {
-    err("That code is not in the poe2-planner-plan format.");
+  if (!plan || (plan.format !== PLAN_FORMAT && plan.format !== LEGACY_PLAN_FORMAT)) {
+    err("That code is not in a supported Buildwright planner format.");
+    return;
+  }
+  if (plan.game && plan.game !== "poe2") {
+    err("That share code belongs to " + plan.game + ", but sharing is currently a PoE2-only capability.");
     return;
   }
   if (typeof plan.version !== "number" ||

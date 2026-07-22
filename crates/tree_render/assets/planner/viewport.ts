@@ -132,11 +132,11 @@ export function zoomAt(cx: number, cy: number, factor: number): void {
 }
 
 viewport.addEventListener("wheel", e => {
-  // The skill/gear popover and command palette live INSIDE #viewport,
-  // so their wheel events bubble here. Don't hijack them for zoom —
-  // bail (no preventDefault) so the overlay's own overflow containers
-  // scroll natively.
-  if ((e.target as HTMLElement | null)?.closest('[role="dialog"], #cmdk')) return;
+  // The skill/gear strips, their popovers, and the command palette live
+  // INSIDE #viewport, so their wheel events bubble here. Don't hijack
+  // them for zoom — bail (no preventDefault) so their own overflow
+  // containers scroll natively.
+  if ((e.target as HTMLElement | null)?.closest('[role="dialog"], #cmdk, .strips-col')) return;
   e.preventDefault();
   zoomAt(e.clientX, e.clientY, e.deltaY > 0 ? 1 / 1.18 : 1.18);
 }, { passive: false });

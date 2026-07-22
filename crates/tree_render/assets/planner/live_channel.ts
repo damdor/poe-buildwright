@@ -57,7 +57,10 @@ if (token && /^[A-Za-z0-9_-]{16,64}$/.test(token)) {
         const body = await r.json() as { rev?: number; plan?: AgentPlan; focus?: string | number };
         if (body.plan && typeof body.rev === "number" && body.rev > rev) {
           rev = body.rev;
-          if (body.plan.format === "poe2-agent-plan") await importAgentPlan(body.plan);
+          if ((body.plan.format === "poe2-agent-plan" || body.plan.format === "buildwright-agent-plan") &&
+              (!body.plan.game || body.plan.game === (window.PoE2Game?.id ?? "poe2"))) {
+            await importAgentPlan(body.plan);
+          }
           // Presence: `focus` names the node the agent is working on —
           // pan the camera there and pulse it so the watcher literally
           // sees WHERE the agent is on the tree.

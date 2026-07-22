@@ -32,7 +32,7 @@ export function supportNames(sk: AgentSkillIn): string[] {
     .filter(Boolean);
 }
 export interface AgentPlanIn {
-  format?: string; name?: string; notes?: string; description?: string; class?: string; ascendancy?: string;
+  format?: string; game?: string; name?: string; notes?: string; description?: string; class?: string; ascendancy?: string;
   targets?: Target[]; skills?: AgentSkillIn[]; gear?: AgentGearIn[]; captures?: AgentCapture[];
 }
 export interface CatGem { id: string; name: string; skill_types?: string[]; require_skill_types?: string[]; exclude_skill_types?: string[]; req_level?: number; natural_max_level?: number; tag_string?: string }
@@ -88,7 +88,8 @@ export async function readPlan(req: Request): Promise<AgentPlanIn | null> {
   }
   try {
     const plan = raw ? JSON.parse(raw) as AgentPlanIn : null;
-    return plan && plan.format === "poe2-agent-plan" ? plan : null;
+    const supported = plan && (plan.format === "poe2-agent-plan" || plan.format === "buildwright-agent-plan");
+    return supported && (!plan.game || plan.game === "poe2") ? plan : null;
   } catch { return null; }
 }
 

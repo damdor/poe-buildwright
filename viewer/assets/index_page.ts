@@ -121,8 +121,8 @@ function render(): void {
 // build_io/wizard_chrome). The game is derived from the plan's
 // game-namespaced patch ("poe1.*" → poe1), matching wizard_chrome's
 // patch rules.
-function gameOfPlan(plan: { patch?: string | null }): GameStore {
-  const poe1 = typeof plan.patch === "string" && plan.patch.startsWith("poe1.");
+function gameOfPlan(plan: { game?: string; patch?: string | null }): GameStore {
+  const poe1 = plan.game === "poe1" || (!plan.game && typeof plan.patch === "string" && plan.patch.startsWith("poe1."));
   return GAMES.find(g => g.id === (poe1 ? "poe1" : "poe2"))!;
 }
 function downloadBuild(g: GameStore, id: string): void {
@@ -146,12 +146,12 @@ if (importBtn && importFile) {
     importFile.value = "";
     if (!f) return;
     void f.text().then(text => {
-      let plan: { format?: string; version?: number; id?: string; name?: string;
+      let plan: { format?: string; version?: number; game?: string; id?: string; name?: string;
                   class?: string | null; patch?: string | null;
                   captures?: Array<{ passives?: unknown[]; ascendancy?: string | null }> };
       try { plan = JSON.parse(text); } catch (e) { alert("Not a JSON file."); return; }
-      if (plan.format !== "poe2-planner-plan" || plan.version !== 2) {
-        alert("Not a buildwright backup (expected poe2-planner-plan v2). GGG .build files import inside the PoE2 planner instead.");
+      if (!(["buildwright-planner-plan", "poe2-planner-plan"].includes(plan.format || "")) || plan.version !== 2) {
+        alert("Not a Buildwright planner backup. GGG .build files import inside the PoE2 planner instead.");
         return;
       }
       const g = gameOfPlan(plan);

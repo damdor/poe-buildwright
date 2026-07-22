@@ -1,6 +1,7 @@
 {
-  "format": "poe2-agent-plan",
-  "version": 1,
+  "format": "buildwright-agent-plan",
+  "version": 2,
+  "game": "poe1",
   "name": "Example: Kinetic Blast Deadeye (Mirage-league meta tree)",
   "class": "Ranger",
   "ascendancy": "Deadeye",

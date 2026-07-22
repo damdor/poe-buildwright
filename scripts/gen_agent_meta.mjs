@@ -16,12 +16,45 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-const cat = JSON.parse(readFileSync("viewer/assets/skill_catalogue.json", "utf-8"));
+const argv = globalThis.Deno?.args ?? process.argv.slice(2);
+const gameFlag = argv.findIndex(a => a === "--game");
+const game = gameFlag >= 0 ? argv[gameFlag + 1] : "poe2";
+const profiles = {
+  poe1: {
+    catalogueDir: "viewer/assets/poe1-agent",
+    agentDir: "viewer/assets/poe1-agent",
+    publicCatalogue: "/assets/poe1-agent",
+    publicAgent: "/assets/poe1-agent",
+    buildMeta: "viewer/assets/poe1-agent/build_meta.json",
+    validate: false,
+    agentBuild: false,
+    live: false,
+    share: false,
+  },
+  poe2: {
+    catalogueDir: "viewer/assets",
+    agentDir: "viewer/assets/agent",
+    publicCatalogue: "/assets",
+    publicAgent: "/assets/agent",
+    buildMeta: "viewer/assets/build_meta.json",
+    validate: true,
+    agentBuild: true,
+    live: true,
+    share: true,
+  },
+};
+const profile = profiles[game];
+if (!profile) throw new Error(`--game must be poe1 or poe2, got ${JSON.stringify(game)}`);
+const readJson = path => JSON.parse(readFileSync(path, "utf-8"));
+const cat = readJson(`${profile.catalogueDir}/skill_catalogue.json`);
+if (cat.game !== game) throw new Error(`skill catalogue game=${cat.game}, expected ${game}`);
 let patch = "(unknown)";
+let meta = null;
 try {
-  const meta = JSON.parse(readFileSync("viewer/assets/build_meta.json", "utf-8"));
-  patch = meta.patch ?? patch;
+  meta = readJson(profile.buildMeta);
 } catch { /* keep unknown */ }
+if (meta && meta.game !== game) throw new Error(`build metadata game=${meta.game}, expected ${game}`);
+patch = meta?.patch ?? patch;
 
 const gems = cat.gems ?? [];
 const supports = gems.filter(g => g.gem_type === "Support");
@@ -52,38 +85,43 @@ for (const a of actives) {
   compat[a.name] = ok.sort();
 }
 
-writeFileSync("viewer/assets/agent/support_compat.json", JSON.stringify({
-  format: "poe2-agent-support-compat",
+writeFileSync(`${profile.agentDir}/support_compat.json`, JSON.stringify({
+  format: `${game}-agent-support-compat`,
   version: 1,
+  game,
   patch,
   note: "active gem name -> support gem names that pass the same type algebra /agent/validate uses; actives with unknown types list every support",
   actives: compat,
 }));
 
-writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
-  format: "poe2-agent-capabilities",
+const grounding = [
+  `${profile.publicAgent}/nodes.json`,
+  `${profile.publicAgent}/graph.json`,
+  `${profile.publicAgent}/bases.json`,
+  `${profile.publicAgent}/mods.json`,
+  `${profile.publicAgent}/support_compat.json`,
+  `${profile.publicCatalogue}/skill_catalogue.json`,
+  `${profile.publicCatalogue}/item_catalogue.json`,
+];
+if (game === "poe2") grounding.splice(5, 0,
+  `${profile.publicAgent}/spirit.json`,
+  `${profile.publicAgent}/granted_skills.json`,
+);
+writeFileSync(`${profile.agentDir}/capabilities.json`, JSON.stringify({
+  format: `${game}-agent-capabilities`,
   agent_schema_version: 1,
+  game,
   patch,
-  validate: true,        // GET/POST /agent/validate — always JSON
-  agent_build: true,     // POST /agent/build — plan in, share_url out
-  live: true,            // /live/<token> channel functions
-  share_encode: true,    // /share.html#code= (or use /agent/build)
-  grounding: [
-    "/assets/agent/nodes.json",
-    "/assets/agent/graph.json",
-    "/assets/agent/bases.json",
-    "/assets/agent/mods.json",
-    "/assets/agent/support_compat.json",
-    "/assets/agent/spirit.json",
-    "/assets/agent/granted_skills.json",
-    "/assets/skill_catalogue.json",
-    "/assets/item_catalogue.json",
-  ],
+  validate: profile.validate,
+  agent_build: profile.agentBuild,
+  live: profile.live,
+  share_encode: profile.share,
+  grounding,
   // Directory listings don't exist on this host — the manifest IS the
   // examples index (ids, tags, points, direct urls).
-  examples_index: "/assets/agent/examples/index.json",
-  openapi: "/assets/agent/openapi.json",
-  human_page: "/agents.html",
+  examples_index: game === "poe2" ? "/assets/agent/examples/index.json" : null,
+  openapi: game === "poe2" ? "/assets/agent/openapi.json" : null,
+  human_page: game === "poe2" ? "/agents.html" : "/planner-poe1.html",
   source: "https://github.com/damdor/poe-buildwright",
   license: {
     code: "PolyForm-Noncommercial-1.0.0",
@@ -105,10 +143,19 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
     ring1: ["ring1", "ring"],
     ring2: ["ring2"],
     belt: ["belt"],
-    flask: ["flask"],
-    jewel: ["jewel"],
+    flask: game === "poe1" ? ["flask1", "flask", "life_flask", "mana_flask", "utility_flask", "tincture"] : ["flask", "life_flask", "mana_flask"],
+    ...(game === "poe1" ? {
+      flask2: ["flask2"], flask3: ["flask3"], flask4: ["flask4"], flask5: ["flask5"],
+    } : {
+      charm1: ["charm1", "charm", "utility_flask"], charm2: ["charm2"], charm3: ["charm3"], jewel: ["jewel"],
+    }),
   },
 }, null, 1));
+
+if (game === "poe1") {
+  console.log(`poe1 agent meta: ${Object.keys(compat).length} actives x ${supports.length} supports -> ${profile.agentDir}`);
+  process.exit(0);
+}
 
 // ---- spirit + granted-skills grounding --------------------------------------
 // agent/spirit.json: the spirit economy in one small file — the base
@@ -122,7 +169,8 @@ writeFileSync("viewer/assets/agent/capabilities.json", JSON.stringify({
 // leveling captures never overpromise spirit the player might not
 // have yet. Gear (+Spirit mods, sceptres) extends the pool beyond
 // this — the validator warns rather than errors for that reason.
-const stats = JSON.parse(readFileSync("viewer/assets/skill_stats.json", "utf-8"));
+const stats = readJson("viewer/assets/skill_stats.json");
+if (stats.game !== "poe2") throw new Error(`skill stats game=${stats.game}, expected poe2`);
 const SPIRIT_REWARDS = [
   { lvl: 18, pts: 30, source: "Act 1: King in the Mists" },
   { lvl: 36, pts: 30, source: "Act 3: Ignagduk, the Bog Witch" },
@@ -141,6 +189,7 @@ const grantedSkillSockets = stats.granted_skill_sockets ?? {};
 writeFileSync("viewer/assets/agent/spirit.json", JSON.stringify({
   format: "poe2-agent-spirit",
   version: 2,
+  game: "poe2",
   patch,
   note: "Base spirit is quest-earned (conservative level estimates). reservations = gem name -> {gem level: spirit cost}. EACH SUPPORT multiplies its skill's reservation: effective = base * product(support_cost_multipliers[support][level] / 100). granted_skill_sockets = free support sockets on item-granted skills by granted level. Gear can extend the base pool.",
   base_schedule: SPIRIT_REWARDS,
@@ -153,7 +202,8 @@ writeFileSync("viewer/assets/agent/spirit.json", JSON.stringify({
 // agent/granted_skills.json: uniques whose stats grant a skill while
 // equipped — the skill is available to the build for free (no gem
 // slot), and supports can be socketed into it in-game.
-const itemCat = JSON.parse(readFileSync("viewer/assets/item_catalogue.json", "utf-8"));
+const itemCat = readJson("viewer/assets/item_catalogue.json");
+if (itemCat.game !== "poe2") throw new Error(`item catalogue game=${itemCat.game}, expected poe2`);
 // Two grant phrasings in GGG stat text as of 4.5.4.3:
 //   "Grants Skill: Level (1-20) Purity of Fire"   (always-available)
 //   "Trigger Lightning Bolt Skill on Critical Hit" (condition-fired —
@@ -179,7 +229,8 @@ for (const u of itemCat.uniques ?? []) {
 // Base-item grants (mined ItemSpirit + ItemInherentSkills, merged
 // into bases.json by the pipeline): sceptres/wands/staves granting
 // their skill, sceptres granting spirit.
-const basesData = JSON.parse(readFileSync("viewer/assets/agent/bases.json", "utf-8"));
+const basesData = readJson("viewer/assets/agent/bases.json");
+if (basesData.game !== "poe2") throw new Error(`bases game=${basesData.game}, expected poe2`);
 const grantedByBase = {};
 for (const b of basesData.bases ?? []) {
   if (b.grants?.length || b.spirit) {
@@ -209,6 +260,7 @@ for (const u of itemCat.uniques ?? []) {
 writeFileSync("viewer/assets/agent/granted_skills.json", JSON.stringify({
   format: "poe2-agent-granted-skills",
   version: 2,
+  game: "poe2",
   patch,
   note: "Equipping these grants the listed skills for free (no gem slot; supports attach in-game — see spirit.json granted_skill_sockets for how many) and/or Spirit. `uniques` keys are unique item names (their base's inherent grants and exact base Spirit are folded in as `grants`/`spirit_base`); `bases` keys are base-item names (sceptres, wands, staves, shields, spears…).",
   uniques: grantedByUnique,
