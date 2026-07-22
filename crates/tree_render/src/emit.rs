@@ -78,6 +78,8 @@ pub(crate) fn build_meta_json(
     let mut out = String::with_capacity(2048);
     out.push('{');
     out.push_str(r#""schema_version":1"#);
+    out.push_str(",\"game\":");
+    out.push_str(&json_str(game));
     // Patch label sourced from data/parsed/<patch>/manifest.json. Empty
     // string when the data dir didn't carry a manifest — wizard treats
     // that as "unknown patch" and doesn't render the version badge.
@@ -1034,9 +1036,9 @@ pub(crate) fn render_canvas_html(
     <ol class="ss-list" id="ss-list"></ol>
     <button class="ss-add" id="ss-add" type="button">+ Add skill…</button>
   </aside>
-  <!-- Gear strip — placeholder v1. Per-capture equipment: slot + item
-       name (unique from item_catalogue.json or freetext) + note.
-       Persists as Capture.items (schema already plumbed); first UI. -->
+  <!-- Regular equipment. Flasks are intentionally rendered in their
+       own horizontal belt below, but both surfaces persist through the
+       same Capture.items contract and open the same editor. -->
   <aside id="gear-strip" class="skills-strip gear-strip" hidden>
     <header class="ss-header">
       <span class="ss-title">GEAR</span>
@@ -1044,8 +1046,24 @@ pub(crate) fn render_canvas_html(
     </header>
     <ol class="ss-list" id="gs-list"></ol>
     <button class="ss-add" id="gs-add" type="button">+ Set gear…</button>
-    <button class="gv-open" id="guide-open" type="button" title="Read this build as a typeset leveling guide">&#128214; Build guide</button>
   </aside>
+  <aside id="flask-strip" class="skills-strip item-belt-strip flask-strip" hidden>
+    <header class="ss-header">
+      <span class="ss-title">FLASKS</span>
+      <span class="ss-cap-label" id="fs-cap-label"></span>
+    </header>
+    <ol class="fs-list" id="fs-list" aria-label="Flask slots"></ol>
+    <button class="ss-add" id="fs-add" type="button">+ Set flasks…</button>
+  </aside>
+  <aside id="charm-strip" class="skills-strip item-belt-strip charm-strip" hidden>
+    <header class="ss-header">
+      <span class="ss-title">CHARMS</span>
+      <span class="ss-cap-label" id="cs-cap-label"></span>
+    </header>
+    <ol class="fs-list" id="cs-list" aria-label="Charm slots"></ol>
+    <button class="ss-add" id="cs-add" type="button">+ Set charms…</button>
+  </aside>
+  <button class="gv-open" id="guide-open" type="button" title="Read this build as a typeset leveling guide">&#128214; Build guide</button>
   </div>
 
   <!-- Edit-socket popover. Modal-style, opens on click of a row in
@@ -1101,15 +1119,15 @@ pub(crate) fn render_canvas_html(
     </footer>
   </div>
 
-  <div id="gear-popover" class="skill-popover hidden" role="dialog" aria-modal="true" aria-label="Edit gear slot">
+  <div id="gear-popover" class="skill-popover hidden" role="dialog" aria-modal="true" aria-label="Edit item slot">
     <header class="sp-header">
-      <span class="sp-title">Edit Gear Slot</span>
+      <span class="sp-title" id="gp-title">Edit Item Slot</span>
       <button class="sp-close" id="gp-close" type="button" aria-label="Close">×</button>
     </header>
     <div class="sp-body">
       <section class="sp-section">
         <label class="sp-label">Slot</label>
-        <select class="sp-level gp-slot" id="gp-slot" aria-label="Gear slot"></select>
+        <select class="sp-level gp-slot" id="gp-slot" aria-label="Item slot"></select>
       </section>
       <section class="sp-section">
         <label class="sp-label">Item <span class="sp-muted">(pick a unique or a base, or type any name)</span></label>
@@ -1125,7 +1143,7 @@ pub(crate) fn render_canvas_html(
           <button type="button" data-rarity="magic" class="sp-set-tab">Magic</button>
           <button type="button" data-rarity="rare" class="sp-set-tab is-active">Rare</button>
         </div>
-        <label class="sp-label gp-stats-label" for="gp-stats">Priority stats <span class="sp-muted">(click to select the 1&ndash;3 that matter most; click again to remove)</span></label>
+        <label class="sp-label gp-stats-label" for="gp-stats">Priority stats <span class="sp-muted">(click to select the few that matter most; click again to remove)</span></label>
         <input id="gp-stats" class="sp-combo-input" type="search" autocomplete="off" placeholder="Search this base&rsquo;s rollable mods&hellip;">
         <div class="gp-stat-chips" id="gp-stat-chips"></div>
       </section>

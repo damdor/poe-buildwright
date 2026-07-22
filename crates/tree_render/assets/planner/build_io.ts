@@ -29,10 +29,12 @@ import { requestRender } from "./render.ts";
 import { updatePreview } from "./pathfind.ts";
 import { applyAsc, refreshAscOptions, updateSelectionUI } from "./sidebar.ts";
 import { flushPersistNow, hydrateFromActiveCapture } from "./wizard_sync.ts";
-import type { Allocation, Capture, Item, Plan, PlanFormat, PlanVersion, Skill, SupportGem } from "../../../../types/shared.d.ts";
+import { GAME } from "./game.ts";
+import type { Allocation, Capture, Item, Plan, PlanVersion, Skill, SupportGem } from "../../../../types/shared.d.ts";
 import type { GGGBuild, GGGItem, GGGLevelInterval, GGGPassive, GGGPassiveEntry, GGGSkill, GGGSupport } from "../../../../types/poe2.d.ts";
 
-export const PLAN_FORMAT: PlanFormat = 'poe2-planner-plan';
+export const PLAN_FORMAT = 'buildwright-planner-plan' as const;
+export const LEGACY_PLAN_FORMAT = 'poe2-planner-plan' as const;
 // Keep this in sync with types/shared.d.ts:PlanVersion (currently 2).
 // The on-disk snapshot's version field is stamped from this constant.
 export const PLAN_VERSION: PlanVersion = 2;
@@ -61,6 +63,7 @@ export interface LegacyPlanSnapshot {
   format: typeof PLAN_FORMAT;
   version: typeof PLAN_VERSION;
   savedAt: string;
+  game: typeof GAME.id;
   name: string;
   description: string;
   class: string | null;
@@ -91,6 +94,7 @@ export function snapshotPlan(meta?: SnapshotMeta): LegacyPlanSnapshot {
     format: PLAN_FORMAT,
     version: PLAN_VERSION,
     savedAt: new Date().toISOString(),
+    game: GAME.id,
     name: m.name || '',
     description: m.description || '',
     class: state.klass || null,
@@ -110,7 +114,12 @@ export function snapshotPlan(meta?: SnapshotMeta): LegacyPlanSnapshot {
 export function validatePlan(d: unknown): string | null {
   if (!d || typeof d !== 'object') return 'not a JSON object';
   const r = d as Record<string, unknown>;
-  if (r.format !== PLAN_FORMAT) return 'wrong format tag: ' + JSON.stringify(r.format);
+  if (r.format !== PLAN_FORMAT && r.format !== LEGACY_PLAN_FORMAT) {
+    return 'wrong format tag: ' + JSON.stringify(r.format);
+  }
+  if (r.game != null && r.game !== GAME.id) {
+    return 'plan belongs to ' + JSON.stringify(r.game) + ', current planner is ' + GAME.id;
+  }
   if (typeof r.version !== 'number') return 'missing version (number)';
   if (r.version > PLAN_VERSION) {
     return 'plan version ' + r.version + ' is newer than this planner (' + PLAN_VERSION + ')';
@@ -658,6 +667,7 @@ export function gggBuildToPlan(b: GGGBuild): Plan {
     format: PLAN_FORMAT,
     version: PLAN_VERSION,
     savedAt: new Date().toISOString(),
+    game: GAME.id,
     name: b.name || '',
     description: b.description || '',
     class: klass,
@@ -888,4 +898,3 @@ export async function doImportPlan(): Promise<void> {
     loadPlanData(data as ImportedPlan);
   } catch (e) { alert((e as Error).message); }
 }
-

@@ -13,19 +13,18 @@
 import { decode as decodeShare } from "./share_codec.ts";
 import type {
   Plan, Capture, Allocation, Skill, Item,
-  CommitMeta, PlanIndexEntry, PoE2PlanAPI,
+  CommitMeta, GameId, PlanIndexEntry, PoE2PlanAPI,
 } from "../../types/shared.d.ts";
 
 // Storage is namespaced per game so a PoE1 page never sees (or
 // clobbers) PoE2 plans. Default base keeps every existing PoE2 key.
-const STORE_BASE =
-  window.PoE2Game && window.PoE2Game.id !== "poe2"
-    ? `${window.PoE2Game.id}-planner`
-    : "poe2-planner";
+const GAME_ID: GameId = window.PoE2Game?.id ?? "poe2";
+const STORE_BASE = window.PoE2Game?.storageNamespace ?? `${GAME_ID}-planner`;
 const KEY_PREFIX  = `${STORE_BASE}:plan:`;
 const KEY_INDEX   = `${STORE_BASE}:index`;
 const KEY_CURRENT = `${STORE_BASE}:current`;
-const PLAN_FORMAT: "poe2-planner-plan" = "poe2-planner-plan";
+const PLAN_FORMAT = "buildwright-planner-plan" as const;
+const LEGACY_PLAN_FORMAT = "poe2-planner-plan" as const;
 // v2 = captures[] cumulative snapshots. v1 is unsupported — pre-launch
 // we don't carry legacy data forward. loadPlan returns null for non-v2
 // entries and the planner mints a fresh plan.
@@ -71,7 +70,7 @@ function newCapture(opts?: NewCaptureOpts): Capture {
 
 function newPlan(): Plan {
   return {
-    format: PLAN_FORMAT, version: PLAN_VERSION,
+    format: PLAN_FORMAT, version: PLAN_VERSION, game: GAME_ID,
     savedAt: new Date().toISOString(),
     // Game patch this plan was authored against (e.g., "0.4"). Set
     // from window.POE2_PATCH at mint time; reads back on load so we
@@ -112,6 +111,9 @@ function normalizePlan(p: Plan | null | undefined): Plan {
   // before this field existed get null and skip the cross-patch
   // warning (we can't know if they're stale, so don't false-alarm).
   if (typeof p.patch !== "string") p.patch = null;
+  p.game = GAME_ID;
+  p.format = PLAN_FORMAT;
+  p.version = PLAN_VERSION;
   for (const c of p.captures) {
     if (!c.id) c.id = genCapId();
     if (!Array.isArray(c.levelRange) || c.levelRange.length !== 2) {
@@ -150,14 +152,18 @@ function loadPlan(id: string): Plan | null {
     const raw = localStorage.getItem(KEY_PREFIX + id);
     if (!raw) return null;
     const data = JSON.parse(raw) as Plan;
-    if (data.format !== PLAN_FORMAT) return null;
+    if (data.format !== PLAN_FORMAT && data.format !== LEGACY_PLAN_FORMAT) return null;
     if (data.version !== PLAN_VERSION) return null;
-    return data;
+    if (data.game && data.game !== GAME_ID) return null;
+    return normalizePlan(data);
   } catch (e) {
     return null;
   }
 }
 function savePlan(id: string, plan: Plan): void {
+  plan.format = PLAN_FORMAT;
+  plan.version = PLAN_VERSION;
+  plan.game = GAME_ID;
   plan.savedAt = new Date().toISOString();
   localStorage.setItem(KEY_PREFIX + id, JSON.stringify(plan));
   let idx: PlanIndexEntry[] = [];
@@ -244,7 +250,10 @@ if (!storedPlan && !freshlyMinted && codeM) {
   void (async () => {
     try {
       const decoded = await decodeShare(codeM[1]!);
-      if (decoded && decoded.format === PLAN_FORMAT && decoded.version === PLAN_VERSION) {
+      if (decoded &&
+          (decoded.format === PLAN_FORMAT || decoded.format === LEGACY_PLAN_FORMAT) &&
+          decoded.version === PLAN_VERSION &&
+          (!decoded.game || decoded.game === GAME_ID)) {
         savePlan(resolvedBuildId, normalizePlan(decoded));
         localStorage.setItem(KEY_CURRENT, resolvedBuildId);
         location.reload();
@@ -647,10 +656,9 @@ refreshBuildName();
 // pre-dates the patch field; force-cache would keep using that stale
 // copy and the badge would never appear. Standard revalidate catches
 // the new file via 304 on hit, full download on miss.
-interface BuildMeta { patch?: string; source?: string; }
+interface BuildMeta { game?: string; patch?: string; source?: string; }
 // Per-game agent dir: the poe1 page's metadata lives under
 // /assets/poe1-agent, and its badge must not claim to be PoE2 data.
-const GAME_ID = window.PoE2Game?.id ?? "poe2";
 const GAME_LABEL = GAME_ID === "poe2" ? "PoE2" : GAME_ID.replace("poe", "PoE");
 // Patch strings are GAME-NAMESPACED: poe1 data patches carry the
 // "poe1." prefix ("poe1.3.26"); poe2 patches are bare ("0.5",
@@ -667,13 +675,14 @@ function patchBelongsToGame(patch: string): boolean {
 function patchLabelOf(patch: string): string {
   return patch.startsWith(GAME_ID + ".") ? patch.slice(GAME_ID.length + 1) : patch;
 }
-const META_URL = window.PoE2Game?.agentBase
-  ? window.PoE2Game.agentBase + "/build_meta.json"
-  : "/assets/build_meta.json";
+const META_URL = window.PoE2Game?.assets?.buildMeta ?? "/assets/build_meta.json";
 fetch(META_URL)
   .then(r => r.ok ? r.json() : null)
   .then((meta: BuildMeta | null) => {
     if (!meta || !meta.patch) return;
+    if (meta.game !== GAME_ID) {
+      throw new Error(`build metadata belongs to ${meta.game}, expected ${GAME_ID}`);
+    }
     window.POE2_PATCH = meta.patch;
     window.POE2_SOURCE = meta.source || "";
     const badge = document.getElementById("wc-patch-badge");

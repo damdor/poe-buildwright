@@ -2,12 +2,12 @@
 
 This deployment also plans the ORIGINAL Path of Exile's passive tree
 (current league data — see build_meta.json's patch field for the
-exact version) at `/planner-poe1.html`. It is tree-only: class + ascendancy + a passive
-route. No gems, gear, jewel socketing, or mastery-effect picking here
-(those are PoE2-planner features). The `#agent=` URL contract is the
-same one documented in /llms.txt — hand the user
-`/planner-poe1.html#agent=<base64url poe2-agent-plan JSON>` with
-`class`, `ascendancy`, and `targets` by name; the importer pathfinds.
+exact version) at `/planner-poe1.html`. It supports the passive tree,
+skills/support links, standard equipment, five flask/tincture positions,
+and item mods. Jewels remain intentionally unsupported. The `#agent=` URL
+contract uses `buildwright-agent-plan` v2 with `game: "poe1"` — hand the
+user `/planner-poe1.html#agent=<base64url JSON>` with `class`,
+`ascendancy`, `targets`, `skills`, and/or `gear`; the importer pathfinds.
 Ground every name in /assets/poe1-agent/nodes.json — PoE1 reuses node
 ids with PoE2, so never mix grounding files across games.
 

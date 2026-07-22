@@ -78,9 +78,37 @@ fn find_from(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
 }
 
 fn parse_block(block: &str) -> Option<Unique> {
-    let mut lines = block.lines().map(str::trim).filter(|l| !l.is_empty());
-    let name = lines.next()?.to_string();
-    let base = lines.next()?.to_string();
+    let lines: Vec<&str> = block.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let name = lines.first()?.to_string();
+    // PoB1 may put influence headers before the base (`Shaper Item`),
+    // and may list a different base per historical variant:
+    //   {variant:1,2}Siege Helmet
+    //   {variant:3}Royal Burgonet
+    // The final variant is the current one, so the last leading base
+    // declaration is the catalogue base we ground against GGG data.
+    let mut base = String::new();
+    let mut body_start = 1usize;
+    for (i, line) in lines.iter().enumerate().skip(1) {
+        if line.starts_with("Variant:") || line.starts_with("Implicits:") || is_metadata(line) {
+            body_start = i;
+            break;
+        }
+        let clean = strip_brace_tag(line);
+        if clean.ends_with(" Item") {
+            body_start = i + 1;
+            continue;
+        }
+        // The first non-header line is always a base. Further leading
+        // {variant:...} lines are alternate bases; an untagged token
+        // after a base is the first mod id and starts the body.
+        if base.is_empty() || line.starts_with("{variant:") {
+            base = clean.to_string();
+            body_start = i + 1;
+            continue;
+        }
+        body_start = i;
+        break;
+    }
     if name.is_empty() || base.is_empty() {
         return None;
     }
@@ -88,7 +116,7 @@ fn parse_block(block: &str) -> Option<Unique> {
     let mut variants = Vec::new();
     let mut mods = Vec::new();
     let mut implicits_left = 0usize;
-    for line in lines {
+    for line in &lines[body_start..] {
         if let Some(label) = line.strip_prefix("Variant:") {
             variants.push(label.trim().to_string());
         } else if let Some(n) = line.strip_prefix("Implicits:") {
@@ -106,6 +134,15 @@ fn parse_block(block: &str) -> Option<Unique> {
         variants,
         mods,
     })
+}
+
+/// Strip one leading PoB brace annotation (`{variant:...}`, `{tags:...}`)
+/// from a human-readable base declaration.
+fn strip_brace_tag(line: &str) -> &str {
+    line.strip_prefix('{')
+        .and_then(|rest| rest.find('}').map(|end| &rest[end + 1..]))
+        .unwrap_or(line)
+        .trim()
 }
 
 /// Metadata / item-property lines we don't turn into mods. Covers both
@@ -285,5 +322,34 @@ Historic
             jewel.mods[0].literal.as_deref(),
             Some("Passives in radius are Conquered by the Kalguur")
         );
+    }
+
+    #[test]
+    fn picks_current_variant_base_and_skips_influence_headers() {
+        let sample = r#"
+return {
+[[
+The Formless Flame
+{variant:1,2}Siege Helmet
+{variant:3}Royal Burgonet
+Variant: Pre 3.16.0
+Variant: Pre 3.21.0
+Variant: Current
+LocalIncreasedPhysicalDamageReductionRatingPercentUnique__26
+]],[[
+Echoes of Creation
+Shaper Item
+Royal Burgonet
+Requires Level 65, 148 Str
+IncreasedLifeUniqueHelmetStrDex5
+]],
+}
+"#;
+        let parsed = parse(sample);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].base, "Royal Burgonet");
+        assert_eq!(parsed[0].mods.len(), 1);
+        assert_eq!(parsed[1].base, "Royal Burgonet");
+        assert_eq!(parsed[1].mods.len(), 1);
     }
 }

@@ -18,6 +18,10 @@ import { fitToView } from "./viewport.ts";
 import { requestRender } from "./render.ts";
 import { adj } from "./pathfind.ts";
 import { loadPlanData } from "./build_io.ts";
+import {
+  GAME, ITEM_SLOTS, featureOn, nextRepeatedItemSlotFor, normalizeItemSlotFor,
+} from "./game.ts";
+import { loadGameAsset } from "./asset_loader.ts";
 import type { Allocation, Capture, Item, Plan, Skill, TreeNode } from "../../../../types/shared.d.ts";
 
 interface AgentSkill { gem?: string; level?: number; supports?: string[]; note?: string; set?: "set1" | "set2" }
@@ -58,6 +62,7 @@ interface AgentCapture {
 export interface AgentPlan {
   format?: string;
   version?: number;
+  game?: string;
   name?: string;
   class?: string;
   ascendancy?: string;
@@ -66,6 +71,14 @@ export interface AgentPlan {
   gear?: AgentGear[];
   captures?: AgentCapture[];           // multi-snapshot form; when present, top-level targets/skills/gear are ignored
   notes?: string;
+}
+
+const AGENT_FORMAT = "buildwright-agent-plan";
+const LEGACY_AGENT_FORMAT = "poe2-agent-plan";
+function agentPlanMatchesPage(plan: AgentPlan | null): boolean {
+  if (!plan || (plan.format !== AGENT_FORMAT && plan.format !== LEGACY_AGENT_FORMAT)) return false;
+  // Legacy plans had no game field and remain page-scoped for compatibility.
+  return !plan.game || plan.game === GAME.id;
 }
 
 function b64urlDecode(s: string): string | null {
@@ -90,9 +103,8 @@ let _cat: { gems: CatGem[]; byName: Map<string, CatGem>; byId: Map<string, CatGe
 async function fetchGemCatalogue(): Promise<typeof _cat> {
   if (_cat) return _cat;
   try {
-    const r = await fetch("/assets/skill_catalogue.json");
-    if (!r.ok) return null;
-    const d = await r.json() as { gems?: CatGem[] };
+    const d = await loadGameAsset<{ gems?: CatGem[] }>("skillCatalogue");
+    if (!d) return null;
     const gems = d.gems ?? [];
     _cat = {
       gems,
@@ -212,8 +224,13 @@ async function runImport(payload: string): Promise<void> {
   const raw = b64urlDecode(payload);
   let plan: AgentPlan | null = null;
   try { plan = raw ? JSON.parse(raw) as AgentPlan : null; } catch { /* reported below */ }
-  if (!plan || plan.format !== "poe2-agent-plan") {
-    window.PoE2Plan?.flash("Agent link was malformed — started a blank build instead", true);
+  if (!plan || !agentPlanMatchesPage(plan)) {
+    window.PoE2Plan?.flash(
+      plan?.game && plan.game !== GAME.id
+        ? `Agent link belongs to ${plan.game}, not ${GAME.id}`
+        : "Agent link was malformed — started a blank build instead",
+      true,
+    );
     return;
   }
   await importAgentPlan(plan);
@@ -223,6 +240,10 @@ async function runImport(payload: string): Promise<void> {
  *  the #agent= fragment path and the ?live= channel (live_channel).
  *  Returns a short human summary, or null if the plan was unusable. */
 export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
+  if (!agentPlanMatchesPage(plan)) {
+    window.PoE2Plan?.flash(`Agent plan does not belong to ${GAME.id}`, true);
+    return null;
+  }
   const problems: string[] = [];
 
   // Class: ground against TREE.classes (fuzzy: case-insensitive).
@@ -362,13 +383,7 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
   // slots straight from the uniques data — bow/mace/... are weapons,
   // shield/focus/quiver are offhands). A taken slot bumps to its pair
   // (weapon1→weapon2, ring1→ring2, ...).
-  const SLOT_ALIAS: Record<string, string> = {
-    bow: "weapon1", crossbow: "weapon1", mace: "weapon1", sceptre: "weapon1",
-    spear: "weapon1", staff: "weapon1", wand: "weapon1", talisman: "amulet",
-    shield: "offhand1", focus: "offhand1", quiver: "offhand1",
-    ring: "ring1", weapon: "weapon1", offhand: "offhand1",
-  };
-  const BUMP: Record<string, string> = { weapon1: "weapon2", offhand1: "offhand2", ring1: "ring2" };
+  const plannerSlots = new Set(ITEM_SLOTS.map(s => s.key));
   const buildGear = (list: AgentGear[] | undefined): Item[] => {
     const items: Item[] = [];
     const takenSlots = new Set<string>();
@@ -392,13 +407,34 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
           : rar.charAt(0).toUpperCase() + rar.slice(1) + " " + g.base;
       }
       if (!g.slot || !name) continue;
-      let slot = SLOT_ALIAS[g.slot.toLowerCase().trim()] ?? g.slot.toLowerCase().trim();
+      let slot = normalizeItemSlotFor(GAME.id, g.slot, g.base ?? "");
+      if (slot === "jewel" && !featureOn("jewels")) {
+        problems.push("jewels are not supported for this game yet");
+        continue;
+      }
+      if (slot !== "jewel" && !plannerSlots.has(slot)) {
+        problems.push("item slot '" + g.slot + "' is not supported for this game");
+        continue;
+      }
       // Jewels are multi-instance (one per tree socket) — every other
       // slot is single-occupancy (with the weapon/ring bump).
       if (slot !== "jewel") {
-        if (takenSlots.has(slot) && BUMP[slot]) slot = BUMP[slot]!;
+        while (takenSlots.has(slot)) {
+          const next = nextRepeatedItemSlotFor(GAME.id, slot);
+          if (!next) break;
+          slot = next;
+        }
         if (takenSlots.has(slot)) { problems.push("gear slot '" + g.slot + "' already filled"); continue; }
         takenSlots.add(slot);
+      }
+      // Flasks are normal or magic in both games; even a loose agent
+      // payload with several requested mod lines must not manufacture
+      // a rare flask. The lines remain intact as build priorities.
+      if (g.base && rarity === "rare" && /^(?:flask[1-5]|charm[1-3])$/.test(slot)) {
+        rarity = (g.mods?.length ?? 0) > 0 ? "magic" : "normal";
+        name = rarity === "normal"
+          ? g.base
+          : rarity.charAt(0).toUpperCase() + rarity.slice(1) + " " + g.base;
       }
       const it: Item = { slot, name };
       if (slot === "jewel" && typeof g.socket === "number") it.socket = g.socket;
@@ -561,7 +597,7 @@ if (m || mj) {
       } else {
         let plan: AgentPlan | null = null;
         try { plan = JSON.parse(decodeURIComponent(mj![1]!)) as AgentPlan; } catch { /* flash below */ }
-        if (plan && plan.format === "poe2-agent-plan") void importAgentPlan(plan);
+        if (plan && agentPlanMatchesPage(plan)) void importAgentPlan(plan);
         else window.PoE2Plan?.flash("#plan= link was malformed — started a blank build instead", true);
       }
       history.replaceState(null, "", location.pathname + location.search);
@@ -610,8 +646,9 @@ export async function copyAgentLink(): Promise<void> {
       return g;
     });
   const plan: AgentPlan = {
-    format: "poe2-agent-plan",
-    version: 1,
+    format: AGENT_FORMAT,
+    version: 2,
+    game: GAME.id,
     name: (document.getElementById("build-name") as HTMLInputElement | null)?.value || "Untitled",
     class: state.klass || undefined,
     ascendancy: state.asc || undefined,
@@ -620,7 +657,8 @@ export async function copyAgentLink(): Promise<void> {
     gear,
     notes: (document.getElementById("build-description") as HTMLTextAreaElement | null)?.value || undefined,
   };
-  const url = location.origin + "/planner.html#agent=" + b64urlEncode(JSON.stringify(plan));
+  const plannerPath = GAME.id === "poe1" ? "/planner-poe1.html" : "/planner.html";
+  const url = location.origin + plannerPath + "#agent=" + b64urlEncode(JSON.stringify(plan));
   try {
     await navigator.clipboard.writeText(url);
     window.PoE2Plan?.flash("Agent link copied (" + targets.length + " targets, " + url.length + " chars)");

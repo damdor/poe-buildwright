@@ -120,8 +120,9 @@ export async function onRequestPost(ctx: PagesCtx): Promise<Response> {
     lo = hi + 1;
   }
   const internalPlan = {
-    format: "poe2-planner-plan",
+    format: "buildwright-planner-plan",
     version: 2,
+    game: "poe2",
     name: plan.name || "Agent build",
     description: plan.notes || plan.description || "",
     class: result.klass,

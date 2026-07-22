@@ -137,7 +137,8 @@ fi
 echo "==> node: $NODE_BIN ($($NODE_BIN --version))"
 
 # ---- agent metadata (needs node, so generated here) ------------------------
-"$NODE_BIN" scripts/gen_agent_meta.mjs
+"$NODE_BIN" scripts/gen_agent_meta.mjs --game poe2
+"$NODE_BIN" scripts/gen_agent_meta.mjs --game poe1
 
 # ---- create the Pages project if it doesn't exist yet ---------------------
 CF_API="https://api.cloudflare.com/client/v4"

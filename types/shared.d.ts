@@ -31,7 +31,8 @@ import type { Poe2TreeData } from "./poe2.d.ts";
 /** Local-storage plan format tag. Bump PLAN_VERSION when the on-disk shape
  *  changes incompatibly; older plans return null from loadPlan() and the
  *  caller mints a fresh one. */
-export type PlanFormat = "poe2-planner-plan";
+export type GameId = "poe1" | "poe2";
+export type PlanFormat = "poe2-planner-plan" | "buildwright-planner-plan";
 export type PlanVersion = 2;
 
 /** A single passive-tree allocation inside a capture. `set` distinguishes
@@ -122,6 +123,10 @@ export interface Plan {
   format?: PlanFormat;                  // stamped on persist
   version?: PlanVersion;                // stamped on persist
   savedAt?: string;                     // ISO 8601 timestamp on persist
+  /** Authoritative game identity. New plans always carry it; loaders
+   *  infer it from the page/legacy patch only while migrating old v2
+   *  poe2-planner-plan files. */
+  game?: GameId;
 
   name: string;
   description: string;
@@ -332,20 +337,33 @@ declare global {
   const TREE: TreeData;
 
   interface Window {
-    /** Per-game page descriptor embedded by tree_render (--game).
-     *  Absent or id "poe2" = classic behavior; poe1 pages turn off
-     *  PoE2-only features and get their own storage/agent namespace. */
+    /** Per-game page descriptor embedded by tree_render (--game). */
     PoE2Game?: {
-      id: string;
-      agentBase?: string;
+      schema: 1;
+      id: GameId;
+      storageNamespace: string;
       budgets?: { main?: number; asc?: number };
       features?: Record<string, boolean>;
-      /** Base URL for skill_catalogue.json / gem art. Default /assets;
-       *  PoE1 uses /assets/poe1-agent (its own catalogue namespace). */
-      catalogueBase?: string;
       /** How the support-gem count is bounded: "spirit" (PoE2 spirit
        *  reservation) or "links" (PoE1 item-slot socket count). */
       socketModel?: "spirit" | "links";
+      /** Exact game-owned data URLs. A null entry is an explicit
+       *  unsupported capability, never a fetch failure fallback. */
+      assets: {
+        skillCatalogue: string;
+        skillStats: string | null;
+        itemCatalogue: string;
+        bases: string;
+        mods: string;
+        grantedSkills: string | null;
+        jewels: string | null;
+        spirit: string | null;
+        buildMeta: string;
+        nodes: string;
+        graph: string;
+        supportCompat: string | null;
+        capabilities: string | null;
+      };
     };
     PoE2Plan?: PoE2PlanAPI;
     PoE2SliderDebug?: PoE2SliderDebugAPI;

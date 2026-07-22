@@ -66,11 +66,15 @@ export async function onRequestPut(ctx: PagesCtx): Promise<Response> {
   if (!TOKEN_RE.test(token)) return resp(400, '{"error":"bad token (16-64 chars of [A-Za-z0-9_-])"}');
   const text = await ctx.request.text();
   if (text.length > MAX_BODY) return resp(413, '{"error":"body over 256KB"}');
-  let body: { rev?: number; plan?: { format?: string } };
+  let body: { rev?: number; plan?: { format?: string; game?: string } };
   try { body = JSON.parse(text) as typeof body; } catch { return resp(400, '{"error":"body must be JSON"}'); }
   const fmt = body.plan?.format;
-  if (fmt !== "poe2-agent-plan" && fmt !== "poe2-planner-plan") {
-    return resp(422, '{"error":"body.plan.format must be poe2-agent-plan or poe2-planner-plan"}');
+  if (fmt !== "poe2-agent-plan" && fmt !== "buildwright-agent-plan" &&
+      fmt !== "poe2-planner-plan" && fmt !== "buildwright-planner-plan") {
+    return resp(422, '{"error":"body.plan.format must be a supported Buildwright agent or planner plan"}');
+  }
+  if (body.plan?.game && body.plan.game !== "poe2") {
+    return resp(422, '{"error":"this live endpoint is PoE2-only"}');
   }
   const rev = typeof body.rev === "number" ? body.rev : 0;
   const existing = await kv.get("live:" + token);

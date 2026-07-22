@@ -463,6 +463,23 @@ USAGE
         run: crate::handlers::poe1_portraits,
     },
     Command {
+        name: "poe1-item-icons",
+        group: Group::Data,
+        badge: Badge::Native,
+        summary: "Extract PoE1 equipment + unique inventory art (DDS → PNG)",
+        help: "\
+buildwright poe1-item-icons — inventory art for the gear overlay
+
+Reads shaped items/bases.tsv + items/unique_art.tsv, limits bases to
+real equipment classes (jewels excluded), pulls each DDS from PoE1's
+patch CDN, and writes /assets/poe1-agent/item_icons/*.png. Run after
+`shape bases`, `shape unique_art`, and `uniques` for a PoE1 patch.
+
+USAGE
+    buildwright poe1-item-icons [--patch poe1_<ver>]",
+        run: crate::handlers::poe1_item_icons,
+    },
+    Command {
         name: "verify",
         group: Group::Data,
         badge: Badge::Native,
@@ -574,10 +591,12 @@ A specific unique's fixed mod list is the *only* thing GGG ships no
 source for (it's applied server-side at item generation), so every tool
 sources that list from Path of Building's hand-maintained files. This
 command takes the *minimal* seam: it reads only `src/Export/Uniques/*.lua`
-— the `name → base → [mod ids + roll overrides]` recipe — from the pinned
-data/pob2 checkout, then resolves every mod id against OUR first-party
-items/mods.tsv + statdescriptions/*.csd. So the stat text, ranges and
-ordering are all ours; PoB contributes nothing but the list.
+— the `name → base → [mod ids + roll overrides]` recipe — from the matching
+pinned checkout (`data/pob1` for PoE1, `data/pob2` for PoE2), then resolves
+every mod id against OUR first-party items/mods.tsv + official stat
+descriptions. So the stat text, ranges and ordering are all ours; PoB
+contributes nothing but the list. PoE1 jewel recipes are omitted because
+the PoE1 item feature deliberately does not expose jewels yet.
 
 Writes items/uniques.tsv (one row per unique, latest variant) +
 items/uniques_variants.tsv (every historical variant) +
@@ -605,11 +624,12 @@ USAGE
         help: "\
 buildwright catalogues — emit the wizard catalogues
 
-Joins the first-party native TSVs (gems ⋈ granted skill via
-granted_effect_id, uniques ⋈ base) into the compact JSON catalogues the
-wizard pages fetch (viewer/assets/{skill,item}_catalogue.json). Gem
-icons are left null — the wizard is text-only; first-party icon art is a
-separate follow-up.
+Joins the first-party TSVs (gems ⋈ granted skill via granted_effect_id,
+uniques ⋈ base, bases ⋈ implicits, craftable mod families) into the compact
+JSON catalogues the wizard and planner fetch. PoE2 writes under
+viewer/assets + viewer/assets/agent; PoE1 is isolated under
+viewer/assets/poe1-agent. Inventory art is emitted by the game-specific
+icon commands.
 
 USAGE
     buildwright catalogues [--patch <p>]",
@@ -627,11 +647,15 @@ Runs the tree_render crate to emit viewer/planner.html (+ planner.css +
 build_meta.json) from the parsed tree data for the current patch.
 
 USAGE
-    buildwright render [--tree-dir <dir>] [--output <file>]
+    buildwright render [--game poe1|poe2] [--tree-dir <dir>] [--output <file>]
 
 DEFAULTS
     --tree-dir data/parsed/CURRENT/tree
-    --output   viewer/planner.html",
+    --output   viewer/planner.html (poe2) or viewer/planner-poe1.html (poe1)
+
+PoE1 renders require an explicit poe1_* tree directory. Game, tree input,
+agent namespace, output page, and generated metadata are validated as one
+profile so a build cannot silently mix the two games.",
         run: crate::handlers::render,
     },
     Command {

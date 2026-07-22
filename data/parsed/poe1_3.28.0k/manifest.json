@@ -1,5 +1,35 @@
 {
   "datasets": {
+    "items/bases.tsv": {
+      "bytes": 1003256,
+      "rows": 5341,
+      "sha256": "e91ca634cda75ccaa38604a3fc9d131eb04ff7d0723c81a45f303b0f903fbfba"
+    },
+    "items/mods.tsv": {
+      "bytes": 7956522,
+      "rows": 39292,
+      "sha256": "7122beaa77dc58edf3e467893499742729a19ebc7ab36ef6376028a0a4f4894d"
+    },
+    "items/unique_art.tsv": {
+      "bytes": 85599,
+      "rows": 1363,
+      "sha256": "133ae55ec03425cb97fe5a03fd46cc75c457e391c8cc044b23cc36003da1a8bc"
+    },
+    "items/uniques.pob.json": {
+      "bytes": 982,
+      "rows": null,
+      "sha256": "35a42bafa73c5159c7ce96a6d77b8fc61fec14f74cff1602c90b53d55b8e15ec"
+    },
+    "items/uniques.tsv": {
+      "bytes": 329049,
+      "rows": 1089,
+      "sha256": "50a10842d58337a273cb0f78f6b81047cab32ce42cb2e8f04be273e87b1db602"
+    },
+    "items/uniques_variants.tsv": {
+      "bytes": 1127478,
+      "rows": 15869,
+      "sha256": "ea4e15730b87950b3312be33ebe921154f5baf610412262b48538dc4e9663523"
+    },
     "skills/active_skills.tsv": {
       "bytes": 469706,
       "rows": 1919,
@@ -43,7 +73,7 @@
   },
   "generated_by": "buildwright",
   "patch": "poe1.3.28.0k",
-  "rollup": "142caa557166bdf11fe350a295052e00f18229a3bac1b7e18265461c4a765f9b",
+  "rollup": "fd090010f228b1936fb4df649317e18e5a3ef4155236b9ad6775f87c9ea6d24e",
   "schema_version": 2,
   "source": "pathofexile.com/passive-skill-tree (3.28.0k)"
 }

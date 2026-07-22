@@ -125,6 +125,39 @@ fn joined_i32(
     String::new()
 }
 
+/// First column present from a game-specific alias list.
+fn column_any(schema: &TableSchema, names: &[&str]) -> Option<usize> {
+    names.iter().find_map(|name| schema.column(name))
+}
+
+/// Reverse foreign-row index using the first game-specific key alias.
+fn reverse_index_any(ts: &TableSet, table: &str, cols: &[&str]) -> HashMap<u64, usize> {
+    let Some(schema) = ts.schema(table) else {
+        return HashMap::new();
+    };
+    let Some(col) = cols.iter().find(|name| schema.column(name).is_some()) else {
+        return HashMap::new();
+    };
+    ts.reverse_index(table, col)
+}
+
+/// Read a joined scalar through the first column alias present.
+fn joined_i32_any(
+    dat: &Option<Dat<'_>>,
+    schema: Option<&TableSchema>,
+    idx: &HashMap<u64, usize>,
+    base_row: usize,
+    cols: &[&str],
+) -> String {
+    let Some(schema) = schema else {
+        return String::new();
+    };
+    let Some(col) = cols.iter().find(|name| schema.column(name).is_some()) else {
+        return String::new();
+    };
+    joined_i32(dat, Some(schema), idx, base_row, col)
+}
+
 /// Raw referenced row ids of a foreignrow-array cell (nulls dropped) —
 /// for joins where we index the target ourselves rather than resolve to
 /// a string.
@@ -225,13 +258,16 @@ pub fn shape_bases(ts: &TableSet) -> Result<String, ShapeError> {
     };
     let c_id = col("Id")?;
     let c_name = col("Name")?;
-    let c_class = col("ItemClass")?;
+    let c_class = column_any(bs, &["ItemClass", "ItemClassesKey"])
+        .ok_or(ShapeError::MissingColumn("BaseItemTypes", "ItemClass/ItemClassesKey"))?;
     let c_w = col("Width")?;
     let c_h = col("Height")?;
     let c_drop = col("DropLevel")?;
     let c_corrupt = col("IsCorrupted")?;
-    let c_tags = col("Tags")?;
-    let c_impl = col("Implicit_Mods")?;
+    let c_tags = column_any(bs, &["Tags", "TagsKeys"])
+        .ok_or(ShapeError::MissingColumn("BaseItemTypes", "Tags/TagsKeys"))?;
+    let c_impl = column_any(bs, &["Implicit_Mods", "Implicit_ModsKeys"])
+        .ok_or(ShapeError::MissingColumn("BaseItemTypes", "Implicit_Mods/Implicit_ModsKeys"))?;
     let c_iv = col("ItemVisualIdentity")?;
     // Base inventory art: BaseItemType → ItemVisualIdentity.DDSFile —
     // the same chain that resolves 100% of gems.
@@ -245,15 +281,41 @@ pub fn shape_bases(ts: &TableSet) -> Result<String, ShapeError> {
     let mod_ids = ts.id_list("Mods");
 
     // Reverse joins to the stat tables (all keyed by BaseItemType).
-    let armour_i = ts.reverse_index("ArmourTypes", "BaseItemType");
-    let req_i = ts.reverse_index("AttributeRequirements", "BaseItemType");
-    let weapon_i = ts.reverse_index("WeaponTypes", "BaseItemType");
-    let flask_i = ts.reverse_index("Flasks", "BaseItemType");
-    let shield_i = ts.reverse_index("ShieldTypes", "BaseItemType");
+    let armour_i = reverse_index_any(ts, "ArmourTypes", &["BaseItemType", "BaseItemTypesKey"]);
+    let req_table = if ts.dat("AttributeRequirements").is_some() {
+        "AttributeRequirements"
+    } else {
+        "ComponentAttributeRequirements"
+    };
+    let req_i = if req_table == "ComponentAttributeRequirements" {
+        // This shared table keys BaseItemTypes by its string Id (not a
+        // foreign-row index), so bridge it back to BaseItemTypes rows.
+        let base_rows: HashMap<String, u64> = (0..bit.row_count())
+            .filter_map(|row| bit.string(row, c_id).ok().map(|id| (id, row as u64)))
+            .collect();
+        match (ts.dat(req_table), ts.schema(req_table)) {
+            (Some(req), Some(schema)) => column_any(schema, &["BaseItemTypesKey"])
+                .map(|key| {
+                    (0..req.row_count())
+                        .filter_map(|row| {
+                            let id = req.string(row, key).ok()?;
+                            Some((*base_rows.get(&id)?, row))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => HashMap::new(),
+        }
+    } else {
+        reverse_index_any(ts, req_table, &["BaseItemType", "BaseItemTypesKey"])
+    };
+    let weapon_i = reverse_index_any(ts, "WeaponTypes", &["BaseItemType", "BaseItemTypesKey"]);
+    let flask_i = reverse_index_any(ts, "Flasks", &["BaseItemType", "BaseItemTypesKey"]);
+    let shield_i = reverse_index_any(ts, "ShieldTypes", &["BaseItemType", "BaseItemTypesKey"]);
     let (d_armour, s_armour) = (ts.dat("ArmourTypes"), ts.schema("ArmourTypes"));
     let (d_req, s_req) = (
-        ts.dat("AttributeRequirements"),
-        ts.schema("AttributeRequirements"),
+        ts.dat(req_table),
+        ts.schema(req_table),
     );
     let (d_weapon, s_weapon) = (ts.dat("WeaponTypes"), ts.schema("WeaponTypes"));
     let (d_flask, s_flask) = (ts.dat("Flasks"), ts.schema("Flasks"));
@@ -262,7 +324,9 @@ pub fn shape_bases(ts: &TableSet) -> Result<String, ShapeError> {
     let mut out = String::with_capacity(bit.row_count() * 128);
     out.push_str(
         "id\tname\titem_class\twidth\theight\tdrop_level\tcorrupted\ttags\timplicit_mods\t\
-         req_str\treq_dex\treq_int\tarmour\tevasion\tenergy_shield\tward\tblock\t\
+         req_str\treq_dex\treq_int\tarmour\tevasion\tenergy_shield\tward\t\
+         armour_min\tarmour_max\tevasion_min\tevasion_max\t\
+         energy_shield_min\tenergy_shield_max\tward_min\tward_max\tblock\t\
          crit_chance\tattack_speed\tdamage_min\tdamage_max\tweapon_range\t\
          flask_life\tflask_mana\tflask_recovery\ticon_dds\n",
     );
@@ -283,15 +347,23 @@ pub fn shape_bases(ts: &TableSet) -> Result<String, ShapeError> {
             g(bit.bool(row, c_corrupt).map(|b| b.to_string())),
             array_ids(&bit, row, c_tags, &tag_ids),
             array_ids(&bit, row, c_impl, &mod_ids),
-            joined_i32(&d_req, s_req, &req_i, row, "ReqStr"),
-            joined_i32(&d_req, s_req, &req_i, row, "ReqDex"),
-            joined_i32(&d_req, s_req, &req_i, row, "ReqInt"),
-            joined_i32(&d_armour, s_armour, &armour_i, row, "Armour"),
-            joined_i32(&d_armour, s_armour, &armour_i, row, "Evasion"),
-            joined_i32(&d_armour, s_armour, &armour_i, row, "EnergyShield"),
-            joined_i32(&d_armour, s_armour, &armour_i, row, "Ward"),
+            joined_i32_any(&d_req, s_req, &req_i, row, &["ReqStr"]),
+            joined_i32_any(&d_req, s_req, &req_i, row, &["ReqDex"]),
+            joined_i32_any(&d_req, s_req, &req_i, row, &["ReqInt"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Armour", "ArmourMin"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Evasion", "EvasionMin"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["EnergyShield", "EnergyShieldMin"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Ward", "WardMin"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Armour", "ArmourMin"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Armour", "ArmourMax"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Evasion", "EvasionMin"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Evasion", "EvasionMax"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["EnergyShield", "EnergyShieldMin"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["EnergyShield", "EnergyShieldMax"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Ward", "WardMin"]),
+            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Ward", "WardMax"]),
             joined_i32(&d_shield, s_shield, &shield_i, row, "Block"),
-            joined_i32(&d_weapon, s_weapon, &weapon_i, row, "CritChance"),
+            joined_i32_any(&d_weapon, s_weapon, &weapon_i, row, &["CritChance", "Critical"]),
             joined_i32(&d_weapon, s_weapon, &weapon_i, row, "Speed"),
             joined_i32(&d_weapon, s_weapon, &weapon_i, row, "DamageMin"),
             joined_i32(&d_weapon, s_weapon, &weapon_i, row, "DamageMax"),
@@ -321,6 +393,21 @@ pub const BASES_TABLES: &[&str] = &[
     "Mods",
     "ArmourTypes",
     "AttributeRequirements",
+    "WeaponTypes",
+    "Flasks",
+    "ShieldTypes",
+    "ItemVisualIdentity",
+];
+
+/// PoE1 stores requirements under the shared component table rather
+/// than PoE2's AttributeRequirements table.
+pub const BASES_TABLES_POE1: &[&str] = &[
+    "BaseItemTypes",
+    "ItemClasses",
+    "Tags",
+    "Mods",
+    "ArmourTypes",
+    "ComponentAttributeRequirements",
     "WeaponTypes",
     "Flasks",
     "ShieldTypes",
@@ -1305,22 +1392,24 @@ pub const UNIQUE_ART_TABLES: &[&str] = &["UniqueStashLayout", "Words", "ItemVisu
 
 /// `Mods.Domain` enum → readable (indexing=1; item/jewel/flask matter
 /// most). Exotic domains fall back to their raw index, flagged not hidden.
-fn mod_domain(v: i32) -> String {
-    match v {
-        1 => "item",
-        2 => "flask",
-        3 => "monster",
-        4 => "chest",
-        5 => "area",
-        // PoE2 shifted these vs PoE1: verified 4.5.4.3 — domain 10
-        // carries the *Crafted bench mods, domain 11 carries every
-        // Jewel* mod (incl. JewelRadiusImplicit, a jewel implicit).
-        10 => "crafted",
-        11 => "jewel",
-        13 => "abyss_jewel",
-        14 => "map_device",
-        34 => "tincture",
-        37 => "idol",
+fn mod_domain(game: crate::fetch::Game, v: i32) -> String {
+    match (game, v) {
+        // PoE1's enum has Jewel at 10; PoE2 inserted Crafted there and
+        // moved Jewel to 11. This distinction is load-bearing: treating
+        // PoE1 jewel affixes as crafted item affixes leaks them into the
+        // normal equipment picker.
+        (crate::fetch::Game::Poe1, 10) => "jewel",
+        (crate::fetch::Game::Poe2, 10) => "crafted",
+        (crate::fetch::Game::Poe2, 11) => "jewel",
+        (_, 1) => "item",
+        (_, 2) => "flask",
+        (_, 3) => "monster",
+        (_, 4) => "chest",
+        (_, 5) => "area",
+        (_, 13) => "abyss_jewel",
+        (_, 14) => "map_device",
+        (_, 34) => "tincture",
+        (_, 37) => "idol",
         _ => return v.to_string(),
     }
     .to_string()
@@ -1347,7 +1436,7 @@ fn mod_generation(v: i32) -> String {
 /// `ModType` affix ladder by required level). This is the pool the site
 /// needs for "what can roll, and at what tier"; the fixed mod lists of
 /// *specific* uniques aren't in any GGG table (they stay PoB-derived).
-pub fn shape_mods(ts: &TableSet) -> Result<String, ShapeError> {
+pub fn shape_mods(ts: &TableSet, game: crate::fetch::Game) -> Result<String, ShapeError> {
     let m = ts.dat("Mods").ok_or(ShapeError::MissingTable("Mods"))?;
     let sm = ts.schema("Mods").ok_or(ShapeError::MissingTable("Mods"))?;
     let col = |n: &'static str| sm.column(n).ok_or(ShapeError::MissingColumn("Mods", n));
@@ -1356,18 +1445,32 @@ pub fn shape_mods(ts: &TableSet) -> Result<String, ShapeError> {
     let c_domain = col("Domain")?;
     let c_gen = col("GenerationType")?;
     let c_level = col("Level")?;
-    let c_modtype = col("ModType")?;
+    let c_modtype = column_any(sm, &["ModType", "ModTypeKey"])
+        .ok_or(ShapeError::MissingColumn("Mods", "ModType/ModTypeKey"))?;
     let c_families = col("Families")?;
-    let c_tags = col("Tags")?;
-    let c_sw_tags = col("SpawnWeight_Tags")?;
+    let c_tags = column_any(sm, &["Tags", "TagsKeys"])
+        .ok_or(ShapeError::MissingColumn("Mods", "Tags/TagsKeys"))?;
+    let c_sw_tags = column_any(sm, &["SpawnWeight_Tags", "SpawnWeight_TagsKeys"])
+        .ok_or(ShapeError::MissingColumn("Mods", "SpawnWeight_Tags/SpawnWeight_TagsKeys"))?;
     let c_sw_vals = col("SpawnWeight_Values")?;
-    // Stat slots run Stat1..Stat6 with parallel Stat1Value..Stat6Value.
-    let stat_cols: Vec<(usize, usize)> = (1..=6)
+    // PoE2 stores each range in an interval StatNValue column; PoE1
+    // stores separate StatsKeyN + StatNMin/StatNMax columns.
+    enum Bounds {
+        Interval(usize),
+        Separate(usize, usize),
+    }
+    let stat_cols: Vec<(usize, Bounds)> = (1..=6)
         .filter_map(|i| {
-            Some((
-                sm.column(&format!("Stat{i}"))?,
-                sm.column(&format!("Stat{i}Value"))?,
-            ))
+            let stat = column_any(sm, &[&format!("Stat{i}"), &format!("StatsKey{i}")])?;
+            let bounds = if let Some(value) = sm.column(&format!("Stat{i}Value")) {
+                Bounds::Interval(value)
+            } else {
+                Bounds::Separate(
+                    sm.column(&format!("Stat{i}Min"))?,
+                    sm.column(&format!("Stat{i}Max"))?,
+                )
+            };
+            Some((stat, bounds))
         })
         .collect();
 
@@ -1393,13 +1496,19 @@ pub fn shape_mods(ts: &TableSet) -> Result<String, ShapeError> {
         };
         // stats: "statid:lo:hi" per non-null slot.
         let mut stats = String::new();
-        for &(sc, vc) in &stat_cols {
-            if let Ok(Some(sid)) = m.foreign(row, sc) {
+        for (sc, bounds) in &stat_cols {
+            if let Ok(Some(sid)) = m.foreign(row, *sc) {
                 let name = stat_ids.get(sid as usize).cloned().unwrap_or_default();
                 if name.is_empty() {
                     continue;
                 }
-                let (lo, hi) = m.i32_interval(row, vc).unwrap_or((0, 0));
+                let (lo, hi) = match bounds {
+                    Bounds::Interval(value) => m.i32_interval(row, *value).unwrap_or((0, 0)),
+                    Bounds::Separate(min, max) => (
+                        m.i32(row, *min).unwrap_or(0),
+                        m.i32(row, *max).unwrap_or(0),
+                    ),
+                };
                 if !stats.is_empty() {
                     stats.push('|');
                 }
@@ -1424,7 +1533,7 @@ pub fn shape_mods(ts: &TableSet) -> Result<String, ShapeError> {
         let fields = [
             g(m.string(row, c_id)),
             g(m.string(row, c_name)),
-            mod_domain(m.i32(row, c_domain).unwrap_or(0)),
+            mod_domain(game, m.i32(row, c_domain).unwrap_or(0)),
             mod_generation(m.i32(row, c_gen).unwrap_or(0)),
             tier_of.get(&row).map(|t| t.to_string()).unwrap_or_default(),
             g(m.i32(row, c_level).map(|v| v.to_string())),
@@ -2258,3 +2367,19 @@ pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) ->
 
 /// Tables `shape_jewels` needs.
 pub const JEWELS_TABLES: &[&str] = &["PassiveJewelRadii", "BaseItemTypes", "ItemClasses", "Mods", "Stats", "AlternatePassiveSkills", "AlternateTreeVersions"];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fetch::Game;
+
+    #[test]
+    fn mod_domains_follow_each_games_enum() {
+        assert_eq!(mod_domain(Game::Poe1, 1), "item");
+        assert_eq!(mod_domain(Game::Poe1, 2), "flask");
+        assert_eq!(mod_domain(Game::Poe1, 10), "jewel");
+        assert_eq!(mod_domain(Game::Poe2, 10), "crafted");
+        assert_eq!(mod_domain(Game::Poe2, 11), "jewel");
+        assert_eq!(mod_domain(Game::Poe1, 34), "tincture");
+    }
+}

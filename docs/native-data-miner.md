@@ -43,6 +43,8 @@ data/parsed/<patch>/
 │   └── manifest.json
 └── items/
     ├── bases.tsv          # base type id, slot, requirements
+    ├── mods.tsv           # affix domain/tags/gates + live stat ranges
+    ├── unique_art.tsv     # unique display name → first-party DDS art
     ├── uniques.tsv        # unique → base + latest-variant stats (pob-pinned)
     ├── uniques_variants.tsv  # per-variant stat rolls
     ├── uniques.pob.json   # provenance: pinned PoB commit + source files
@@ -397,6 +399,7 @@ Every dataset the site consumes, and how it's sourced first-party:
 | ---------------------------- | ------------- | ------------------------------------------------- |
 | `items/bases.tsv`            | ✅ `shape`     | `BaseItemTypes` ⋈ stat/req tables                 |
 | `items/mods.tsv`             | ✅ `shape`     | `Mods` ⋈ `Stats`/`Tags` (native-only bonus)       |
+| `items/unique_art.tsv`       | ✅ `shape`     | `UniqueStashLayout` ⋈ `Words`/visual identity     |
 | `skills/gems.tsv`            | ✅ `shape`     | `SkillGems` ⋈ `BaseItemTypes`                     |
 | `skills/active_skills.tsv`   | ✅ `shape`     | `ActiveSkills` ⋈ `GrantedEffects`                 |
 | `skills/support_skills.tsv`  | ✅ `shape`     | `GrantedEffects` ⋈ gem items                      |
@@ -500,9 +503,10 @@ for `uniques` turns up only art/audio assets.) So, like every other tool,
 we take that list from Path of Building's hand-maintained files — but we
 take the **smallest possible seam** and resolve everything else ourselves.
 
-**The seam is one file set, pinned.** `buildwright uniques` reads only
-`data/pob2/src/Export/Uniques/*.lua` — the *recipe*: `name → base →
-[mod ids + variant masks + roll overrides]`. It never reads PoB's resolved
+**The seam is one file set, pinned.** `buildwright uniques` reads only the
+matching checkout's `src/Export/Uniques/*.lua` (`data/pob1` for PoE1,
+`data/pob2` for PoE2) — the *recipe*: `name → base → [mod ids + variant
+masks + roll overrides]`. It never reads PoB's resolved
 `Data/Uniques` text or PoB's mod database. Every mod id
 (`UniqueLocalArmourAndEvasionAndEnergyShield4`, …) is a GGG `Mods.Id`, so
 we resolve it against **our** first-party `items/mods.tsv` (ranges + tags)

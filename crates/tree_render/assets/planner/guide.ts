@@ -15,7 +15,8 @@
 // - "Copy for agent" serializes the whole story as chronological JSON
 //   with writing hints — the hand-off for a full written guide.
 // ============================================================================
-import { featureOn } from "./game.ts";
+import { featureOn, SOCKET_MODEL } from "./game.ts";
+import { loadGameAsset } from "./asset_loader.ts";
 import { state, tooltip } from "./state.ts";
 import { focusNode } from "./cmdk.ts";
 import { requestRender } from "./render.ts";
@@ -64,19 +65,19 @@ if (GUIDE_ON) {
   async function loadData(): Promise<void> {
     if (!gems) {
       try {
-        const d = await fetch("/assets/skill_catalogue.json").then(r => r.ok ? r.json() : null) as { gems?: GuideGem[] } | null;
+        const d = await loadGameAsset<{ gems?: GuideGem[] }>("skillCatalogue");
         gems = new Map((d?.gems ?? []).map(g => [g.id, g]));
       } catch { gems = new Map(); }
     }
     if (!uniques) {
       try {
-        const d = await fetch("/assets/item_catalogue.json").then(r => r.ok ? r.json() : null) as { uniques?: GuideUnique[] } | null;
+        const d = await loadGameAsset<{ uniques?: GuideUnique[] }>("itemCatalogue");
         uniques = new Map((d?.uniques ?? []).map(u => [u.name.toLowerCase(), u]));
       } catch { uniques = new Map(); }
     }
     if (!baseIcons) {
       try {
-        const d = await fetch("/assets/agent/bases.json").then(r => r.ok ? r.json() : null) as { bases?: GuideBase[] } | null;
+        const d = await loadGameAsset<{ bases?: GuideBase[] }>("bases");
         baseIcons = new Map();
         for (const b of d?.bases ?? []) {
           if (b.icon && !baseIcons.has(b.name.toLowerCase())) baseIcons.set(b.name.toLowerCase(), b.icon);
@@ -85,7 +86,7 @@ if (GUIDE_ON) {
     }
     if (!effStats) {
       try {
-        const d = await fetch("/assets/skill_stats.json").then(r => r.ok ? r.json() : null) as { effects?: Record<string, GuideEffectStats> } | null;
+        const d = await loadGameAsset<{ effects?: Record<string, GuideEffectStats> }>("skillStats");
         effStats = d?.effects ?? {};
       } catch { effStats = {}; }
     }
@@ -110,7 +111,9 @@ if (GUIDE_ON) {
       }
     }
     const resv = atLevel(st.reservation, L);
-    return resv ? "reserves " + resv + " Spirit" : "";
+    return resv
+      ? "reserves " + resv + (SOCKET_MODEL === "spirit" ? " Spirit" : "% Mana")
+      : "";
   }
 
   // ---- fragment renderers ----

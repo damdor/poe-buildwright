@@ -1,9 +1,12 @@
-# PoE1 passive tree support — step 1 (tree only)
+# PoE1 planner support — tree, skills, and standard equipment
 
-Scope: render and plan the PoE1 passive tree with the same agentic
-grounding as PoE2. No skills, gear, jewels, or timeless mechanics —
-those are explicitly out of scope for step 1. Cluster jewels and the
-event/bloodline ascendancies present in the data are also deferred.
+Scope: render and plan the PoE1 passive tree, skills, and every standard
+equipment slot with the same planner UX and agentic grounding as PoE2.
+That includes both weapon sets, armour, jewellery, belts, five flasks,
+tinctures, base implicits/requirements/defences/weapon stats, craftable
+mods, uniques, and real inventory art. Jewels (including cluster jewels)
+and timeless mechanics remain explicitly deferred; the event/bloodline
+ascendancies present in the data are also deferred.
 
 ## Pipeline (fully CLI, no hand fixing)
 
@@ -11,6 +14,12 @@ event/bloodline ascendancies present in the data are also deferred.
 ./bw poe1-tree                     # fetch + shape; SELF-LABELS from
                                    # the page's own version marker
 ./bw poe1-sprites --label <ver>    # fetch + slice the official atlases
+./bw shape bases      --patch poe1_<ver>
+./bw shape mods       --patch poe1_<ver>
+./bw shape unique_art --patch poe1_<ver>
+./bw uniques          --patch poe1_<ver> # pinned PoB1 recipe fallback
+./bw catalogues       --patch poe1_<ver>
+./bw poe1-item-icons  --patch poe1_<ver>
 ./bw manifest --patch poe1_<ver>   # hash everything (same contract as PoE2)
 ./bw verify   --patch poe1_<ver>   # integrity + referential ship gate
 ./bw render \
@@ -38,8 +47,20 @@ the one platform-specific step in the import.
 - `data/parsed/poe1_<label>/tree.json` — the official embed, verbatim.
 - `tree/{nodes,edges,meta,sprites}.tsv` — the same 17-column shape the
   PoE2 shaper emits, so `tree_render` consumes both games unchanged.
+- `items/{bases,mods,unique_art}.tsv` — first-party PoE1 CDN data shaped
+  into the same catalogue contract as PoE2. Schema aliases are resolved
+  in `data_miner::shape`, not in the browser.
+- `items/uniques*.tsv` + `uniques.pob.json` — the only fallback seam:
+  the pinned PoB1 `src/Export/Uniques/*.lua` grouping recipe, resolved
+  against the first-party PoE1 mods and stat descriptions. Jewel recipes
+  are excluded at ingestion, not hidden after catalogue generation.
+- `/assets/poe1-agent/{bases,mods,item_catalogue}.json` and
+  `item_icons/*.png` — the per-game grounding/catalogue namespace used
+  by the shared gear overlay. The icon generator mirrors only supported
+  equipment and resolved non-jewel uniques, pruning stale output.
 - `.source` provenance marker + `manifest.json` (SHA-256 per file +
-  rollup). `verify` uses a tree-only core set for `poe1_*` dirs.
+  rollup). `verify` requires the PoE1 tree, skill, base, mod, unique-art,
+  and resolved-unique datasets to be present and non-empty.
 - Node positions: `group.xy + r*(sin a, -cos a)` with
   `orbitRadii`/`skillsPerOrbit` from the embed's constants — but the
   angle is NOT uniform for every orbit. GGG's `getOrbitAngle`
@@ -119,12 +140,32 @@ the official tree.json — re-run it after any rebake.
   Dexterity/Intelligence for all 3337 nodes of the embed.
 - Mastery edges never render (structural only), same as PoE2.
 
-## Page isolation (`--game poe1` descriptor)
+## Page isolation and shared item ownership (`--game poe1` descriptor)
 
 `tree_render --game poe1` embeds `window.PoE2Game`:
 
-- features off: gear, skills, jewels, spirit, weapon sets, share —
-  the corresponding modules skip entirely (strips removed from DOM).
+- features on: skills and gear. Features off: jewels, spirit, PoE2
+  weapon-set passive budgets, and share. PoE1's two physical weapon sets
+  are ordinary gear slots; the disabled feature is PoE2's tree-point
+  weapon-set mechanic.
+- `game.ts` owns the per-game slot board and data roots. The gear overlay
+  stays shared and consumes `allowed_slots`, base tags, and mod domains
+  emitted by the data layer. This prevents PoE1 schema/source knowledge
+  from leaking into interaction code and prevents flask/tincture/jewel
+  affixes from appearing on ordinary equipment.
+- Flasks are a dedicated horizontal belt below regular gear, while the
+  two surfaces reuse the same catalogue-backed item editor and the same
+  `Capture.items` persistence. PoE1 exposes five positions (including
+  utility flasks and tinctures); PoE2 exposes two and filters its broad
+  mined `flask` domain down to Life/Mana flasks. Both PoE2 positions
+  accept either recovery type to keep the unique-belt slot-swap
+  exception representable. PoE2's three Charm positions form their own
+  horizontal section and filter that same broad source domain to
+  `UtilityFlask`/Charm bases; PoE1 does not render the section.
+- PoE1 has no jewel slot. Repeated slots map to one grounding identity
+  (`flask2..5 → flask1`, weapon/ring set 2 → set 1), while saved plan
+  items keep their actual equipped slot. Old PoE2 plans using the former
+  single `flask` key display in `flask1` until edited.
 - `ascInPlace`: the in-place ascendancy presentation above.
 - budgets 123 main + 8 ascendancy; storage namespaced to
   `poe1-planner:*`; agent assets under `/assets/poe1-agent`; the
@@ -167,7 +208,7 @@ narrowest home that covers its consumers — never copied.
   so a plain rebake can't destroy enrichment in any run order; the
   `agent_assets_coherent` cargo test gates the tracked file.
 
-## Deferred (step 2+ candidates)
+## Remaining deferred capabilities
 
 - Cluster jewels (proxy groups are dropped at ingest).
 - Event/bloodline alternate ascendancies (14 in the data, not

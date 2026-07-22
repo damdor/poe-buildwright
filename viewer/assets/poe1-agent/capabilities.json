@@ -1,0 +1,103 @@
+{
+ "format": "poe1-agent-capabilities",
+ "agent_schema_version": 1,
+ "game": "poe1",
+ "patch": "poe1.3.28.0k",
+ "validate": false,
+ "agent_build": false,
+ "live": false,
+ "share_encode": false,
+ "grounding": [
+  "/assets/poe1-agent/nodes.json",
+  "/assets/poe1-agent/graph.json",
+  "/assets/poe1-agent/bases.json",
+  "/assets/poe1-agent/mods.json",
+  "/assets/poe1-agent/support_compat.json",
+  "/assets/poe1-agent/skill_catalogue.json",
+  "/assets/poe1-agent/item_catalogue.json"
+ ],
+ "examples_index": null,
+ "openapi": null,
+ "human_page": "/planner-poe1.html",
+ "source": "https://github.com/damdor/poe-buildwright",
+ "license": {
+  "code": "PolyForm-Noncommercial-1.0.0",
+  "url": "https://polyformproject.org/licenses/noncommercial/1.0.0",
+  "note": "Site code + original content: free for noncommercial use; Grinding Gear Games may use anything, any purpose. The GAME DATA these endpoints serve (nodes, gems, bases, art) is (c) Grinding Gear Games and is NOT covered by this license."
+ },
+ "slots": {
+  "weapon1": [
+   "weapon1",
+   "bow",
+   "crossbow",
+   "staff",
+   "wand",
+   "sceptre",
+   "mace",
+   "spear",
+   "flail",
+   "axe",
+   "sword",
+   "dagger",
+   "claw"
+  ],
+  "offhand1": [
+   "offhand1",
+   "shield",
+   "focus",
+   "quiver",
+   "buckler"
+  ],
+  "weapon2": [
+   "weapon2"
+  ],
+  "offhand2": [
+   "offhand2"
+  ],
+  "helmet": [
+   "helmet"
+  ],
+  "body": [
+   "body"
+  ],
+  "gloves": [
+   "gloves"
+  ],
+  "boots": [
+   "boots"
+  ],
+  "amulet": [
+   "amulet"
+  ],
+  "ring1": [
+   "ring1",
+   "ring"
+  ],
+  "ring2": [
+   "ring2"
+  ],
+  "belt": [
+   "belt"
+  ],
+  "flask": [
+   "flask1",
+   "flask",
+   "life_flask",
+   "mana_flask",
+   "utility_flask",
+   "tincture"
+  ],
+  "flask2": [
+   "flask2"
+  ],
+  "flask3": [
+   "flask3"
+  ],
+  "flask4": [
+   "flask4"
+  ],
+  "flask5": [
+   "flask5"
+  ]
+ }
+}

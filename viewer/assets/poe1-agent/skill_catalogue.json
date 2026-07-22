@@ -1,5 +1,6 @@
 {
   "count": 671,
+  "game": "poe1",
   "gems": [
     {
       "cast_time": "750",
@@ -21285,5 +21286,5 @@
   ],
   "patch": "poe1.3.28.0k",
   "schema_version": 1,
-  "source": "first-party"
+  "source": "ggg"
 }
