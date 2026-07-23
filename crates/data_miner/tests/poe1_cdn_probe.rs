@@ -9,7 +9,7 @@
 //!   cargo test -p data_miner --test poe1_cdn_probe -- --ignored --nocapture
 
 use data_miner::bundle_decode;
-use data_miner::fetch::{patch_info_from, CdnClient, Game, POE1_PATCH_SERVER};
+use data_miner::fetch::{CdnClient, Game, POE1_PATCH_SERVER, patch_info_from};
 use data_miner::index::Index;
 
 #[test]
@@ -55,11 +55,18 @@ fn poe1_cdn_serves_the_gem_tables() {
         }
     }
     // Gem icon art sample:
-    for sample in ["art/2dart/skillicons/fireball.dds", "art/2dart/skillicons/gems/fireballgem.dds"] {
+    for sample in [
+        "art/2dart/skillicons/fireball.dds",
+        "art/2dart/skillicons/gems/fireballgem.dds",
+    ] {
         eprintln!(
             "  art {} → {}",
             sample,
-            if index.lookup(sample).is_some() { "present" } else { "absent (name differs — enumerate by prefix later)" }
+            if index.lookup(sample).is_some() {
+                "present"
+            } else {
+                "absent (name differs — enumerate by prefix later)"
+            }
         );
     }
     assert!(

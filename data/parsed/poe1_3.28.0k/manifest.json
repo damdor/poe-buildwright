@@ -1,14 +1,64 @@
 {
   "datasets": {
+    "dat/BaseItemTypes.tsv": {
+      "bytes": 1299931,
+      "rows": 5341,
+      "sha256": "a8ef8f04a3383e5d57dbe7a0a29c5296aa7bd51470effa0ad79f5693cf3ed7dd"
+    },
+    "dat/PassiveJewelSlots.tsv": {
+      "bytes": 3684,
+      "rows": 60,
+      "sha256": "e7ecced2f68c4d724fb2e19283f54a3aa5ac600a86598fdb096d0a5eb7e9a8f3"
+    },
+    "dat/PassiveSkillMasteryGroups.tsv": {
+      "bytes": 22863,
+      "rows": 61,
+      "sha256": "d7f28f9b06602d27312eb08f6b5ebe731a5ef5acfe4f78b724d769b10da8f817"
+    },
+    "dat/PassiveSkills.tsv": {
+      "bytes": 1699892,
+      "rows": 5593,
+      "sha256": "20fdc16cf18bb8b0d2d7ae8e3ce3747da2f993e593dd35347e5643502a3eb958"
+    },
+    "dat/PassiveTreeExpansionJewelSizes.tsv": {
+      "bytes": 24,
+      "rows": 3,
+      "sha256": "86c220cc47568e2778bb00d8294288d0be3af63ea5febcfa0be6712fe4b3027d"
+    },
+    "dat/PassiveTreeExpansionJewels.tsv": {
+      "bytes": 419,
+      "rows": 3,
+      "sha256": "9f2d7bd700782a75e07feaef30cb94481279e3c28349d4e7df217fac25d7cf49"
+    },
+    "dat/PassiveTreeExpansionSkills.tsv": {
+      "bytes": 5432,
+      "rows": 55,
+      "sha256": "cf17b418ecf4fdb6f6a467700d9ee440c5a17bb7a69c8da0d38abbd02377f2e4"
+    },
+    "dat/PassiveTreeExpansionSpecialSkills.tsv": {
+      "bytes": 22976,
+      "rows": 309,
+      "sha256": "46a953f90f5ec7662a0916268aa66b08b238860c40bcab322796b63350f24e5f"
+    },
+    "dat/Stats.tsv": {
+      "bytes": 2137823,
+      "rows": 22776,
+      "sha256": "c24b28aae5c251c515dee065011e969d0c6253a16a5f22eda125ee5053245297"
+    },
+    "dat/Tags.tsv": {
+      "bytes": 42449,
+      "rows": 1355,
+      "sha256": "baeac73caeca45e5600025c28bf6ce9f2b8b33b1ced2c0aeff1b492f305451cb"
+    },
     "items/bases.tsv": {
       "bytes": 1003256,
       "rows": 5341,
       "sha256": "e91ca634cda75ccaa38604a3fc9d131eb04ff7d0723c81a45f303b0f903fbfba"
     },
     "items/mods.tsv": {
-      "bytes": 7956522,
+      "bytes": 7962374,
       "rows": 39292,
-      "sha256": "7122beaa77dc58edf3e467893499742729a19ebc7ab36ef6376028a0a4f4894d"
+      "sha256": "814e907289f0a45450145ce0616727afd751640d61b052fc3977e740101622b8"
     },
     "items/unique_art.tsv": {
       "bytes": 85599,
@@ -16,19 +66,19 @@
       "sha256": "133ae55ec03425cb97fe5a03fd46cc75c457e391c8cc044b23cc36003da1a8bc"
     },
     "items/uniques.pob.json": {
-      "bytes": 982,
+      "bytes": 1639,
       "rows": null,
-      "sha256": "35a42bafa73c5159c7ce96a6d77b8fc61fec14f74cff1602c90b53d55b8e15ec"
+      "sha256": "66ae62490947aadd7acc17b1c6a078601af2a20486b058b0cdd9f58e0fdafb19"
     },
     "items/uniques.tsv": {
-      "bytes": 329049,
-      "rows": 1089,
-      "sha256": "50a10842d58337a273cb0f78f6b81047cab32ce42cb2e8f04be273e87b1db602"
+      "bytes": 376863,
+      "rows": 1250,
+      "sha256": "c890e033ea9370136860cf30b433aee67f5cd8ac441a5fab84c77a8fe60dd419"
     },
     "items/uniques_variants.tsv": {
-      "bytes": 1127478,
-      "rows": 15869,
-      "sha256": "ea4e15730b87950b3312be33ebe921154f5baf610412262b48538dc4e9663523"
+      "bytes": 1190861,
+      "rows": 16576,
+      "sha256": "95ded6c6ddb8511c320502f97010b694b6e9b0e31fce4b1ccc91f6e2ac5cd850"
     },
     "skills/active_skills.tsv": {
       "bytes": 469706,
@@ -55,6 +105,11 @@
       "rows": 3270,
       "sha256": "f4b27ec537f56dd3b361448ae2628924a7662dcf05ab309ff2002d44a06018fe"
     },
+    "tree/jewels.tsv": {
+      "bytes": 92251,
+      "rows": 422,
+      "sha256": "c94c3bfaf321003f3fc0398983effe35d078527cc06e3f27cbc82aaba33faaa9"
+    },
     "tree/meta.tsv": {
       "bytes": 23989,
       "rows": 851,
@@ -66,14 +121,14 @@
       "sha256": "442b081735dd7601e0ebe8d269f72ff5e6a1e308d765230f427581e0e87b19d8"
     },
     "tree/sprites.tsv": {
-      "bytes": 202459,
-      "rows": 1625,
-      "sha256": "5f1aa2a0fd9833fab73745da7c8254bd9930f910522ecfe133c618d31055d3c9"
+      "bytes": 203251,
+      "rows": 1639,
+      "sha256": "fc54652a316529c3be807337c417cbd5c5c43dc4ea401ba726fd0d975e7975e6"
     }
   },
   "generated_by": "buildwright",
   "patch": "poe1.3.28.0k",
-  "rollup": "fd090010f228b1936fb4df649317e18e5a3ef4155236b9ad6775f87c9ea6d24e",
+  "rollup": "f58aa2508a3bfa3d64943130bfb2366df57f64b51be24eec85b3c40f81920b25",
   "schema_version": 2,
-  "source": "pathofexile.com/passive-skill-tree (3.28.0k)"
+  "source": "first-party"
 }

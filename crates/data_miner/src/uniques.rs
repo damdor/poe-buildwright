@@ -46,6 +46,11 @@ pub struct UniqueMod {
 pub struct Unique {
     pub name: String,
     pub base: String,
+    /// Passive-tree effect radius declared by PoB's item recipe
+    /// (`Radius: Small`, `Radius: Very Large`, …). This is item
+    /// metadata rather than a rollable mod, but the planner needs it
+    /// to draw the correct in-tree radius.
+    pub radius: Option<String>,
     /// Variant labels in order (1-based indexing matches the masks).
     pub variants: Vec<String>,
     pub mods: Vec<UniqueMod>,
@@ -78,7 +83,11 @@ fn find_from(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
 }
 
 fn parse_block(block: &str) -> Option<Unique> {
-    let lines: Vec<&str> = block.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = block
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     let name = lines.first()?.to_string();
     // PoB1 may put influence headers before the base (`Shaper Item`),
     // and may list a different base per historical variant:
@@ -115,12 +124,15 @@ fn parse_block(block: &str) -> Option<Unique> {
 
     let mut variants = Vec::new();
     let mut mods = Vec::new();
+    let mut radius = None;
     let mut implicits_left = 0usize;
     for line in &lines[body_start..] {
         if let Some(label) = line.strip_prefix("Variant:") {
             variants.push(label.trim().to_string());
         } else if let Some(n) = line.strip_prefix("Implicits:") {
             implicits_left = n.trim().parse().unwrap_or(0);
+        } else if let Some(value) = line.strip_prefix("Radius:") {
+            radius = Some(value.trim().to_string());
         } else if is_metadata(line) {
             // Source / League / Sockets / Requires / LevelReq / etc.
         } else if let Some(m) = parse_mod_line(line, implicits_left > 0) {
@@ -131,6 +143,7 @@ fn parse_block(block: &str) -> Option<Unique> {
     Some(Unique {
         name,
         base,
+        radius,
         variants,
         mods,
     })
@@ -182,9 +195,7 @@ fn is_metadata(line: &str) -> bool {
         "Split",
         "Duplicated",
     ];
-    PREFIXES.iter().any(|k| line.starts_with(k))
-        || FLAGS.contains(&line)
-        || line.starts_with("--")
+    PREFIXES.iter().any(|k| line.starts_with(k)) || FLAGS.contains(&line) || line.starts_with("--")
 }
 
 fn parse_mod_line(line: &str, implicit: bool) -> Option<UniqueMod> {
@@ -316,6 +327,7 @@ Historic
         // `Limited to:` / `Radius:` headers and bare `Historic` flag are
         // dropped.
         let jewel = &u[3];
+        assert_eq!(jewel.radius.as_deref(), Some("Very Large"));
         assert_eq!(jewel.mods.len(), 1);
         assert_eq!(jewel.mods[0].mod_id, "");
         assert_eq!(

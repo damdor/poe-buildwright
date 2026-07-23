@@ -13,7 +13,8 @@
 // ============================================================================
 import {
   CHARM_SLOTS, FLASK_SLOTS, GAME, GEAR_SLOTS, ITEM_SLOTS,
-  baseAllowedForPlannerSlot, featureOn, groundingSlot, plannerSlot,
+  baseAllowedForPlannerSlot, featureOn, groundingSlot, jewelAllowedInSocket,
+  jewelLocateArtFor, jewelRadiusArtFor, jewelSocketArtForBase, plannerSlot,
 } from "./game.ts";
 import { loadGameAsset } from "./asset_loader.ts";
 import { canRollFamily, itemDomain } from "./item_rules.ts";
@@ -21,11 +22,16 @@ import { state, viewport } from "./state.ts";
 import { requestRender } from "./render.ts";
 import { cascadeJewelOrphans } from "./pathfind.ts";
 import { flushPersistNow } from "./wizard_sync.ts";
+import {
+  clusterSizeForItem, clusterSkillsForSize, clusterTemplateForSize,
+  configureClusterJewels, defaultClusterConfig, syncClusterJewelTrees,
+} from "./cluster_jewels.ts";
+import type { ClusterData } from "./cluster_jewels.ts";
 import type { Item } from "../../../../types/shared.d.ts";
 
 // Games may independently gate gear and jewels. Pull the gear UI out
-// only when gear itself is disabled; PoE1 enables the shared item flow
-// while keeping the separate jewel subsystem dormant.
+// only when gear itself is disabled. Jewel behavior is independently
+// selected by the embedded game profile and game-owned datasets.
 const GEAR_ON = featureOn("gear");
 const JEWELS_ON = featureOn("jewels");
 if (!GEAR_ON) {
@@ -36,7 +42,7 @@ if (!GEAR_ON) {
   document.getElementById("gear-popover")?.remove();
 }
 if (GEAR_ON) {
-  interface UniqueEntry { name: string; base?: string; slot?: string; allowed_slots?: string[]; icon?: string | null; latest_stats?: string; req_level?: number; variants?: { label: string; stats: string }[]; }
+  interface UniqueEntry { name: string; base?: string; slot?: string; allowed_slots?: string[]; icon?: string | null; latest_stats?: string; radius?: string; req_level?: number; variants?: { label: string; stats: string }[]; }
   interface ItemCatalogue { uniques: UniqueEntry[]; }
   interface BaseEntry {
     name: string; slot?: string; class?: string; lvl?: number; icon?: string;
@@ -54,7 +60,10 @@ if (GEAR_ON) {
     spirit?: number;
     grants?: string[];
   }
-  interface ModFamily { type: string; kind: string; domains?: string[]; slots: string[]; text?: string; gates?: [string, number][][]; }
+  interface ModFamily {
+    type: string; kind: string; domains?: string[]; slots: string[];
+    text?: string; stats?: string[]; gates?: [string, number][][];
+  }
 
   // Slot board. `cat` = item_catalogue slot families the picker offers
   // for that slot; freetext is always allowed on top.
@@ -155,7 +164,10 @@ if (GEAR_ON) {
   // stats input stays freetext without it.
   let modFams: ModFamily[] = [];
   loadGameAsset<{ mods?: ModFamily[] }>("mods")
-    .then((d: { mods?: ModFamily[] } | null) => { modFams = d?.mods ?? []; })
+    .then((d: { mods?: ModFamily[] } | null) => {
+      modFams = d?.mods ?? [];
+      if (GAME.id === "poe1") syncClusterJewelTrees(shownItems(), modFams);
+    })
     .catch(() => { /* freetext-only stats */ });
 
   const esc = (s: unknown): string => String(s ?? "").replace(/[&<>"']/g, c => (
@@ -168,6 +180,21 @@ if (GEAR_ON) {
   const RARITY_RE = /^(rare|magic|normal)\s+(.+)$/i;
   const uniqueIcon = (u: UniqueEntry): string | null =>
     u.icon ?? (u.base ? (baseIconByName.get(u.base.toLowerCase()) ?? null) : null);
+  function displayMods(it: Item): string[] {
+    const lines: string[] = [];
+    if (it.cluster) {
+      lines.push("Adds " + it.cluster.nodeCount + " Passive Skills");
+      const skill = clusterSkillsForSize(it.cluster.size).find(s => s.id === it.cluster!.skill);
+      if (skill) lines.push("Added Small Passive Skills grant: " + skill.stats);
+      if (it.cluster.sockets > 0) {
+        lines.push(it.cluster.sockets === 1
+          ? "1 Added Passive Skill is a Jewel Socket"
+          : it.cluster.sockets + " Added Passive Skills are Jewel Sockets");
+      }
+    }
+    lines.push(...(it.mods ?? []));
+    return lines;
+  }
   function resolveRow(it: Item): { rarity: string; icon: string | null; hover: string } {
     const nm = (it.name || it.uniqueName || "").trim();
     const uq = uniqueByName.get((it.uniqueName || nm).toLowerCase());
@@ -182,7 +209,8 @@ if (GEAR_ON) {
     }
     const icon = base ? (baseIconByName.get(base.toLowerCase()) ?? null)
                       : (baseIconByName.get(nm.toLowerCase()) ?? null);
-    const hover = [it.mods?.length ? it.mods.join(" · ") : "", it.note || ""]
+    const shownMods = displayMods(it);
+    const hover = [shownMods.length ? shownMods.join(" · ") : "", it.note || ""]
       .filter(Boolean).join(" — ");
     return { rarity: rarity || "normal", icon, hover };
   }
@@ -310,7 +338,7 @@ if (GEAR_ON) {
       const b = baseByName.get(baseName.toLowerCase());
       return itemTipHtml(nm, rv.rarity, rv.icon,
         [b?.class || "", it.slot || ""].filter(Boolean).join(" · "),
-        b, undefined, it.mods ?? [], it.note || "");
+        b, undefined, displayMods(it), it.note || "");
     }
     return null;
   }
@@ -500,7 +528,12 @@ if (GEAR_ON) {
   //   - one jewel per socket
   //   - a socketed radius jewel always shows its (subtle) ring
   //   - clicking an allocated socket opens the jewel picker
-  interface JewelSocket { id: number; x: number; y: number; name?: string; sinister?: boolean; special?: boolean; in_radius: Record<string, number[]> }
+  interface JewelSocket {
+    id: number; x: number; y: number; name?: string;
+    sinister?: boolean; special?: boolean;
+    cluster_size?: number; cluster_parent?: number; cluster_outer?: boolean;
+    in_radius: Record<string, number[]>;
+  }
   interface JewelData {
     rings: Record<string, { outer: number; inner: number; radius: number }>;
     bases: Record<string, { radius: number }>;
@@ -513,18 +546,29 @@ if (GEAR_ON) {
     /** Timeless conversions: faction + conqueror_index → replacement
      *  keystone (name, csd-rendered stats, icon). */
     timeless_keystones?: { name: string; faction: string; conqueror_index: number; stats: string; icon: string }[];
+    cluster?: ClusterData;
   }
   let jewelData: JewelData | null = null;
   const socketById = new Map<number, JewelSocket>();
+  const socketCoords = (socket: JewelSocket): { x: number; y: number } => {
+    const dynamic = TREE.nodes[String(socket.id)];
+    return dynamic ? { x: dynamic.x, y: dynamic.y } : socket;
+  };
+  const jewelRadiusArt = jewelRadiusArtFor(GAME.id);
+  const jewelLocateArt = jewelLocateArtFor(GAME.id);
   if (JEWELS_ON) {
     loadGameAsset<JewelData>("jewels")
       .then((d: JewelData | null) => {
         if (!d) return;
         jewelData = d;
         for (const sk of d.sockets) socketById.set(sk.id, sk);
+        if (GAME.id === "poe1" && d.cluster) {
+          configureClusterJewels(d.cluster);
+          syncClusterJewelTrees(shownItems(), modFams);
+        }
         // Warm the overlay sprites — first locate/ring paint must not
         // wait on a network fetch.
-        for (const src of ["/assets/sprites/Jewel_glow.png", "/assets/sprites/Jewel_ring.png"]) {
+        for (const src of [jewelLocateArt, jewelRadiusArt]) {
           new Image().src = src;
         }
         renderStrip();
@@ -535,15 +579,37 @@ if (GEAR_ON) {
   }
 
   const sanitizeArt = (n: string): string => n.replace(/[^A-Za-z0-9]/g, "_");
+  function jewelBaseName(it: Item): string {
+    if (it.base) return it.base;
+    const uname = it.uniqueName || it.name || "";
+    const u = uniqueByName.get(uname.toLowerCase());
+    if (u?.base) return u.base;
+    return uname.replace(/^(?:Normal|Magic|Rare)\s+/i, "").trim();
+  }
+  function jewelFitsSocket(it: Item, sock: JewelSocket | undefined): boolean {
+    return jewelAllowedInSocket(GAME.id, jewelBaseName(it), sock);
+  }
   // Socket-fill art fallback chain: not every unique has its own
   // JewelSocketActive sprite (only 11 do) — fall back to the BASE's
   // socket art, then to the item's 2D icon.
   function jewelArtChain(it: Item): string[] {
     const chain: string[] = [];
     const uname = it.uniqueName || (it.name && !it.base ? it.name : null);
+    const baseName = jewelBaseName(it);
+    const native = jewelSocketArtForBase(GAME.id, baseName);
+    if (native) chain.push(native);
+    if (GAME.id === "poe1") {
+      const u = uname ? uniqueByName.get(uname.toLowerCase()) : undefined;
+      if (u?.icon) chain.push(u.icon);
+      else {
+        const b = baseByName.get(baseName.toLowerCase());
+        if (b?.icon) chain.push(b.icon);
+      }
+      return [...new Set(chain)];
+    }
     if (uname) {
       chain.push("/assets/sprites/Jewel_U_" + sanitizeArt(uname) + ".png");
-      const u = uniques.find(x => x.name === uname);
+      const u = uniqueByName.get(uname.toLowerCase());
       if (u?.base) chain.push("/assets/sprites/Jewel_" + sanitizeArt(u.base) + ".png");
       if (u?.icon) chain.push(u.icon);
     } else if (it.base) {
@@ -575,12 +641,21 @@ if (GEAR_ON) {
   // ring per copy); the catalogue's latest-variant entry is fallback.
   function ringNameForJewel(it: Item): string | null {
     if (!jewelData) return null;
-    for (const m of it.mods ?? []) {
-      const mm = /in (\w+) Ring/i.exec(m);
-      if (mm && jewelData.rings[mm[1]!]) return mm[1]!;
+    const ringKey = (name: string): string | null => {
+      const compact = name.replace(/\s+/g, "");
+      return jewelData?.rings[compact] ? compact : null;
+    };
+    const lines = (it.mods ?? []).slice();
+    const catalogue = uniqueByName.get((it.uniqueName || it.name || "").toLowerCase());
+    if (catalogue?.latest_stats) lines.push(...catalogue.latest_stats.split(" · "));
+    for (const m of lines) {
+      const mm = /in (.+?) Ring/i.exec(m);
+      const key = mm ? ringKey(mm[1]!) : null;
+      if (key) return key;
     }
     const u = it.uniqueName || it.name;
-    return (u ? jewelData.uniques?.[u]?.ring : null) ?? null;
+    const legacy = u ? jewelData.uniques?.[u]?.ring : null;
+    return legacy ? ringKey(legacy) : null;
   }
   // Where a jewel's effect circle sits: socket-centered by default;
   // keystone-centered for "Radius of <Keystone>" rules (From Nothing).
@@ -595,7 +670,9 @@ if (GEAR_ON) {
     }
     const sock = socketById.get(it.socket);
     const r = radiusForJewel(it);
-    return sock && r > 0 ? { x: sock.x, y: sock.y, r } : null;
+    if (!sock || r <= 0) return null;
+    const p = socketCoords(sock);
+    return { x: p.x, y: p.y, r };
   }
   function radiusForJewel(it: Item): number {
     if (!jewelData) return 0;
@@ -605,6 +682,12 @@ if (GEAR_ON) {
     const rn = ringNameForJewel(it);
     if (rn) return jewelData.rings[rn]?.outer ?? 0;
     if (uq?.radius) return uq.radius;
+    const catalogue = u ? uniqueByName.get(u.toLowerCase()) : undefined;
+    if (catalogue?.radius) {
+      const key = catalogue.radius.replace(/\s+/g, "");
+      const ring = jewelData.rings[key];
+      if (ring) return ring.radius;
+    }
     let r = it.base ? (jewelData.bases[it.base]?.radius ?? 0) : 0;
     if (r > 0) {
       for (const m of it.mods ?? []) {
@@ -644,7 +727,9 @@ if (GEAR_ON) {
   function voicesItem(): Item | undefined {
     return shownItems().find(it => (it.slot ?? "") === "jewel"
       && (it.name || it.uniqueName) === "Voices"
-      && it.socket != null && state.selected.has(String(it.socket)));
+      && it.socket != null
+      && jewelFitsSocket(it, socketById.get(it.socket))
+      && state.selected.has(String(it.socket)));
   }
   function voicesActive(): boolean { return !!voicesItem(); }
   // The roll decides HOW MANY sinister sockets activate (2/3/4).
@@ -674,7 +759,7 @@ if (GEAR_ON) {
   }
 
   // ---------------------------------------------------------------
-  // Jewel pathing rules → window.PoE2JewelRules (pathfind consumes).
+  // Jewel pathing rules → the game-neutral bridge pathfind consumes.
   // Recomputed on every capture change; derived from the ACTIVE
   // capture's socketed jewels sitting in allocated sockets:
   //   Split Personality        → its rolled class start becomes an
@@ -691,6 +776,7 @@ if (GEAR_ON) {
     const freeAllocBySocket: Record<string, string[]> = {};
     for (const it of shownItems()) {
       if ((it.slot ?? "") !== "jewel" || it.socket == null) continue;
+      if (!jewelFitsSocket(it, socketById.get(it.socket))) continue;
       if (!state.selected.has(String(it.socket))) continue;
       for (const m of it.mods ?? []) {
         const sm = ALT_START_RE.exec(m);
@@ -729,12 +815,14 @@ if (GEAR_ON) {
         }
       }
     }
-    const before = JSON.stringify(window.PoE2JewelRules ?? null);
-    window.PoE2JewelRules = { starts, freeAlloc, freeAllocBySocket, voicesActive: voicesActive() };
+    const before = JSON.stringify(window.BuildwrightJewelRules ?? null);
+    window.BuildwrightJewelRules = {
+      starts, freeAlloc, freeAllocBySocket, voicesActive: voicesActive(),
+    };
     // Rules shrank (jewel unsocketed/moved/removed)? Ring points that
     // lost their justification fall, like in game. Only on CHANGE —
     // the sweep itself triggers a capture-change, so guard the loop.
-    if (before !== JSON.stringify(window.PoE2JewelRules)) {
+    if (before !== JSON.stringify(window.BuildwrightJewelRules)) {
       const dropped = cascadeJewelOrphans();
       if (dropped > 0) {
         flushPersistNow();   // the sweep ran outside a click flow — persist it
@@ -743,8 +831,13 @@ if (GEAR_ON) {
       }
     }
   }
-  window.addEventListener("poe2-capture-change", publishJewelRules);
-  window.addEventListener("poe2-replay-scrub", publishJewelRules);
+  function syncJewelState(): void {
+    if (GAME.id === "poe1") syncClusterJewelTrees(shownItems(), modFams);
+    publishJewelRules();
+  }
+  window.addEventListener("poe2-capture-change", syncJewelState);
+  window.addEventListener("poe2-replay-scrub", syncJewelState);
+  window.addEventListener("buildwright-passives-change", syncJewelState);
 
   // --- Persistent overlays: socketed-jewel art + always-on rings ---
   // GGG shows the jewel INSIDE its socket and, for radius jewels, a
@@ -783,7 +876,8 @@ if (GEAR_ON) {
     const items = shownItems().filter(it => (it.slot ?? "") === "jewel");
     const wanted = new Map<number, Item>();
     for (const it of items) {
-      if (it.socket != null && socketById.has(it.socket) && socketAllocated(it.socket)) {
+      const sock = it.socket != null ? socketById.get(it.socket) : undefined;
+      if (it.socket != null && sock && jewelFitsSocket(it, sock) && socketAllocated(it.socket)) {
         wanted.set(it.socket, it);
       }
     }
@@ -805,11 +899,12 @@ if (GEAR_ON) {
         // Size + place before first paint — otherwise the sprite
         // flashes at natural size in the corner for one frame.
         const sk = socketById.get(sid)!;
+        const p = socketCoords(sk);
         const d0 = SOCKET_ART_D * state.scale;
         img.style.width = d0 + "px";
         img.style.height = d0 + "px";
-        img.style.transform = "translate3d(" + (sk.x * state.scale + state.tx - d0 / 2) + "px, " +
-          (sk.y * state.scale + state.ty - d0 / 2) + "px, 0)";
+        img.style.transform = "translate3d(" + (p.x * state.scale + state.tx - d0 / 2) + "px, " +
+          (p.y * state.scale + state.ty - d0 / 2) + "px, 0)";
         jewelOverlay.appendChild(img);
         artEls.set(sid, img);
       }
@@ -821,6 +916,7 @@ if (GEAR_ON) {
       if (ringSpecFor(it) && !ringEls.get(sid)) {
         const ring = document.createElement("div");
         ring.className = "jewel-ring-art";
+        ring.style.backgroundImage = 'url("' + jewelRadiusArt + '")';
         jewelOverlay.appendChild(ring);
         ringEls.set(sid, ring);
       }
@@ -831,11 +927,12 @@ if (GEAR_ON) {
       const sc = state.scale;
       for (const [sid, el] of sinisterGlowEls) {
         const sk = socketById.get(sid)!;
+        const p = socketCoords(sk);
         const d = SOCKET_ART_D * sc;
         el.style.width = d + "px";
         el.style.height = d + "px";
-        el.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
-          (sk.y * sc + state.ty - d / 2) + "px, 0)";
+        el.style.transform = "translate3d(" + (p.x * sc + state.tx - d / 2) + "px, " +
+          (p.y * sc + state.ty - d / 2) + "px, 0)";
       }
     }
     if (convEls.size && jewelData?.keystones) {
@@ -855,11 +952,12 @@ if (GEAR_ON) {
       const sc = state.scale;
       for (const [sid, el] of artEls) {
         const sk = socketById.get(sid)!;
+        const p = socketCoords(sk);
         const d = SOCKET_ART_D * sc;
         el.style.width = d + "px";
         el.style.height = d + "px";
-        el.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
-          (sk.y * sc + state.ty - d / 2) + "px, 0)";
+        el.style.transform = "translate3d(" + (p.x * sc + state.tx - d / 2) + "px, " +
+          (p.y * sc + state.ty - d / 2) + "px, 0)";
       }
       const items = shownItems().filter(it => (it.slot ?? "") === "jewel");
       for (const [sid, el] of ringEls) {
@@ -883,6 +981,7 @@ if (GEAR_ON) {
   // reuses the same GGG ring art, temporary element.
   const previewRing = document.createElement("div");
   previewRing.className = "jewel-ring-art is-preview";
+  previewRing.style.backgroundImage = 'url("' + jewelRadiusArt + '")';
   previewRing.style.display = "none";
   jewelOverlay?.appendChild(previewRing);
   let previewAt: { x: number; y: number; r: number } | null = null;
@@ -932,6 +1031,12 @@ if (GEAR_ON) {
     } else if (sock.special) {
       html += '<div class="jp-note">Special socket — has its own rules in-game</div>';
     }
+    if (GAME.id === "poe1" && sock.cluster_size == null) {
+      html += '<div class="jp-note">This is an ordinary jewel socket; cluster jewels require an expansion socket.</div>';
+    } else if (GAME.id === "poe1" && sock.cluster_size != null) {
+      const maxSize = ["Small", "Medium", "Large"][sock.cluster_size] ?? "compatible";
+      html += '<div class="jp-note">Expansion socket — accepts up to a ' + maxSize + ' Cluster Jewel.</div>';
+    }
     pickerEl.innerHTML = html;
     const mkRow = (it: Item, attrs: Record<string, string>, hint: string, cls = "jp-row"): void => {
       const b = document.createElement("button");
@@ -951,6 +1056,7 @@ if (GEAR_ON) {
     if (current) mkRow(current, { unsocket: "1" }, "unsocket", "jp-row is-current");
     jl.forEach((it, ji) => {
       if (it === current) return;
+      if (!jewelFitsSocket(it, sock)) return;
       // Voices creates the sinister sockets — it can't occupy one.
       if (sock.sinister && (it.name || it.uniqueName) === "Voices") return;
       const where = it.socket != null && it.socket !== socketId
@@ -985,6 +1091,11 @@ if (GEAR_ON) {
     } else if (b.dataset.pick != null) {
       const it = jl[Number(b.dataset.pick)];
       if (it) {
+        const sock = socketById.get(pickerSocket);
+        if (!jewelFitsSocket(it, sock)) {
+          window.PoE2Plan?.flash("That cluster jewel is too large for this expansion socket", true);
+          return;
+        }
         for (const o of jl) if (o !== it && o.socket === pickerSocket) delete o.socket;
         it.socket = pickerSocket!;
         commitItems(items);
@@ -1005,7 +1116,10 @@ if (GEAR_ON) {
     const sock = pickerSocket !== null ? socketById.get(pickerSocket) : undefined;
     if (!b || !sock) return;
     const it = activeItems().filter(x => (x.slot ?? "") === "jewel")[Number(b.dataset.pick)];
-    if (it) showPreviewRing(sock.x, sock.y, radiusForJewel(it));
+    if (it) {
+      const p = socketCoords(sock);
+      showPreviewRing(p.x, p.y, radiusForJewel(it));
+    }
   });
   pickerEl.addEventListener("mouseout", hidePreviewRing);
   window.addEventListener("mousedown", e => {
@@ -1017,7 +1131,7 @@ if (GEAR_ON) {
 
   // pathfind calls this before treating a click as allocate/deallocate.
   // Handled (true) = allocated jewel socket → open the picker instead.
-  window.PoE2Jewels = {
+  window.BuildwrightJewels = {
     handleSocketClick: (nodeId: string, cx: number, cy: number): boolean => {
       const id = Number(nodeId);
       if (!socketById.has(id) || !socketAllocated(id)) return false;
@@ -1040,6 +1154,12 @@ if (GEAR_ON) {
       if (!sk) return null;
       const it = shownItems().find(x => (x.slot ?? "") === "jewel" && x.socket === id);
       if (it) {
+        if (!jewelFitsSocket(it, sk)) {
+          return {
+            title: "Invalid cluster-jewel placement",
+            lines: ["Move this jewel to a compatible expansion socket"],
+          };
+        }
         const lines = (it.mods ?? []).slice();
         if (!lines.length) {
           const u = uniques.find(x => x.name === (it.uniqueName || it.name));
@@ -1098,10 +1218,11 @@ if (GEAR_ON) {
       const sock = socketById.get(it.socket);
       const r = radiusForJewel(it);
       if (!sock || r <= 0) continue;
+      const p = socketCoords(sock);
       const rr = r * r;
       for (const kn in jewelData.keystones) {
         const ks = jewelData.keystones[kn]!;
-        const dx = ks.x - sock.x, dy = ks.y - sock.y;
+        const dx = ks.x - p.x, dy = ks.y - p.y;
         if (dx * dx + dy * dy <= rr) out.set(String(ks.id), conv);
       }
     }
@@ -1135,12 +1256,13 @@ if (GEAR_ON) {
   function pingSocket(socketId: number): void {
     const sk = socketById.get(socketId);
     if (!sk || !jewelOverlay) return;
+    const p = socketCoords(sk);
     const rect = viewport.getBoundingClientRect();
     // Overview zoom: close enough to see the socket's neighborhood
     // (and a radius ring), never the deep detail zoom.
     state.scale = Math.min(Math.max(state.scale, 0.12), 0.16);
-    state.tx = rect.width / 2 - sk.x * state.scale;
-    state.ty = rect.height / 2 - sk.y * state.scale;
+    state.tx = rect.width / 2 - p.x * state.scale;
+    state.ty = rect.height / 2 - p.y * state.scale;
     // The tree renders on demand — without this the CANVAS keeps the
     // old camera until the next input event while the DOM overlays
     // (synced per frame off state) already sit at the new one: the
@@ -1149,12 +1271,13 @@ if (GEAR_ON) {
     requestRender();
     const glow = document.createElement("div");
     glow.className = "jewel-socket-glow is-ping";
+    glow.style.backgroundImage = 'url("' + jewelLocateArt + '")';
     const sync = () => {
       const sc = state.scale, d = SOCKET_ART_D * 1.8 * sc;
       glow.style.width = d + "px";
       glow.style.height = d + "px";
-      glow.style.transform = "translate3d(" + (sk.x * sc + state.tx - d / 2) + "px, " +
-        (sk.y * sc + state.ty - d / 2) + "px, 0)";
+      glow.style.transform = "translate3d(" + (p.x * sc + state.tx - d / 2) + "px, " +
+        (p.y * sc + state.ty - d / 2) + "px, 0)";
     };
     sync();                       // sized/placed BEFORE first paint
     jewelOverlay.appendChild(glow);
@@ -1223,6 +1346,7 @@ if (GEAR_ON) {
     "LifeFlask": ["life_flask", "flask"], "ManaFlask": ["mana_flask", "flask"],
     "HybridFlask": ["life_flask", "mana_flask", "flask"],
     "UtilityFlask": ["utility_flask", "flask"], "Tincture": ["tincture"],
+    "Jewel": ["jewel"],
   };
   function baseTags(b: BaseEntry): Set<string> {
     const t = new Set<string>(b.tags ?? []);
@@ -1231,7 +1355,84 @@ if (GEAR_ON) {
   }
   let draftBase: BaseEntry | null = null;  // picked base, or null
   let draftRarity = "rare";
+  let draftCluster: NonNullable<Item["cluster"]> | null = null;
   const RARITY_ORDER = ["normal", "magic", "rare"];
+
+  // Cluster-jewel tree properties are enchants/structure, not ordinary
+  // prefixes and suffixes. Keep them in dedicated controls while the
+  // shared affix picker below continues to handle real rollable mods.
+  const clusterWrap = document.createElement("div");
+  clusterWrap.className = "gp-cluster hidden";
+  const clusterSkillSel = document.createElement("select");
+  const clusterNodesSel = document.createElement("select");
+  const clusterSocketsValue = document.createElement("span");
+  clusterSocketsValue.className = "gp-cluster-fixed";
+  clusterWrap.innerHTML =
+    '<div class="gp-cluster-head">Generated passive tree</div>' +
+    '<label>Repeated small passives</label><span data-cluster-control="skill"></span>' +
+    '<label>Passive count</label><span data-cluster-control="nodes"></span>' +
+    '<label>Jewel sockets</label><span data-cluster-control="sockets"></span>' +
+    '<div class="gp-cluster-note">“also grant” mods apply to every repeated small node; ' +
+    '“1 Added Passive Skill is…” mods become distinct notables.</div>';
+  clusterWrap.querySelector('[data-cluster-control="skill"]')?.appendChild(clusterSkillSel);
+  clusterWrap.querySelector('[data-cluster-control="nodes"]')?.appendChild(clusterNodesSel);
+  clusterWrap.querySelector('[data-cluster-control="sockets"]')?.appendChild(clusterSocketsValue);
+  rarityTabs.insertAdjacentElement("afterend", clusterWrap);
+
+  function syncClusterControls(): void {
+    const size = draftBase
+      ? clusterSizeForItem({ base: draftBase.name })
+      : null;
+    const on = GAME.id === "poe1" && baseActive() && !!size;
+    clusterWrap.classList.toggle("hidden", !on);
+    if (!on || !size) {
+      draftCluster = null;
+      return;
+    }
+    const template = clusterTemplateForSize(size);
+    const skills = clusterSkillsForSize(size);
+    if (!template || !skills.length) {
+      clusterWrap.classList.add("hidden");
+      return;
+    }
+    if (!draftCluster || draftCluster.size !== size) {
+      draftCluster = defaultClusterConfig(size);
+    }
+    if (!draftCluster) return;
+    clusterSkillSel.innerHTML = "";
+    for (const skill of skills) {
+      const option = document.createElement("option");
+      option.value = skill.id;
+      option.textContent = skill.name + (skill.stats ? " — " + skill.stats : "");
+      clusterSkillSel.appendChild(option);
+    }
+    clusterSkillSel.value = draftCluster.skill;
+    if (!clusterSkillSel.value) {
+      clusterSkillSel.value = skills[0]!.id;
+      draftCluster.skill = clusterSkillSel.value;
+    }
+    clusterNodesSel.innerHTML = "";
+    for (let n = template.min_nodes; n <= template.max_nodes; n++) {
+      const option = document.createElement("option");
+      option.value = String(n);
+      option.textContent = String(n);
+      clusterNodesSel.appendChild(option);
+    }
+    clusterNodesSel.value = String(draftCluster.nodeCount);
+    const socketCount = size === "Large" ? 2 : size === "Medium" ? 1 : 0;
+    clusterSocketsValue.textContent = `${socketCount} (fixed by ${size} Cluster Jewel)`;
+    draftCluster.nodeCount = Number(clusterNodesSel.value);
+    draftCluster.sockets = socketCount;
+  }
+  clusterSkillSel.addEventListener("change", () => {
+    if (!draftCluster) return;
+    draftCluster.skill = clusterSkillSel.value;
+    refreshChips();
+  });
+  clusterNodesSel.addEventListener("change", () => {
+    if (draftCluster) draftCluster.nodeCount = Number(clusterNodesSel.value);
+  });
+
   function setRarity(r: string): void {
     draftRarity = r;
     for (const b of Array.from(rarityTabs.querySelectorAll("button"))) {
@@ -1270,6 +1471,7 @@ if (GEAR_ON) {
   function syncBaseOpts(): void {
     const on = baseActive();
     baseOpts.classList.toggle("hidden", !on);
+    syncClusterControls();
     if (on) { refreshChips(); enforceRarity(); }
     syncVariantSel();
   }
@@ -1390,8 +1592,9 @@ if (GEAR_ON) {
     const base = draftBase;
     const q = statsInput.value.trim().toLowerCase();
     const tags = baseTags(base);
+    if (draftCluster?.skill) tags.add(draftCluster.skill);
     const pool = modFams
-      .filter(f => canRollFamily(f, tags, itemDomain(base.class)))
+      .filter(f => canRollFamily(f, tags, itemDomain(base.class, tags)))
       .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "prefix" ? -1 : 1));
     const isSel = (label: string): boolean =>
       selectedMods.some(m => m.toLowerCase() === label.toLowerCase());
@@ -1463,6 +1666,10 @@ if (GEAR_ON) {
       const b = u.base ? baseByName.get(u.base.toLowerCase()) : undefined;
       return baseAllowedForPlannerSlot(GAME.id, popSlot.value, b?.class, u.base ?? "");
     });
+    if (popSlot.value === "jewel" && pendingSocketForNew != null) {
+      const sock = socketById.get(pendingSocketForNew);
+      pool = pool.filter(u => jewelAllowedInSocket(GAME.id, u.base ?? "", sock));
+    }
     if (q) pool = pool.filter(u => u.name.toLowerCase().includes(q) || (u.base || "").toLowerCase().includes(q));
     const shown = pool.slice(0, q ? 8 : 12);
     popList.innerHTML = "";
@@ -1488,6 +1695,10 @@ if (GEAR_ON) {
       ? b.allowed_slots.includes(bslot)
       : b.slot === bslot);
     bpool = bpool.filter(b => baseAllowedForPlannerSlot(GAME.id, popSlot.value, b.class, b.name));
+    if (popSlot.value === "jewel" && pendingSocketForNew != null) {
+      const sock = socketById.get(pendingSocketForNew);
+      bpool = bpool.filter(b => jewelAllowedInSocket(GAME.id, b.name, sock));
+    }
     if (q) bpool = bpool.filter(b => b.name.toLowerCase().includes(q));
     bpool = bpool.slice().sort((a, b2) => (b2.lvl ?? 0) - (a.lvl ?? 0));
     const bshown = bpool.slice(0, q ? 8 : 6);
@@ -1586,6 +1797,7 @@ if (GEAR_ON) {
     popInput.value = existing ? (existing.base || existing.name || existing.uniqueName || "") : "";
     popNote.value  = existing ? (existing.note || "") : "";
     draftUnique    = existing?.uniqueName || null;
+    draftCluster   = existing?.cluster ? { ...existing.cluster } : null;
     statsInput.value = "";
     selectedMods = (existing?.mods ?? []).slice();
     syncVariantSel(existing?.mods);
@@ -1632,6 +1844,11 @@ if (GEAR_ON) {
     let note = popNote.value.trim();
     if (draftUnique && draftUnique === name) {
       entry.uniqueName = draftUnique;
+      // Persist the grounded base as part of the item. This keeps
+      // game rules (notably PoE1 cluster-socket eligibility) valid
+      // even if a later session temporarily cannot load the catalogue.
+      const grounded = uniqueByName.get(draftUnique.toLowerCase());
+      if (grounded?.base) entry.base = grounded.base;
       // Rolled variant → its stat lines are the item's mods; for
       // data-pending uniques the free-typed rolled lines are.
       const vs = currentVariants();
@@ -1654,6 +1871,7 @@ if (GEAR_ON) {
       };
       if (keptSocket != null) entry.socket = keptSocket;
       if (selectedMods.length) entry.mods = selectedMods.slice();
+      if (draftCluster) entry.cluster = { ...draftCluster };
     }
     if (note) entry.note = note;
     // A jewel added via the socket picker's "+ add a jewel…" goes
@@ -1667,8 +1885,15 @@ if (GEAR_ON) {
         }
         entry.socket = pendingSocketForNew;
       }
-      pendingSocketForNew = null;
     }
+    if (entry.socket != null && !jewelFitsSocket(entry, socketById.get(entry.socket))) {
+      window.PoE2Plan?.flash(
+        "That cluster jewel is too large for this expansion socket",
+        true,
+      );
+      return;
+    }
+    pendingSocketForNew = null;
     items.push(entry);
     commitItems(items);
     closePopover();
@@ -1776,8 +2001,17 @@ if (GEAR_ON) {
   window.addEventListener("poe2-capture-change", renderStrip);
   window.addEventListener("poe2-replay-scrub", renderStrip);
   function init(): void {
-    if (window.PoE2Plan) renderStrip();
-    else setTimeout(init, 120);
+    if (window.PoE2Plan) {
+      // Asset fetches often beat the wizard's initial local-plan
+      // hydration on localhost. Reconcile once the plan API exists so
+      // saved cluster jewels rebuild their generated subgraphs on a
+      // hard reload even when both data promises already settled.
+      renderStrip();
+      syncJewelState();
+      syncJewelOverlays();
+    } else {
+      setTimeout(init, 120);
+    }
   }
   init();
 }

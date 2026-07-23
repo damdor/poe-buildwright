@@ -22,8 +22,7 @@
 /// these positions (cols[0]..cols[16]) and errors below
 /// [`NODES_COLUMNS`] — change either only in the same commit as the
 /// other, plus all three shapers.
-pub const NODES_HEADER: &str =
-    "id\tx\ty\tkind\tklass\tascendancy\tname\tstats\tgroup\torbit\t\
+pub const NODES_HEADER: &str = "id\tx\ty\tkind\tklass\tascendancy\tname\tstats\tgroup\torbit\t\
      orbit_index\ticon\tnode_overlay\tactive_effect\tnode_options\t\
      connection_art\tunlock_constraint\n";
 pub const NODES_COLUMNS: usize = 17;
@@ -72,7 +71,11 @@ pub fn node_kind(f: &KindFlags) -> &'static str {
     } else if f.mastery {
         "mastery"
     } else if f.is_asc {
-        if f.notable { "asc_notable" } else { "asc_small" }
+        if f.notable {
+            "asc_notable"
+        } else {
+            "asc_small"
+        }
     } else if f.keystone {
         "keystone"
     } else if f.notable {
@@ -99,14 +102,13 @@ pub fn node_kind(f: &KindFlags) -> &'static str {
 /// `(group.x + r·sin a, group.y − r·cos a)` in every shaper.
 pub fn orbit_angle(oidx: f64, slots: f64) -> f64 {
     const DEG16: [f64; 16] = [
-        0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 135.0, 150.0, 180.0, 210.0, 225.0, 240.0, 270.0,
-        300.0, 315.0, 330.0,
+        0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 135.0, 150.0, 180.0, 210.0, 225.0, 240.0, 270.0, 300.0,
+        315.0, 330.0,
     ];
     const DEG40: [f64; 40] = [
         0.0, 10.0, 20.0, 30.0, 40.0, 45.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0,
-        130.0, 135.0, 140.0, 150.0, 160.0, 170.0, 180.0, 190.0, 200.0, 210.0, 220.0, 225.0,
-        230.0, 240.0, 250.0, 260.0, 270.0, 280.0, 290.0, 300.0, 310.0, 315.0, 320.0, 330.0,
-        340.0, 350.0,
+        130.0, 135.0, 140.0, 150.0, 160.0, 170.0, 180.0, 190.0, 200.0, 210.0, 220.0, 225.0, 230.0,
+        240.0, 250.0, 260.0, 270.0, 280.0, 290.0, 300.0, 310.0, 315.0, 320.0, 330.0, 340.0, 350.0,
     ];
     let i = oidx as usize;
     if slots == 16.0 && i < 16 {
@@ -164,12 +166,51 @@ mod tests {
     #[test]
     fn kind_ladder_precedence() {
         let k = |f: KindFlags| node_kind(&f);
-        assert_eq!(k(KindFlags { asc_start: true, is_asc: true, ..Default::default() }), "asc_start");
-        assert_eq!(k(KindFlags { class_start: true, ..Default::default() }), "class_start");
-        assert_eq!(k(KindFlags { jewel: true, is_asc: true, ..Default::default() }), "jewel");
-        assert_eq!(k(KindFlags { is_asc: true, notable: true, ..Default::default() }), "asc_notable");
-        assert_eq!(k(KindFlags { is_asc: true, ..Default::default() }), "asc_small");
-        assert_eq!(k(KindFlags { keystone: true, ..Default::default() }), "keystone");
+        assert_eq!(
+            k(KindFlags {
+                asc_start: true,
+                is_asc: true,
+                ..Default::default()
+            }),
+            "asc_start"
+        );
+        assert_eq!(
+            k(KindFlags {
+                class_start: true,
+                ..Default::default()
+            }),
+            "class_start"
+        );
+        assert_eq!(
+            k(KindFlags {
+                jewel: true,
+                is_asc: true,
+                ..Default::default()
+            }),
+            "jewel"
+        );
+        assert_eq!(
+            k(KindFlags {
+                is_asc: true,
+                notable: true,
+                ..Default::default()
+            }),
+            "asc_notable"
+        );
+        assert_eq!(
+            k(KindFlags {
+                is_asc: true,
+                ..Default::default()
+            }),
+            "asc_small"
+        );
+        assert_eq!(
+            k(KindFlags {
+                keystone: true,
+                ..Default::default()
+            }),
+            "keystone"
+        );
         assert_eq!(k(KindFlags::default()), "small");
     }
 

@@ -124,6 +124,7 @@ export function gearSlotsFor(gameId: string): GearSlotSpec[] {
     { key: "ring1",    label: "Ring 1",      cat: ["ring"] },
     { key: "ring2",    label: "Ring 2",      cat: ["ring"] },
     { key: "belt",     label: "Belt",        cat: ["belt"] },
+    { key: "jewel",    label: "Jewel",       cat: ["jewel"] },
   ] : [
     { key: "weapon1",  label: "Weapon 1",    cat: ["bow", "crossbow", "mace", "sceptre", "spear", "staff", "wand"] },
     { key: "offhand1", label: "Offhand 1",   cat: ["shield", "focus", "quiver"] },
@@ -251,4 +252,60 @@ export function nextRepeatedItemSlotFor(gameId: string, slot: string): string | 
     return ({ flask2: "flask3", flask3: "flask4", flask4: "flask5" } as Record<string, string>)[slot] ?? null;
   }
   return ({ charm1: "charm2", charm2: "charm3" } as Record<string, string>)[slot] ?? null;
+}
+
+/** Official PoE1 cluster-jewel bases. Expansion sockets carry a maximum
+ * supported size: outer sockets accept Large/Medium/Small, Large
+ * clusters generate Medium sockets, and Medium clusters generate Small
+ * sockets. Ordinary jewel sockets reject every cluster size. */
+export function isClusterJewelBase(baseName: string): boolean {
+  return /^(?:Small|Medium|Large) Cluster Jewel$/i.test(baseName.trim());
+}
+
+export interface JewelSocketPolicy {
+  cluster_size?: number;
+  cluster_outer?: boolean;
+}
+
+export function jewelAllowedInSocket(
+  gameId: string,
+  baseName: string,
+  socket: JewelSocketPolicy | undefined,
+): boolean {
+  if (gameId !== "poe1" || !isClusterJewelBase(baseName)) return true;
+  const size = /^(Small|Medium|Large)/i.exec(baseName.trim())?.[1]?.toLowerCase();
+  const sizeIndex = size === "large" ? 2 : size === "medium" ? 1 : 0;
+  return socket?.cluster_size != null && socket.cluster_size >= sizeIndex;
+}
+
+/** PoE1 supplies native socket-fill art in its passive-tree atlas.
+ * PoE2 keeps its existing per-base sprites, so null means to use the
+ * legacy `Jewel_<base>.png` chain. */
+export function jewelSocketArtForBase(gameId: string, baseName: string): string | null {
+  if (gameId !== "poe1") return null;
+  const b = baseName.trim();
+  if (/^Large Cluster Jewel$/i.test(b)) return "/assets/sprites/poe1_JewelSocketActiveAltPurple.png";
+  if (/^Medium Cluster Jewel$/i.test(b)) return "/assets/sprites/poe1_JewelSocketActiveAltBlue.png";
+  if (/^Small Cluster Jewel$/i.test(b)) return "/assets/sprites/poe1_JewelSocketActiveAltRed.png";
+  if (/^(?:Searching Eye|Murderous Eye|Hypnotic Eye|Ghastly Eye) Jewel$/i.test(b)) {
+    return "/assets/sprites/poe1_JewelSocketActiveAbyss.png";
+  }
+  if (/Timeless Jewel$/i.test(b)) return "/assets/sprites/poe1_JewelSocketActiveLegion.png";
+  if (/Crimson Jewel$/i.test(b)) return "/assets/sprites/poe1_JewelSocketActiveRed.png";
+  if (/Viridian Jewel$/i.test(b)) return "/assets/sprites/poe1_JewelSocketActiveGreen.png";
+  if (/Cobalt Jewel$/i.test(b)) return "/assets/sprites/poe1_JewelSocketActiveBlue.png";
+  if (/Prismatic Jewel$/i.test(b)) return "/assets/sprites/poe1_JewelSocketActivePrismatic.png";
+  return null;
+}
+
+export function jewelRadiusArtFor(gameId: string): string {
+  return gameId === "poe1"
+    ? "/assets/sprites/poe1_JewelCircle1.png"
+    : "/assets/sprites/Jewel_ring.png";
+}
+
+export function jewelLocateArtFor(gameId: string): string {
+  return gameId === "poe1"
+    ? "/assets/sprites/poe1_JewelSocketAltCanAllocate.png"
+    : "/assets/sprites/Jewel_glow.png";
 }

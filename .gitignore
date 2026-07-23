@@ -32,6 +32,7 @@ data/parsed/*/tree/nodes.tsv
 data/parsed/*/tree/edges.tsv
 data/parsed/*/tree/meta.tsv
 data/parsed/*/tree/sprites.tsv
+data/parsed/*/tree/jewels.tsv
 
 # Skill data (Phase 1 of the build-planner roadmap). Same convention
 # as tree/: TSVs are generated from PoB2 Lua sources, manifests ARE
@@ -121,16 +122,19 @@ viewer/assets/*.js
 viewer/assets/*.js.map
 
 # First-party miner dumps: `buildwright mine` writes raw GGG tables to
-# data/parsed/<patch>_native/. Regenerable on demand and not yet shaped
-# for the site, so we don't commit the bulk (~15 MB/patch); the `mine`
+# data/parsed/<patch>_native/ for PoE2 and the game-owned PoE1 patch's
+# dat/ directory. Regenerable on demand and not yet shaped for the
+# site, so we don't commit the bulk (~15 MB/patch); the `mine`
 # capability + on-demand `manifest` are the tracked artefacts.
 /data/parsed/*_native/
+/data/parsed/poe1_*/dat/
 # Agent grounding data — generated from mined GGG game data (tree_render emits)
 viewer/assets/agent/nodes.json
 viewer/assets/agent/graph.json
 viewer/assets/agent/bases.json
 viewer/assets/agent/mods.json
 viewer/assets/skill_stats.json
+viewer/assets/poe1-agent/jewels.json
 
 # Local-only: personal research, legacy scraped data, and the CURRENT
 # patch symlink (environment state, set by `bw` patch switching).

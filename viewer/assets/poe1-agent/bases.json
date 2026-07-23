@@ -10723,6 +10723,136 @@
     },
     {
       "allowed_slots": [
+        "jewel"
+      ],
+      "class": "Jewel",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_Mastery_dds.png?v=2",
+      "lvl": 1,
+      "name": "Prismatic Jewel",
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "class": "Jewel",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_NewGemBase3_dds.png?v=2",
+      "lvl": 1,
+      "name": "Large Cluster Jewel",
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_large"
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "class": "Jewel",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_NewGemBase2_dds.png?v=2",
+      "lvl": 1,
+      "name": "Medium Cluster Jewel",
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_medium"
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "class": "Jewel",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_NewGemBase1_dds.png?v=2",
+      "lvl": 1,
+      "name": "Small Cluster Jewel",
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_small"
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "class": "Jewel",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_basicstr_dds.png?v=2",
+      "lvl": 20,
+      "name": "Crimson Jewel",
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "class": "Jewel",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_basicdex_dds.png?v=2",
+      "lvl": 20,
+      "name": "Viridian Jewel",
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "class": "Jewel",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_basicint_dds.png?v=2",
+      "lvl": 20,
+      "name": "Cobalt Jewel",
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "class": "Jewel",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_Timeless_dds.png?v=2",
+      "lvl": 20,
+      "name": "Timeless Jewel",
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ]
+    },
+    {
+      "allowed_slots": [
         "offhand1"
       ],
       "ar": 9,
@@ -22815,7 +22945,7 @@
       ]
     }
   ],
-  "count": 1065,
+  "count": 1073,
   "format": "poe1-agent-bases",
   "game": "poe1",
   "patch": "poe1.3.28.0k",

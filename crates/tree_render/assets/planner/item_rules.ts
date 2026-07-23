@@ -8,12 +8,17 @@ export interface RollFamily {
   gates?: [string, number][][];
 }
 
-export function itemDomain(itemClass: string | undefined): string {
+export function itemDomain(itemClass: string | undefined, tags?: Iterable<string>): string {
   if (itemClass === "Tincture") return "tincture";
   if (["LifeFlask", "ManaFlask", "HybridFlask", "UtilityFlask"].includes(itemClass ?? "")) {
     return "flask";
   }
-  if (itemClass === "Jewel") return "jewel";
+  if (itemClass === "Jewel") {
+    if (tags && [...tags].some(tag => /^expansion_jewel_(?:small|medium|large)$/.test(tag))) {
+      return "cluster_jewel";
+    }
+    return "jewel";
+  }
   return "item";
 }
 

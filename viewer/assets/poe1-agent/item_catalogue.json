@@ -1,5 +1,5 @@
 {
-  "count": 1089,
+  "count": 1250,
   "game": "poe1",
   "patch": "poe1.3.28.0k",
   "schema_version": 1,
@@ -12803,6 +12803,3936 @@
         "top_tier_base_item_type"
       ],
       "variant_count": 3
+    },
+    {
+      "base": "Ghastly Eye Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GhastlyEyeUnique_dds.png?v=2",
+      "latest_stats": "+(5-10) to all Attributes · Minions have +6% to Damage over Time Multiplier per Ghastly Eye Jewel affecting you, up to a maximum of +30%",
+      "latest_variant": "Current",
+      "name": "Amanamu's Gaze",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "not_for_sale",
+        "abyss_jewel_summoner",
+        "abyss_jewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueJewel5_dds.png?v=2",
+      "latest_stats": "(6-8)% increased maximum Life · Adds 1 to Maximum Life per 3 Intelligence Allocated in Radius",
+      "latest_variant": "Current",
+      "name": "Anatomical Knowledge",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_PristineConditioning_dds.png?v=2",
+      "latest_stats": "+(5-10) to Dexterity · Modifiers to Chance to Suppress Spell Damage also apply to Chance to Avoid Elemental Ailments at 50% of their Value",
+      "latest_variant": "Current",
+      "name": "Ancestral Vision",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedCorrupt2_dds.png?v=2",
+      "latest_stats": "60% reduced Cost of Aura Skills that summon Totems",
+      "latest_variant": "Current",
+      "name": "Ancient Waystones",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_IntensityJewel1_dds.png?v=2",
+      "latest_stats": "(20-25)% increased Spell Damage · Spells have 10% reduced Critical Strike Chance per Intensity · Spells which have gained Intensity Recently gain 1 Intensity every 0.5 Seconds",
+      "latest_variant": "Current",
+      "name": "Apex Mode",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique10_dds.png?v=2",
+      "latest_stats": "Minions have (5-10)% increased Movement Speed · Minions have +(2-5)% chance to Suppress Spell Damage",
+      "latest_variant": "Current",
+      "name": "Apparitions",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_MidQuestRewardBlue_dds.png?v=2",
+      "latest_stats": "10% increased Mana Regeneration Rate · 4% increased Movement Speed · 4% increased Attack and Cast Speed",
+      "latest_variant": "Current",
+      "name": "Assassin's Haste",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedCorrupt1_dds.png?v=2",
+      "latest_stats": "Vaal Skills have (15-20)% increased Skill Effect Duration · Vaal Skills have (15-20)% chance to regain consumed Souls when used",
+      "latest_variant": "Current",
+      "name": "Atziri's Reign",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedCorrupt5_dds.png?v=2",
+      "latest_stats": "Lose 1% of Life on Kill · Recover 1% of Mana on Kill · Lose 1% of Energy Shield on Kill",
+      "latest_variant": "Current",
+      "name": "Blood Sacrifice",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_IgnorePain_dds.png?v=2",
+      "latest_stats": "(20-30)% of Damage taken from Stunning Hits is Recovered as Life",
+      "latest_variant": "Current",
+      "name": "Bloodnotch",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedJewel2_dds.png?v=2",
+      "latest_stats": "(4-6)% increased Strength · (4-6)% increased Dexterity · (10-15)% reduced Intelligence",
+      "latest_variant": "Current",
+      "name": "Brawn",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueCorrupt5_dds.png?v=2",
+      "latest_stats": "20% faster start of Energy Shield Recharge · 10% increased Damage taken while on Full Energy Shield",
+      "latest_variant": "Current",
+      "name": "Brittle Barrier",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Timeless Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_MarakethCivilization_dds.png?v=2",
+      "latest_stats": "Denoted service of (500-8000) dekhara in the akhara of Balbala · Passives in radius are Conquered by the Maraketh",
+      "latest_variant": "Balbala (The Traitor)",
+      "name": "Brutal Restraint",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 4,
+      "variants": [
+        {
+          "label": "Asenath (Dance with Death)",
+          "stats": "Denoted service of (500-8000) dekhara in the akhara of Asenath · Passives in radius are Conquered by the Maraketh"
+        },
+        {
+          "label": "Deshret (Wind Dancer) (Pre 3.11.0)",
+          "stats": "Denoted service of (500-8000) dekhara in the akhara of Deshret · Passives in radius are Conquered by the Maraketh"
+        },
+        {
+          "label": "Nasima (Second Sight)",
+          "stats": "Denoted service of (500-8000) dekhara in the akhara of Nasima · Passives in radius are Conquered by the Maraketh"
+        },
+        {
+          "label": "Balbala (The Traitor)",
+          "stats": "Denoted service of (500-8000) dekhara in the akhara of Balbala · Passives in radius are Conquered by the Maraketh"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Small Cluster Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_LoneMessengerJewel_dds.png?v=2",
+      "latest_stats": "Adds Lone Messenger",
+      "latest_variant": "Current",
+      "name": "Calamitous Visions",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_small"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenJewel1_dds.png?v=2",
+      "latest_stats": "10% reduced Trap Duration · Can have up to 1 additional Trap placed at a time",
+      "latest_variant": "Current",
+      "name": "Cheap Construction",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenCorrupt2_dds.png?v=2",
+      "latest_stats": "50% chance to gain an additional Vaal Soul per Enemy Shattered",
+      "latest_variant": "Current",
+      "name": "Chill of Corruption",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique13_dds.png?v=2",
+      "latest_stats": "(20-30)% increased Mana Regeneration Rate · (40-60)% increased Spell Damage while no Mana is Reserved",
+      "latest_variant": "Current",
+      "name": "Clear Mind",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedJewel10_dds.png?v=2",
+      "latest_stats": "Traps and Mines have a 25% chance to Poison on Hit · Passive Skills in Radius also grant: Traps and Mines deal (2-3) to (4-6) added Physical Damage",
+      "latest_variant": "Current",
+      "name": "Coated Shrapnel",
+      "radius": "Small",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenJewel5_dds.png?v=2",
+      "latest_stats": "Increases and Reductions to Physical Damage in Radius are Transformed to apply to Cold Damage · Increases and Reductions to Cold Damage in Radius are Transformed to apply to Physical Damage",
+      "latest_variant": "Current",
+      "name": "Cold Steel",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_ShrapnelShotThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Global Physical Damage · With at least 40 Dexterity in Radius, Galvanic Arrow deals 50% increased Area Damage · With at least 40 Dexterity in Radius, Galvanic Arrow has 25% increased Area of Effect",
+      "latest_variant": "Current",
+      "name": "Collateral Damage",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_ElementalHitFire_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Elemental Damage · With 40 total Strength and Intelligence in Radius, Prismatic Skills cannot choose Cold · With 40 total Strength and Intelligence in Radius, Prismatic Skills deal 50% less Cold Damage",
+      "latest_variant": "Current",
+      "name": "Combat Focus",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_ElementalHitFire_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Elemental Damage · With 40 total Intelligence and Dexterity in Radius, Prismatic Skills cannot choose Fire · With 40 total Intelligence and Dexterity in Radius, Prismatic Skills deal 50% less Fire Damage",
+      "latest_variant": "Current",
+      "name": "Combat Focus",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_ElementalHitFire_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Elemental Damage · With 40 total Dexterity and Strength in Radius, Prismatic Skills cannot choose Lightning · With 40 total Dexterity and Strength in Radius, Prismatic Skills deal 50% less Lightning Damage",
+      "latest_variant": "Current",
+      "name": "Combat Focus",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedCorrupt4_dds.png?v=2",
+      "latest_stats": "10% reduced Quantity of Items found · (20-30)% increased Burning Damage",
+      "latest_variant": "Current",
+      "name": "Combustibles",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_HighQuestRewardRed_dds.png?v=2",
+      "latest_stats": "3% reduced Mana Cost of Skills · 4% increased Skill Effect Duration · 4% increased Mana Reservation Efficiency of Skills",
+      "latest_variant": "Current",
+      "name": "Conqueror's Efficiency",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_HighQuestRewardGreen_dds.png?v=2",
+      "latest_stats": "10% chance to Avoid Elemental Ailments · 10% increased Life Recovery from Flasks · +5% chance to Suppress Spell Damage",
+      "latest_variant": "Current",
+      "name": "Conqueror's Longevity",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_HighQuestRewardBlue_dds.png?v=2",
+      "latest_stats": "4% increased Effect of your Curses · Flasks applied to you have 8% increased Effect · 3% increased effect of Non-Curse Auras from your Skills",
+      "latest_variant": "Current",
+      "name": "Conqueror's Potency",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueCorrupt3_dds.png?v=2",
+      "latest_stats": "With 5 Corrupted Items Equipped: 50% of Chaos Damage taken does not bypass Energy Shield, and 50% of Physical Damage taken bypasses Energy Shield",
+      "latest_variant": "Current",
+      "name": "Corrupted Energy",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_AdditionalSkeletonMagesModifier_dds.png?v=2",
+      "latest_stats": "Skeletons gain Added Chaos Damage equal to (20-30)% of Maximum Energy Shield on your Equipped Shield",
+      "latest_variant": "Current",
+      "name": "Dead Reckoning",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 4
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Prismatic Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_ReservedBloodJewel_dds.png?v=2",
+      "latest_stats": "Removes all Energy Shield · Life that would be lost by taking Damage is instead Reserved until you take no Damage to Life for 2 seconds · (20-30)% more Maximum Life",
+      "latest_variant": "Current",
+      "name": "Dissolution of the Flesh",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_InfernalCryThresholdJewel_dds.png?v=2",
+      "latest_stats": "With at least 40 Strength in Radius, Attacks Exerted by Infernal Cry deal (40-60)% more Damage with Ignite · With at least 40 Strength in Radius, Combust is Disabled",
+      "latest_variant": "Current",
+      "name": "Divine Inferno",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique9_dds.png?v=2",
+      "latest_stats": "5% increased Chaos Damage per 10 Intelligence from Allocated Passives in Radius",
+      "latest_variant": "Current",
+      "name": "Eldritch Knowledge",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Timeless Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_EternalEmpireCivilization_dds.png?v=2",
+      "latest_stats": "Commissioned (2000-160000) coins to commemorate Caspiro · Passives in radius are Conquered by the Eternal Empire",
+      "latest_variant": "Caspiro (Supreme Ostentation)",
+      "name": "Elegant Hubris",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 4,
+      "variants": [
+        {
+          "label": "Cadiro (Supreme Decadence)",
+          "stats": "Commissioned (2000-160000) coins to commemorate Cadiro · Passives in radius are Conquered by the Eternal Empire"
+        },
+        {
+          "label": "Chitus (Supreme Ego) (Pre 3.11.0)",
+          "stats": "Commissioned (2000-160000) coins to commemorate Chitus · Passives in radius are Conquered by the Eternal Empire"
+        },
+        {
+          "label": "Victario (Supreme Grandstanding)",
+          "stats": "Commissioned (2000-160000) coins to commemorate Victario · Passives in radius are Conquered by the Eternal Empire"
+        },
+        {
+          "label": "Caspiro (Supreme Ostentation)",
+          "stats": "Commissioned (2000-160000) coins to commemorate Caspiro · Passives in radius are Conquered by the Eternal Empire"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_Cunning_dds.png?v=2",
+      "latest_stats": "(4-6)% increased Dexterity · 20% increased Global Accuracy Rating · 3% increased Character Size",
+      "latest_variant": "Current",
+      "name": "Emperor's Cunning",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Prismatic Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_Mastery_dds.png?v=2",
+      "latest_stats": "(5-7)% increased Attributes · 4% increased maximum Life · 3% increased Character Size · 5% increased Global Defences",
+      "latest_variant": "Current",
+      "name": "Emperor's Mastery",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_Might_dds.png?v=2",
+      "latest_stats": "(4-6)% increased Strength · 10% increased Damage · 3% increased Character Size",
+      "latest_variant": "Current",
+      "name": "Emperor's Might",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_Wit_dds.png?v=2",
+      "latest_stats": "(4-6)% increased Intelligence · 30% increased Global Critical Strike Chance · 3% increased Character Size",
+      "latest_variant": "Current",
+      "name": "Emperor's Wit",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_DischargeThresholdJewel_dds.png?v=2",
+      "latest_stats": "(7-10)% increased Elemental Damage · With at least 40 Intelligence in Radius, Discharge Cooldown is 250 ms · With at least 40 Intelligence in Radius, Discharge deals 60% less Damage · With at least 40 Intelligence in Radius, Discharge has 60% less Area of Effect",
+      "latest_variant": "Current",
+      "name": "Endless Misery",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueCorrupt4_dds.png?v=2",
+      "latest_stats": "+(5-10) to Intelligence · Notable Passive Skills in Radius are Transformed to instead grant: 10% increased Mana Cost of Skills and 20% increased Spell Damage",
+      "latest_variant": "Current",
+      "name": "Fevered Mind",
+      "radius": "Small",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_FrostBladesThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Cold Damage · With at least 40 Dexterity in Radius, Melee Damage dealt by Frost Blades Penetrates 15% Cold Resistance · With at least 40 Dexterity in Radius, Frost Blades has 25% increased Projectile Speed",
+      "latest_variant": "Current",
+      "name": "Fight for Survival",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedJewel6_dds.png?v=2",
+      "latest_stats": "Increases and Reductions to other Damage Types in Radius are Transformed to apply to Fire Damage",
+      "latest_variant": "Current",
+      "name": "Fireborn",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedJewel7_dds.png?v=2",
+      "latest_stats": "+(10-15)% to Fire Resistance · Modifiers to Ignite Duration on you apply to all Elemental Ailments",
+      "latest_variant": "Current",
+      "name": "Firesong",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_FreezingPulseThreshold_dds.png?v=2",
+      "latest_stats": "(7-10)% increased Projectile Damage · With at least 40 Intelligence in Radius, Freezing Pulse fires 2 additional Projectiles · With at least 40 Intelligence in Radius, 25% increased Freezing Pulse Damage if you've Shattered an Enemy Recently",
+      "latest_variant": "Current",
+      "name": "First Snow",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": null,
+      "latest_stats": "Minions have (5-15)% increased maximum Life · Minions Recover 2% of their Life when they Block",
+      "latest_variant": "Current",
+      "name": "Fortified Legion",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique20_dds.png?v=2",
+      "latest_stats": "Maximum 10 Fragile Regrowth · 0.7% of Life Regenerated per second per Fragile Regrowth · Lose all Fragile Regrowth when Hit · Gain 1 Fragile Regrowth each second",
+      "latest_variant": "Current",
+      "name": "Fragile Bloom",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedCorrupt6_dds.png?v=2",
+      "latest_stats": "-1 to Maximum Endurance Charges",
+      "latest_variant": "Current",
+      "name": "Fragility",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique11_dds.png?v=2",
+      "latest_stats": "Summon 4 additional Skeletons with Summon Skeletons · +1 second to Summon Skeleton Cooldown",
+      "latest_variant": "Current",
+      "name": "From Dust",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_FrostboltThreshold_dds.png?v=2",
+      "latest_stats": "(7-10)% increased Projectile Damage · With at least 40 Intelligence in Radius, Frostbolt Projectiles gain 40% increased Projectile Speed per second · With at least 40 Intelligence in Radius, Frostbolt fires 2 additional Projectiles",
+      "latest_variant": "Current",
+      "name": "Frozen Trail",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Timeless Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_VaalCivilization_dds.png?v=2",
+      "latest_stats": "Bathed in the blood of (100-8000) sacrificed in the name of Ahuana · Passives in radius are Conquered by the Vaal",
+      "latest_variant": "Ahuana (Immortal Ambition)",
+      "name": "Glorious Vanity",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 4,
+      "variants": [
+        {
+          "label": "Doryani (Corrupted Soul)",
+          "stats": "Bathed in the blood of (100-8000) sacrificed in the name of Doryani · Passives in radius are Conquered by the Vaal"
+        },
+        {
+          "label": "Xibaqua (Divine Flesh)",
+          "stats": "Bathed in the blood of (100-8000) sacrificed in the name of Xibaqua · Passives in radius are Conquered by the Vaal"
+        },
+        {
+          "label": "Zerphi (Eternal Youth) (Pre 3.11.0)",
+          "stats": "Bathed in the blood of (100-8000) sacrificed in the name of Zerphi · Passives in radius are Conquered by the Vaal"
+        },
+        {
+          "label": "Ahuana (Immortal Ambition)",
+          "stats": "Bathed in the blood of (100-8000) sacrificed in the name of Ahuana · Passives in radius are Conquered by the Vaal"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GrandSpectrum3_Blue_dds.png?v=2",
+      "latest_stats": "+1 to Minimum Power Charges per Grand Spectrum",
+      "latest_variant": "Current - Min Power Charge",
+      "name": "Grand Spectrum",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 5,
+      "variants": [
+        {
+          "label": "Current - Crit Chance",
+          "stats": "25% increased Critical Strike Chance per Grand Spectrum"
+        },
+        {
+          "label": "Current - Minion Crit Multi",
+          "stats": "Minions have +10% to Critical Strike Multiplier per Grand Spectrum"
+        },
+        {
+          "label": "Current - Min Power Charge",
+          "stats": "+1 to Minimum Power Charges per Grand Spectrum"
+        },
+        {
+          "label": "Current - Elemental Resistances",
+          "stats": "+7% to all Elemental Resistances per Grand Spectrum"
+        },
+        {
+          "label": "Current - Maximum Life",
+          "stats": "5% increased Maximum Life per Grand Spectrum"
+        },
+        {
+          "label": "Current - Min Endurance Charge",
+          "stats": "+1 to Minimum Endurance Charges per Grand Spectrum"
+        },
+        {
+          "label": "Current - Elemental Damage",
+          "stats": "15% increased Elemental Damage per Grand Spectrum"
+        },
+        {
+          "label": "Current - Chance to avoid Ailments",
+          "stats": "12% chance to Avoid Elemental Ailments per Grand Spectrum"
+        },
+        {
+          "label": "Current - Min Frenzy Charge",
+          "stats": "+1 to Minimum Frenzy Charges per Grand Spectrum"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GrandSpectrum3_Blue_dds.png?v=2",
+      "latest_stats": "+1 to Minimum Endurance Charges per Grand Spectrum",
+      "latest_variant": "Current - Min Endurance Charge",
+      "name": "Grand Spectrum",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 5,
+      "variants": [
+        {
+          "label": "Current - Crit Chance",
+          "stats": "25% increased Critical Strike Chance per Grand Spectrum"
+        },
+        {
+          "label": "Current - Minion Crit Multi",
+          "stats": "Minions have +10% to Critical Strike Multiplier per Grand Spectrum"
+        },
+        {
+          "label": "Current - Min Power Charge",
+          "stats": "+1 to Minimum Power Charges per Grand Spectrum"
+        },
+        {
+          "label": "Current - Elemental Resistances",
+          "stats": "+7% to all Elemental Resistances per Grand Spectrum"
+        },
+        {
+          "label": "Current - Maximum Life",
+          "stats": "5% increased Maximum Life per Grand Spectrum"
+        },
+        {
+          "label": "Current - Min Endurance Charge",
+          "stats": "+1 to Minimum Endurance Charges per Grand Spectrum"
+        },
+        {
+          "label": "Current - Elemental Damage",
+          "stats": "15% increased Elemental Damage per Grand Spectrum"
+        },
+        {
+          "label": "Current - Chance to avoid Ailments",
+          "stats": "12% chance to Avoid Elemental Ailments per Grand Spectrum"
+        },
+        {
+          "label": "Current - Min Frenzy Charge",
+          "stats": "+1 to Minimum Frenzy Charges per Grand Spectrum"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GrandSpectrum3_Blue_dds.png?v=2",
+      "latest_stats": "+1 to Minimum Frenzy Charges per Grand Spectrum",
+      "latest_variant": "Current - Min Frenzy Charge",
+      "name": "Grand Spectrum",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 6,
+      "variants": [
+        {
+          "label": "Current - Crit Chance",
+          "stats": "25% increased Critical Strike Chance per Grand Spectrum"
+        },
+        {
+          "label": "Current - Minion Crit Multi",
+          "stats": "Minions have +10% to Critical Strike Multiplier per Grand Spectrum"
+        },
+        {
+          "label": "Current - Min Power Charge",
+          "stats": "+1 to Minimum Power Charges per Grand Spectrum"
+        },
+        {
+          "label": "Current - Elemental Resistances",
+          "stats": "+7% to all Elemental Resistances per Grand Spectrum"
+        },
+        {
+          "label": "Current - Maximum Life",
+          "stats": "5% increased Maximum Life per Grand Spectrum"
+        },
+        {
+          "label": "Current - Min Endurance Charge",
+          "stats": "+1 to Minimum Endurance Charges per Grand Spectrum"
+        },
+        {
+          "label": "Current - Elemental Damage",
+          "stats": "15% increased Elemental Damage per Grand Spectrum"
+        },
+        {
+          "label": "Current - Chance to avoid Ailments",
+          "stats": "12% chance to Avoid Elemental Ailments per Grand Spectrum"
+        },
+        {
+          "label": "Current - Min Frenzy Charge",
+          "stats": "+1 to Minimum Frenzy Charges per Grand Spectrum"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_PoisonDamageModifier_dds.png?v=2",
+      "latest_stats": "(8-12)% increased Damage over Time · With at least 40 Dexterity in Radius, Viper Strike deals 2% increased Damage with Hits and Poison for each Poison on the Enemy · With at least 40 Dexterity in Radius, Viper Strike has a 10% chance per Poison on Enemy to grant Unholy Might for 4 seconds on Hit",
+      "latest_variant": "Current",
+      "name": "Growing Agony",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenJewel2_dds.png?v=2",
+      "latest_stats": "(15-25)% increased Trap Damage · (40-60)% increased Trap Trigger Area of Effect",
+      "latest_variant": "Current",
+      "name": "Hair Trigger",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_SparkThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Lightning Damage · With at least 40 Intelligence in Radius, Spark fires Projectiles in a circle · With at least 40 Intelligence in Radius, Spark fires 0 additional Projectiles",
+      "latest_variant": "Current",
+      "name": "Hazardous Research",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Timeless Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_ExpeditonCivilization_dds.png?v=2",
+      "latest_stats": "Remembrancing (100-8000) songworthy deeds by the line of Medved · Passives in radius are Conquered by the Kalguur",
+      "latest_variant": "Medved (The Unbreaking Circle)",
+      "name": "Heroic Tragedy",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 3,
+      "variants": [
+        {
+          "label": "Vorana (Black Scythe Training)",
+          "stats": "Remembrancing (100-8000) songworthy deeds by the line of Vorana · Passives in radius are Conquered by the Kalguur"
+        },
+        {
+          "label": "Uhtred (Celestial Mathematics)",
+          "stats": "Remembrancing (100-8000) songworthy deeds by the line of Uhtred · Passives in radius are Conquered by the Kalguur"
+        },
+        {
+          "label": "Medved (The Unbreaking Circle)",
+          "stats": "Remembrancing (100-8000) songworthy deeds by the line of Medved · Passives in radius are Conquered by the Kalguur"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": null,
+      "latest_stats": "(10-20)% increased Movement Speed while Ignited · (10-20)% increased Attack Speed while Ignited · (10-20)% increased Cast Speed while Ignited",
+      "latest_variant": "Current",
+      "name": "Hotheaded",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenCorrupt3_dds.png?v=2",
+      "latest_stats": "With 5 Corrupted Items Equipped: Life Leech recovers based on your Chaos Damage instead",
+      "latest_variant": "Current",
+      "name": "Hungry Abyss",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedJewel2_dds.png?v=2",
+      "latest_stats": "(500-1000)% increased Stun and Block Recovery",
+      "latest_variant": "Current",
+      "name": "Immutable Force",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_MagmaOrbThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Fire Damage · With at least 40 Intelligence in Radius, Rolling Magma deals 40% more Damage per Chain · With at least 40 Intelligence in Radius, Rolling Magma deals 50% less Damage · With at least 40 Intelligence in Radius, Rolling Magma has 10% increased Area of Effect per Chain",
+      "latest_variant": "Current",
+      "name": "Inevitability",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique7_dds.png?v=2",
+      "latest_stats": "With 4 Notables Allocated in Radius, When you Kill a Rare monster, you gain 1 of its Modifiers for 20 seconds",
+      "latest_variant": "Current",
+      "name": "Inspired Learning",
+      "radius": "Small",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique6_dds.png?v=2",
+      "latest_stats": "Passive Skills in Radius can be Allocated without being connected to your tree Passage",
+      "latest_variant": "Current",
+      "name": "Intuitive Leap",
+      "radius": "Small",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique21_dds.png?v=2",
+      "latest_stats": "(18-25)% increased Fire Damage · (18-25)% increased Cold Damage · 2% chance to Freeze · 2% chance to Ignite",
+      "latest_variant": "Current",
+      "name": "Izaro's Turmoil",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Small Cluster Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_DiscipleOfKitavaJewel_dds.png?v=2",
+      "latest_stats": "Adds Disciple of Kitava",
+      "latest_variant": "Current",
+      "name": "Kitava's Teachings",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_small"
+      ],
+      "variant_count": 1
+    },
+    {
+      "base": "Hypnotic Eye Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_HypnoticEyeUnique_dds.png?v=2",
+      "latest_stats": "+(10-20) to Intelligence · 8% increased Effect of Arcane Surge on you per Hypnotic Eye Jewel affecting you, up to a maximum of 40%",
+      "latest_variant": "Current",
+      "name": "Kurgal's Gaze",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "not_for_sale",
+        "abyss_jewel_caster",
+        "abyss_jewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Timeless Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_KaruiCivilization_dds.png?v=2",
+      "latest_stats": "Commanded leadership over (10000-18000) warriors under Akoya · Passives in radius are Conquered by the Karui",
+      "latest_variant": "Akoya (Chainbreaker)",
+      "name": "Lethal Pride",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 4,
+      "variants": [
+        {
+          "label": "Kaom (Strength of Blood)",
+          "stats": "Commanded leadership over (10000-18000) warriors under Kaom · Passives in radius are Conquered by the Karui"
+        },
+        {
+          "label": "Kiloava (Glancing Blows) (Pre 3.11.0)",
+          "stats": "Commanded leadership over (10000-18000) warriors under Kiloava · Passives in radius are Conquered by the Karui"
+        },
+        {
+          "label": "Rakiata (Tempered by War)",
+          "stats": "Commanded leadership over (10000-18000) warriors under Rakiata · Passives in radius are Conquered by the Karui"
+        },
+        {
+          "label": "Akoya (Chainbreaker)",
+          "stats": "Commanded leadership over (10000-18000) warriors under Akoya · Passives in radius are Conquered by the Karui"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_LioneyesFall_dds.png?v=2",
+      "latest_stats": "Melee and Melee Weapon Type modifiers in Radius are Transformed to Bow Modifiers",
+      "latest_variant": "Current",
+      "name": "Lioneye's Fall",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_CallofSteelFreq_dds.png?v=2",
+      "latest_stats": "5% increased Impale Effect · Call of Steel deals Reflected Damage with (40-50)% increased Area of Effect · Call of Steel has (80-100)% increased Use Speed",
+      "latest_variant": "Impale Effect (Current)",
+      "name": "Lord of Steel",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 6,
+      "variants": [
+        {
+          "label": "Impale Chance (Pre 3.13.0)",
+          "stats": "10% chance to Impale Enemies on Hit with Attacks · Call of Steel deals Reflected Damage with (40-50)% increased Area of Effect · Call of Steel causes (40-50)% increased Reflected Damage"
+        },
+        {
+          "label": "Impale Overwhelm (Pre 3.13.0)",
+          "stats": "Impale Damage dealt to Enemies Impaled by you Overwhelms 10% Physical Damage Reduction · Call of Steel has (80-100)% increased Use Speed · Call of Steel causes (40-50)% increased Reflected Damage"
+        },
+        {
+          "label": "Impale Effect (Pre 3.13.0)",
+          "stats": "5% increased Impale Effect · Call of Steel deals Reflected Damage with (40-50)% increased Area of Effect · Call of Steel has (80-100)% increased Use Speed"
+        },
+        {
+          "label": "Impale Chance (Current)",
+          "stats": "10% chance to Impale Enemies on Hit with Attacks · Call of Steel deals Reflected Damage with (40-50)% increased Area of Effect · Call of Steel causes (20-25)% increased Reflected Damage"
+        },
+        {
+          "label": "Impale Overwhelm (Current)",
+          "stats": "Impale Damage dealt to Enemies Impaled by you Overwhelms 10% Physical Damage Reduction · Call of Steel has (80-100)% increased Use Speed · Call of Steel causes (20-25)% increased Reflected Damage"
+        },
+        {
+          "label": "Impale Effect (Current)",
+          "stats": "5% increased Impale Effect · Call of Steel deals Reflected Damage with (40-50)% increased Area of Effect · Call of Steel has (80-100)% increased Use Speed"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueJewel3_dds.png?v=2",
+      "latest_stats": "5% chance to Gain Unholy Might for 4 seconds on Melee Kill",
+      "latest_variant": "Current",
+      "name": "Malicious Intent",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique16_dds.png?v=2",
+      "latest_stats": "Adds (3-5) to (8-12) Fire Attack Damage per Buff on you · Adds (2-3) to (5-8) Fire Spell Damage per Buff on you",
+      "latest_variant": "Current",
+      "name": "Mantra of Flames",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique5_dds.png?v=2",
+      "latest_stats": "+(3-4) metres to Melee Strike Range with Unarmed Attacks · Passive Skills in Radius also grant: 1% increased Unarmed Attack Speed with Melee Skills",
+      "latest_variant": "Current",
+      "name": "Martial Artistry",
+      "radius": "Small",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_EntangledElementsJewel_dds.png?v=2",
+      "latest_stats": "-(70-80)% to all Elemental Resistances · -(4-6)% to all maximum Elemental Resistances · Elemental Resistances are capped by your highest Maximum Elemental Resistance instead",
+      "latest_variant": "Current",
+      "name": "Melding of the Flesh",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_DualStrikeThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Attack Damage · With at least 40 Dexterity in Radius, Dual Strike has (20-30)% increased Accuracy Rating while wielding a Sword",
+      "latest_variant": "Sword",
+      "name": "Might and Influence",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 6,
+      "variants": [
+        {
+          "label": "Axe",
+          "stats": "(10-15)% increased Attack Damage · With at least 40 Dexterity in Radius, Dual Strike Hits Intimidate Enemies for 4 seconds while wielding an Axe"
+        },
+        {
+          "label": "Claw",
+          "stats": "(10-15)% increased Attack Damage · With at least 40 Dexterity in Radius, Dual Strike has (10-15)% increased Attack Speed while wielding a Claw"
+        },
+        {
+          "label": "Dagger",
+          "stats": "(10-15)% increased Attack Damage · With at least 40 Dexterity in Radius, Dual Strike has +(20-30)% to Critical Strike Multiplier while wielding a Dagger"
+        },
+        {
+          "label": "Mace",
+          "stats": "(10-15)% increased Attack Damage · With at least 40 Dexterity in Radius, Dual Strike deals Splash Damage to surrounding targets while wielding a Mace"
+        },
+        {
+          "label": "Sword",
+          "stats": "(10-15)% increased Attack Damage · With at least 40 Dexterity in Radius, Dual Strike has (20-30)% increased Accuracy Rating while wielding a Sword"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedJewel7_dds.png?v=2",
+      "latest_stats": "Dexterity and Intelligence from passives in Radius count towards Strength Melee Damage bonus",
+      "latest_variant": "Current",
+      "name": "Might in All Forms",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_PotencyOfTheUnremarkable_dds.png?v=2",
+      "latest_stats": "50% increased Effect of non-Keystone Passive Skills in Radius · Notable Passive Skills in Radius grant nothing",
+      "latest_variant": "Current",
+      "name": "Might of the Meek",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Timeless Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TemplarCivilization_dds.png?v=2",
+      "latest_stats": "3% increased Defences from Equipped Shield per 10 Devotion · Passives in radius are Conquered by the Templars",
+      "latest_variant": "Defences from Shield",
+      "name": "Militant Faith",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 19,
+      "variants": [
+        {
+          "label": "Avarius (Power of Purpose)",
+          "stats": "Carved to glorify (2000-10000) new faithful converted by High Templar Avarius · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Dominus (Inner Conviction)",
+          "stats": "Carved to glorify (2000-10000) new faithful converted by High Templar Dominus · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Venarius (The Agnostic) (Pre 3.11.0)",
+          "stats": "Carved to glorify (2000-10000) new faithful converted by High Templar Venarius · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Maxarius (Transcendence)",
+          "stats": "Carved to glorify (2000-10000) new faithful converted by High Templar Maxarius · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Totem Damage",
+          "stats": "4% increased Totem Damage per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Brand Damage",
+          "stats": "4% increased Brand Damage per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Channelling Damage",
+          "stats": "Channelling Skills deal 4% increased Damage per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Area Damage",
+          "stats": "4% increased Area Damage per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Elemental Damage",
+          "stats": "4% increased Elemental Damage per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Elemental Resistances",
+          "stats": "+2% to all Elemental Resistances per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Effect of non-Damaging Ailments",
+          "stats": "3% increased Effect of non-Damaging Ailments on Enemies per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Elemental Ailment Duration",
+          "stats": "4% reduced Elemental Ailment Duration on you per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Duration of Curses",
+          "stats": "4% reduced Duration of Curses on you per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Minion Attack and Cast Speed",
+          "stats": "1% increased Minion Attack and Cast Speed per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Minions Accuracy Rating",
+          "stats": "Minions have +60 to Accuracy Rating per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Mana Regen",
+          "stats": "Regenerate 0.6 Mana per Second per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Skill Cost",
+          "stats": "1% reduced Mana Cost of Skills per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Non-Curse Aura Effect",
+          "stats": "1% increased effect of Non-Curse Auras per 10 Devotion · Passives in radius are Conquered by the Templars"
+        },
+        {
+          "label": "Defences from Shield",
+          "stats": "3% increased Defences from Equipped Shield per 10 Devotion · Passives in radius are Conquered by the Templars"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueCorrupt2_dds.png?v=2",
+      "latest_stats": "10% increased Experience Gain for Corrupted Gems",
+      "latest_variant": "Current",
+      "name": "Mutated Growth",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_IntensityJewel2_dds.png?v=2",
+      "latest_stats": "Item Level: 82 · (20-25)% increased Spell Damage · Spells have (30-50)% increased Critical Strike Chance per Intensity · Spells which have gained Intensity Recently lose 1 Intensity every 0.5 Seconds",
+      "latest_variant": "Current",
+      "name": "Nadir Mode",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Small Cluster Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_NaturesPatienceJewel_dds.png?v=2",
+      "latest_stats": "Adds Nature's Patience",
+      "latest_variant": "Current",
+      "name": "Natural Affinity",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_small"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_IceShotThreshold_dds.png?v=2",
+      "latest_stats": "(15-20)% increased Damage with Hits against Chilled Enemies · With at least 40 Dexterity in Radius, Ice Shot has 25% increased Area of Effect · With at least 40 Dexterity in Radius, Ice Shot Pierces 3 additional Targets",
+      "latest_variant": "Current",
+      "name": "Omen on the Winds",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Small Cluster Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_DragonStyleJewel_dds.png?v=2",
+      "latest_stats": "Adds Hollow Palm Technique",
+      "latest_variant": "Current",
+      "name": "One With Nothing",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_small"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_CleaveThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Global Physical Damage · With at least 40 Strength in Radius, Hits with Cleave Fortify · With at least 40 Strength in Radius, Cleave has +0.1 metres to Radius per Nearby Enemy, up to a maximum of +1 metre",
+      "latest_variant": "Current",
+      "name": "Overwhelming Odds",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenCorrupt6_dds.png?v=2",
+      "latest_stats": "-1 to Maximum Frenzy Charges",
+      "latest_variant": "Current",
+      "name": "Pacifism",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BurningArrowModifier_dds.png?v=2",
+      "latest_stats": "+10% to Fire Damage over Time Multiplier · (10-15)% increased Fire Damage",
+      "latest_variant": "Current",
+      "name": "Pitch Darkness",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_MidQuestRewardGreen_dds.png?v=2",
+      "latest_stats": "10% increased Projectile Damage · Projectiles Pierce an additional Target",
+      "latest_variant": "Current",
+      "name": "Poacher's Aim",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueCorrupt6_dds.png?v=2",
+      "latest_stats": "-1 to Maximum Power Charges",
+      "latest_variant": "Current",
+      "name": "Powerlessness",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GolemArctic_dds.png?v=2",
+      "latest_stats": "Golems have (16-20)% increased Attack and Cast Speed · 30% increased Effect of Buffs granted by your Golems · Golems have +(800-1000) to Armour · Primordial",
+      "latest_variant": "Current",
+      "name": "Primordial Eminence",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GolemTempest_dds.png?v=2",
+      "latest_stats": "Golem Skills have (20-30)% increased Cooldown Recovery Rate · Summoned Golems have (30-45)% increased Cooldown Recovery Rate · (16-20)% increased Golem Damage for each Type of Golem you have Summoned · Summoned Golems Regenerate 2% of their Life per second · Primordial",
+      "latest_variant": "Current",
+      "name": "Primordial Harmony",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GolemInfernal_dds.png?v=2",
+      "latest_stats": "(25-30)% increased Damage if you Summoned a Golem in the past 8 seconds · Golems Summoned in the past 8 seconds deal (35-45)% increased Damage · Golems have (18-22)% increased Maximum Life · Summoned Golems are Aggressive · Primordial",
+      "latest_variant": "Current",
+      "name": "Primordial Might",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenJewel6_dds.png?v=2",
+      "latest_stats": "1% increased Evasion Rating per 3 Dexterity Allocated in Radius · 1% increased Claw Physical Damage per 3 Dexterity Allocated in Radius · 1% increased Melee Physical Damage with Unarmed Attacks per 3 Dexterity Allocated in Radius",
+      "latest_variant": "Current",
+      "name": "Pugilist",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_PureTalent_dds.png?v=2",
+      "latest_stats": "While your Passive Skill Tree connects to a class' starting location, you gain: · Marauder: Melee Skills have 25% increased Area of Effect · Duelist: 1% of Attack Damage Leeched as Life · Ranger: 7% increased Movement Speed · Shadow: +0.5% to Critical Strike Chance · Witch: 0.5% of Mana Regenerated per second · Templar: Damage Penetrates 5% Elemental Resistances · Scion: +25 to All Attributes",
+      "latest_variant": "Current",
+      "name": "Pure Talent",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GroundSlamModifier_dds.png?v=2",
+      "latest_stats": "(8-12)% increased Global Physical Damage · With at least 40 Strength in Radius, Ground Slam has a 50% increased angle · With at least 40 Strength in Radius, Ground Slam has a 35% chance to grant an Endurance Charge when you Stun an Enemy",
+      "latest_variant": "Current",
+      "name": "Rapid Expansion",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_UberCortexJewel_dds.png?v=2",
+      "latest_stats": "You have Consecrated Ground around you while stationary if Strength is your highest Attribute · 25% chance to create Profane Ground on Critical Strike if Intelligence is your highest Attribute · Effects of Consecrated Ground you create Linger for 4 seconds · Effects of Profane Ground you create Linger for 4 seconds",
+      "latest_variant": "Current",
+      "name": "Rational Doctrine",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedCorrupt5_dds.png?v=2",
+      "latest_stats": "Recover 1% of Life on Kill · Recover 1% of Energy Shield on Kill · Cannot Leech or Regenerate Mana",
+      "latest_variant": "Current",
+      "name": "Replica Blood Sacrifice",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenJewel1_dds.png?v=2",
+      "latest_stats": "(100-120)% increased Critical Strike Chance with Traps · Can have 5 fewer Traps placed at a time",
+      "latest_variant": "Current",
+      "name": "Replica Cheap Construction",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_HighQuestRewardRed_dds.png?v=2",
+      "latest_stats": "4% increased Skill Effect Duration · +5 to Maximum Rage · Non-Channelling Skills have -9 to Total Mana Cost",
+      "latest_variant": "Current",
+      "name": "Replica Conqueror's Efficiency",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique20_dds.png?v=2",
+      "latest_stats": "Maximum 5 Fragile Regrowth · 0.7% of Life Regenerated per second per Fragile Regrowth · Gain up to maximum Fragile Regrowth when Hit · Lose 1 Fragile Regrowth each second",
+      "latest_variant": "Current",
+      "name": "Replica Fragile Bloom",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedCorrupt6_dds.png?v=2",
+      "latest_stats": "Lose an Endurance Charge each second",
+      "latest_variant": "Current",
+      "name": "Replica Fragility",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique14_dds.png?v=2",
+      "latest_stats": "(10-20)% increased Attack Speed while Chilled · (10-20)% increased Cast Speed while Chilled · (10-20)% increased Movement Speed while Chilled",
+      "latest_variant": "Current",
+      "name": "Replica Hotheaded",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenCorrupt6_dds.png?v=2",
+      "latest_stats": "Lose a Frenzy Charge each second",
+      "latest_variant": "Current",
+      "name": "Replica Pacifism",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueCorrupt6_dds.png?v=2",
+      "latest_stats": "Lose a Power Charge each second",
+      "latest_variant": "Current",
+      "name": "Replica Powerlessness",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GolemInfernal_dds.png?v=2",
+      "latest_stats": "-1 to maximum number of Summoned Golems · (25-30)% increased Damage if you Summoned a Golem in the past 8 seconds · Golems Summoned in the past 8 seconds deal (100-125)% increased Damage · Golems have (18-22)% increased Maximum Life · Summoned Golems are Aggressive · Primordial",
+      "latest_variant": "Current",
+      "name": "Replica Primordial Might",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_PureTalent_dds.png?v=2",
+      "latest_stats": "While your Passive Skill Tree connects to a class' starting location, you gain: · Marauder: 1% of Life Regenerated per second · Duelist: +2 to Melee Strike Range · Ranger: 20% increased Flask Charges gained · Shadow: 12% increased Attack and Cast Speed · Witch: 20% increased Skill Effect Duration · Templar: +4% Chance to Block Attack and Spell Damage · Scion: 30% increased Damage",
+      "latest_variant": "Current",
+      "name": "Replica Pure Talent",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RecklessDefense_dds.png?v=2",
+      "latest_stats": "+(2-6)% Chance to Block Spell Damage · +(2-6)% Chance to Block Attack Damage · +10% chance to be Frozen, Shocked and Ignited",
+      "latest_variant": "Current",
+      "name": "Replica Reckless Defence",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueJewel1_dds.png?v=2",
+      "latest_stats": "Recover (20-30) Life when your Trap is triggered by an Enemy",
+      "latest_variant": "Current",
+      "name": "Replica Unstable Payload",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_EtherealKnivesThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Global Physical Damage · With at least 40 Dexterity in Radius, Ethereal Knives fires Projectiles in a circle · With at least 40 Dexterity in Radius, Ethereal Knives fires 0 additional Projectiles",
+      "latest_variant": "Current",
+      "name": "Ring of Blades",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_FireballModifier_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Fire Damage · With at least 40 Intelligence in Radius, Fireball cannot ignite · With at least 40 Intelligence in Radius, Fireball has +(30-50)% chance to inflict scorch",
+      "latest_variant": "Current",
+      "name": "Rolling Flames",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenCorrupt1_dds.png?v=2",
+      "latest_stats": "(20-30)% chance to gain an additional Vaal Soul on Kill",
+      "latest_variant": "Current",
+      "name": "Sacrificial Harvest",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenCorrupt5_dds.png?v=2",
+      "latest_stats": "(10-20)% increased Damage per Curse on you · An additional Curse can be applied to you",
+      "latest_variant": "Current",
+      "name": "Self-Flagellation",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GlacialHammerModifier_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Cold Damage · With at least 40 Strength in Radius, 20% increased Rarity of Items dropped by Enemies Shattered by Glacial Hammer",
+      "latest_variant": "Current",
+      "name": "Shattered Chains",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RedKarui2_dds.png?v=2",
+      "latest_stats": "3% increased Totem Life per 10 Strength Allocated in Radius · Totems cannot be Stunned",
+      "latest_variant": "Current",
+      "name": "Spire of Stone",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_AnimateWeaponModifier_dds.png?v=2",
+      "latest_stats": "Minions deal (8-12)% increased Damage · With at least 40 Dexterity in Radius, Animate Weapon can Animate up to 20 Ranged Weapons",
+      "latest_variant": "Current",
+      "name": "Spirit Guards",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_InspiringCryModifier_dds.png?v=2",
+      "latest_stats": "(7-10)% increased maximum Mana · With at least 40 Intelligence in Radius, 10% of Damage taken Recouped as Mana if you've Warcried Recently",
+      "latest_variant": "Current",
+      "name": "Spirited Response",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_UniqueJewelBase1_dds.png?v=2",
+      "latest_stats": "This Jewel's Socket has 25% increased effect per Allocated Passive Skill between it and your Class' starting location · +40 to Accuracy Rating",
+      "latest_variant": "Accuracy Rating",
+      "name": "Split Personality",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 9,
+      "variants": [
+        {
+          "label": "Strength",
+          "stats": "This Jewel's Socket has 25% increased effect per Allocated Passive Skill between it and your Class' starting location · +5 to Strength"
+        },
+        {
+          "label": "Dexterity",
+          "stats": "This Jewel's Socket has 25% increased effect per Allocated Passive Skill between it and your Class' starting location · +5 to Dexterity"
+        },
+        {
+          "label": "Intelligence",
+          "stats": "This Jewel's Socket has 25% increased effect per Allocated Passive Skill between it and your Class' starting location · +5 to Intelligence"
+        },
+        {
+          "label": "Life",
+          "stats": "This Jewel's Socket has 25% increased effect per Allocated Passive Skill between it and your Class' starting location · +5 to maximum Life"
+        },
+        {
+          "label": "Mana",
+          "stats": "This Jewel's Socket has 25% increased effect per Allocated Passive Skill between it and your Class' starting location · +5 to maximum Mana"
+        },
+        {
+          "label": "Energy Shield",
+          "stats": "This Jewel's Socket has 25% increased effect per Allocated Passive Skill between it and your Class' starting location · +5 to maximum Energy Shield"
+        },
+        {
+          "label": "Armour",
+          "stats": "This Jewel's Socket has 25% increased effect per Allocated Passive Skill between it and your Class' starting location · +40 to Armour"
+        },
+        {
+          "label": "Evasion Rating",
+          "stats": "This Jewel's Socket has 25% increased effect per Allocated Passive Skill between it and your Class' starting location · +40 to Evasion Rating"
+        },
+        {
+          "label": "Accuracy Rating",
+          "stats": "This Jewel's Socket has 25% increased effect per Allocated Passive Skill between it and your Class' starting location · +40 to Accuracy Rating"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlightThreshold_dds.png?v=2",
+      "latest_stats": "(7-13)% increased Chaos Damage · With at least 40 Intelligence in Radius, Blight inflicts Withered for 2 seconds · With at least 40 Intelligence in Radius, Blight has 50% increased Hinder Duration",
+      "latest_variant": "Current",
+      "name": "Spreading Rot",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenJewel7_dds.png?v=2",
+      "latest_stats": "Adds 1 maximum Lightning Damage to Attacks per 1 Dexterity Allocated in Radius · Adds 1 to 2 Lightning Damage to Attacks",
+      "latest_variant": "Current",
+      "name": "Static Electricity",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_SpectralThrowModifier_dds.png?v=2",
+      "latest_stats": "(7-10)% increased Projectile Damage · With at least 40 Dexterity in Radius, each Spectral Throw Projectile gains 5% increased Damage each time it Hits",
+      "latest_variant": "Current",
+      "name": "Steel Spirit",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenJewel2_dds.png?v=2",
+      "latest_stats": "+(10-15)% to Lightning Resistance · Modifiers to Chance to Avoid being Shocked apply to all Elemental Ailments",
+      "latest_variant": "Current",
+      "name": "Stormshroud",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BurningArrowThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Fire Damage · Ignited Enemies Killed by your Hits are destroyed",
+      "latest_variant": "Current",
+      "name": "Sudden Ignition",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique2_dds.png?v=2",
+      "latest_stats": "20% reduced Flask Charges gained · 50% increased Flask Effect Duration · Survival",
+      "latest_variant": "Current",
+      "name": "Survival Instincts",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique12_dds.png?v=2",
+      "latest_stats": "Flasks applied to you have 20% reduced Effect · Flasks gain 3 Charges every 3 seconds while they are inactive · Survival",
+      "latest_variant": "Current",
+      "name": "Survival Secrets",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique4_dds.png?v=2",
+      "latest_stats": "Flasks gain 2 Charges when you hit a Non-Unique Enemy, no more than once per second · 80% less Flask Charges gained from Kills · Survival",
+      "latest_variant": "Current",
+      "name": "Survival Skills",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "base": "Murderous Eye Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_MurderousEyeUnique_dds.png?v=2",
+      "latest_stats": "+(10-20) to Strength · 40% increased Main Hand Critical Strike Chance per Murderous Eye Jewel affecting you, up to a maximum of 200% · +20% to Off Hand Critical Strike Multiplier per Murderous Eye Jewel affecting you, up to a maximum of +100%",
+      "latest_variant": "Current",
+      "name": "Tecrod's Gaze",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "not_for_sale",
+        "abyss_jewel_melee",
+        "abyss_jewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TemperedRed_dds.png?v=2",
+      "latest_stats": "-1 Strength per 1 Strength on Allocated Passives in Radius · 2% increased Life Recovery Rate per 10 Strength on Allocated Passives in Radius",
+      "latest_variant": "Current",
+      "name": "Tempered Flesh",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TemperedBlue_dds.png?v=2",
+      "latest_stats": "-1 Intelligence per 1 Intelligence on Allocated Passives in Radius · 2% increased Mana Recovery Rate per 10 Intelligence on Allocated Passives in Radius",
+      "latest_variant": "Current",
+      "name": "Tempered Mind",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TemperedGreen_dds.png?v=2",
+      "latest_stats": "-1 Dexterity per 1 Dexterity on Allocated Passives in Radius · 2% increased Movement Speed per 10 Dexterity on Allocated Passives in Radius",
+      "latest_variant": "Current",
+      "name": "Tempered Spirit",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TrialmasterJew_dds.png?v=2",
+      "latest_stats": "(0-100)% increased Effect of Jewel Socket Passive Skills containing Corrupted Magic Jewels",
+      "latest_variant": "Current",
+      "name": "The Adorned",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Prismatic Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GolemChaos_dds.png?v=2",
+      "latest_stats": "+1 to maximum number of Summoned Golems if you have 3 Primordial Items Socketed or Equipped",
+      "latest_variant": "Current",
+      "name": "The Anima Stone",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TheBlueDream_dds.png?v=2",
+      "latest_stats": "Gain (6-10)% of Lightning Damage as Extra Chaos Damage · Passives granting Lightning Resistance or all Elemental Resistances in Radius also grant an equal chance to gain a Power Charge on Kill",
+      "latest_variant": "Current",
+      "name": "The Blue Dream",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TheBlueDreamUpgrade_dds.png?v=2",
+      "latest_stats": "Gain (6-10)% of Lightning Damage as Extra Chaos Damage · Passives granting Lightning Resistance or all Elemental Resistances in Radius also grant Chance to Block Spell Damage at 50% of its value",
+      "latest_variant": "Current",
+      "name": "The Blue Nightmare",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Small Cluster Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_Veteran_sAwarenessJewel_dds.png?v=2",
+      "latest_stats": "Adds Veteran's Awareness",
+      "latest_variant": "Current",
+      "name": "The Front Line",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_small"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TheGreenDream_dds.png?v=2",
+      "latest_stats": "Gain (6-10)% of Cold Damage as Extra Chaos Damage · Passives granting Cold Resistance or all Elemental Resistances in Radius also grant an equal chance to gain a Frenzy Charge on Kill",
+      "latest_variant": "Current",
+      "name": "The Green Dream",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TheGreenDreamUpgrade_dds.png?v=2",
+      "latest_stats": "Gain (6-10)% of Cold Damage as Extra Chaos Damage · Passives granting Cold Resistance or all Elemental Resistances in Radius also grant Chance to Suppress Spell Damage at 70% of its value",
+      "latest_variant": "Current",
+      "name": "The Green Nightmare",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Small Cluster Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_SecretsOfAgonyJewel_dds.png?v=2",
+      "latest_stats": "Adds Secrets of Suffering",
+      "latest_variant": "Current",
+      "name": "The Interrogation",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_small"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Prismatic Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_AfflictionJewel_dds.png?v=2",
+      "latest_stats": "Passive Skills in Radius also grant +4% to Chaos Resistance",
+      "latest_variant": "Chaos Resistance",
+      "name": "The Light of Meaning",
+      "radius": "Large",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 13,
+      "variants": [
+        {
+          "label": "Life",
+          "stats": "Passive Skills in Radius also grant +5 to maximum Life"
+        },
+        {
+          "label": "Energy Shield",
+          "stats": "Passive Skills in Radius also grant 3% increased Energy Shield"
+        },
+        {
+          "label": "Mana",
+          "stats": "Passive Skills in Radius also grant +5 to maximum Mana"
+        },
+        {
+          "label": "Armour",
+          "stats": "Passive Skills in Radius also grant 7% increased Armour"
+        },
+        {
+          "label": "Evasion Rating",
+          "stats": "Passive Skills in Radius also grant 7% increased Evasion Rating"
+        },
+        {
+          "label": "Attributes",
+          "stats": "Passive Skills in Radius also grant +2 to all Attributes"
+        },
+        {
+          "label": "Global Crit Chance",
+          "stats": "Passive Skills in Radius also grant 5% increased Global Critical Strike Chance"
+        },
+        {
+          "label": "Physical Damage",
+          "stats": "Passive Skills in Radius also grant 6% increased Physical Damage"
+        },
+        {
+          "label": "Lightning Damage",
+          "stats": "Passive Skills in Radius also grant 6% increased Lightning Damage"
+        },
+        {
+          "label": "Cold Damage",
+          "stats": "Passive Skills in Radius also grant 6% increased Cold Damage"
+        },
+        {
+          "label": "Fire Damage",
+          "stats": "Passive Skills in Radius also grant 6% increased Fire Damage"
+        },
+        {
+          "label": "Chaos Damage",
+          "stats": "Passive Skills in Radius also grant 6% increased Chaos Damage"
+        },
+        {
+          "label": "Chaos Resistance",
+          "stats": "Passive Skills in Radius also grant +4% to Chaos Resistance"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GlacialCascadeThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Cold Damage · With 40 Intelligence in Radius, Glacial Cascade has an additional Burst · With 40 Intelligence in Radius, 20% of Glacial Cascade Physical Damage Converted to Cold Damage",
+      "latest_variant": "Current",
+      "name": "The Long Winter",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Prismatic Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_PerandusJewel_dds.png?v=2",
+      "latest_stats": "Passive Skills in Radius also grant +4% to Chaos Resistance",
+      "latest_variant": "Chaos Resistance",
+      "name": "The Perandus Pact",
+      "radius": "Large",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "intjewel",
+        "dexjewel",
+        "strjewel",
+        "not_for_sale"
+      ],
+      "variant_count": 13,
+      "variants": [
+        {
+          "label": "Life",
+          "stats": "Passive Skills in Radius also grant +5 to maximum Life"
+        },
+        {
+          "label": "Energy Shield",
+          "stats": "Passive Skills in Radius also grant 3% increased Energy Shield"
+        },
+        {
+          "label": "Mana",
+          "stats": "Passive Skills in Radius also grant +5 to maximum Mana"
+        },
+        {
+          "label": "Armour",
+          "stats": "Passive Skills in Radius also grant 7% increased Armour"
+        },
+        {
+          "label": "Evasion Rating",
+          "stats": "Passive Skills in Radius also grant 7% increased Evasion Rating"
+        },
+        {
+          "label": "Attributes",
+          "stats": "Passive Skills in Radius also grant +2 to all Attributes"
+        },
+        {
+          "label": "Global Crit Chance",
+          "stats": "Passive Skills in Radius also grant 5% increased Global Critical Strike Chance"
+        },
+        {
+          "label": "Physical Damage",
+          "stats": "Passive Skills in Radius also grant 6% increased Physical Damage"
+        },
+        {
+          "label": "Lightning Damage",
+          "stats": "Passive Skills in Radius also grant 6% increased Lightning Damage"
+        },
+        {
+          "label": "Cold Damage",
+          "stats": "Passive Skills in Radius also grant 6% increased Cold Damage"
+        },
+        {
+          "label": "Fire Damage",
+          "stats": "Passive Skills in Radius also grant 6% increased Fire Damage"
+        },
+        {
+          "label": "Chaos Damage",
+          "stats": "Passive Skills in Radius also grant 6% increased Chaos Damage"
+        },
+        {
+          "label": "Chaos Resistance",
+          "stats": "Passive Skills in Radius also grant +4% to Chaos Resistance"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TheRedDream_dds.png?v=2",
+      "latest_stats": "Gain (6-10)% of Fire Damage as Extra Chaos Damage · Passives granting Fire Resistance or all Elemental Resistances in Radius also grant an equal chance to gain an Endurance Charge on Kill",
+      "latest_variant": "Current",
+      "name": "The Red Dream",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TheRedDreamUpgrade_dds.png?v=2",
+      "latest_stats": "Gain (6-10)% of Fire Damage as Extra Chaos Damage · Passives granting Fire Resistance or all Elemental Resistances in Radius also grant Chance to Block Attack Damage at 50% of its value",
+      "latest_variant": "Current",
+      "name": "The Red Nightmare",
+      "radius": "Large",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Small Cluster Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_KineticismJewel_dds.png?v=2",
+      "latest_stats": "Adds Kineticism",
+      "latest_variant": "Current",
+      "name": "The Siege",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_small"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_VigilanteModifier_dds.png?v=2",
+      "latest_stats": "(8-15)% increased Armour · With at least 40 Strength in Radius, Hits with Vigilant Strike Fortify you and Nearby Allies for 8 seconds",
+      "latest_variant": "Current",
+      "name": "The Vigil",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_ConnectedJewel_dds.png?v=2",
+      "latest_stats": "Only affects Passives in Massive Ring · Passive Skills in Radius can be Allocated without being connected to your tree Passage · -(10-20)% to all Elemental Resistances",
+      "latest_variant": "Massive Ring (Uber)",
+      "name": "Thread of Hope",
+      "radius": "Variable",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 5,
+      "variants": [
+        {
+          "label": "Small Ring",
+          "stats": "Only affects Passives in Small Ring · Passive Skills in Radius can be Allocated without being connected to your tree Passage · -(10-20)% to all Elemental Resistances"
+        },
+        {
+          "label": "Medium Ring",
+          "stats": "Passive Skills in Radius can be Allocated without being connected to your tree Passage · -(10-20)% to all Elemental Resistances · Only affects Passives in Medium Ring"
+        },
+        {
+          "label": "Large Ring",
+          "stats": "Passive Skills in Radius can be Allocated without being connected to your tree Passage · -(10-20)% to all Elemental Resistances · Only affects Passives in Large Ring"
+        },
+        {
+          "label": "Very Large Ring",
+          "stats": "Passive Skills in Radius can be Allocated without being connected to your tree Passage · -(10-20)% to all Elemental Resistances · Only affects Passives in Very Large Ring"
+        },
+        {
+          "label": "Massive Ring (Uber)",
+          "stats": "Only affects Passives in Massive Ring · Passive Skills in Radius can be Allocated without being connected to your tree Passage · -(10-20)% to all Elemental Resistances"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TranscendentRed_dds.png?v=2",
+      "latest_stats": "-1 Strength per 1 Strength on Allocated Passives in Radius · +7% to Critical Strike Multiplier per 10 Strength on Unallocated Passives in Radius · 3% increased Life Recovery Rate per 10 Strength on Allocated Passives in Radius · 2% reduced Life Recovery Rate per 10 Strength on Unallocated Passives in Radius",
+      "latest_variant": "Current",
+      "name": "Transcendent Flesh",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TranscendentBlue_dds.png?v=2",
+      "latest_stats": "-1 Intelligence per 1 Intelligence on Allocated Passives in Radius · +3% to Damage over Time Multiplier per 10 Intelligence on Unallocated Passives in Radius · 3% increased Mana Recovery Rate per 10 Intelligence on Allocated Passives in Radius · 2% reduced Mana Recovery Rate per 10 Intelligence on Unallocated Passives in Radius",
+      "latest_variant": "Current",
+      "name": "Transcendent Mind",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_TranscendentGreen_dds.png?v=2",
+      "latest_stats": "-1 Dexterity per 1 Dexterity on Allocated Passives in Radius · 3% increased Movement Speed per 10 Dexterity on Allocated Passives in Radius · +125 to Accuracy Rating per 10 Dexterity on Unallocated Passives in Radius · 2% reduced Movement Speed per 10 Dexterity on Unallocated Passives in Radius",
+      "latest_variant": "Current",
+      "name": "Transcendent Spirit",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "base": "Searching Eye Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_SearchingEyeUnique_dds.png?v=2",
+      "latest_stats": "+(10-20) to Dexterity · Projectiles have 4% chance to be able to Chain when colliding with terrain per Searching Eye Jewel affecting you, up to a maximum of 20%",
+      "latest_variant": "Current",
+      "name": "Ulaman's Gaze",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "not_for_sale",
+        "abyss_jewel_ranged",
+        "abyss_jewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_SpectreJewel_dds.png?v=2",
+      "latest_stats": "Minions have (6-8)% increased Area of Effect · With at least 40 Intelligence in Radius, Raised Spectres have a 50% chance to gain Soul Eater for 20 seconds on Kill",
+      "latest_variant": "Current",
+      "name": "Unending Hunger",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_UnnaturalInstinct_dds.png?v=2",
+      "latest_stats": "Allocated Small Passive Skills in Radius grant nothing · Grants all bonuses of Unallocated Small Passive Skills in Radius",
+      "latest_variant": "Current",
+      "name": "Unnatural Instinct",
+      "radius": "Small",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueJewel1_dds.png?v=2",
+      "latest_stats": "(8-12)% Chance for Traps to Trigger an additional time",
+      "latest_variant": "Current",
+      "name": "Unstable Payload",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BlueCorrupt1_dds.png?v=2",
+      "latest_stats": "(80-120)% increased Vaal Skill Critical Strike Chance",
+      "latest_variant": "Current",
+      "name": "Vaal Sentencing",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_RaiseZombieThreshold_dds.png?v=2",
+      "latest_stats": "Minions deal (10-15)% increased Damage · With at least 40 Intelligence in Radius, Raised Zombies' Slam Attack has 100% increased Cooldown Recovery Rate · With at least 40 Intelligence in Radius, Raised Zombies' Slam Attack deals 30% increased Damage",
+      "latest_variant": "Current",
+      "name": "Violent Dead",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Large Cluster Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_UniqueJewelBase3_dds.png?v=2",
+      "latest_stats": "Adds 3 Jewel Socket Passive Skills · Adds 7 Small Passive Skills which grant nothing",
+      "latest_variant": "Adds 7 Small Passive Skills",
+      "name": "Voices",
+      "req_level": 1,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_for_sale",
+        "expansion_jewel_large"
+      ],
+      "variant_count": 4,
+      "variants": [
+        {
+          "label": "Adds 1 Small Passive Skill",
+          "stats": "Adds 3 Jewel Socket Passive Skills · Adds 1 Small Passive Skill which grants nothing"
+        },
+        {
+          "label": "Adds 3 Small Passive Skills",
+          "stats": "Adds 3 Jewel Socket Passive Skills · Adds 3 Small Passive Skills which grant nothing"
+        },
+        {
+          "label": "Adds 5 Small Passive Skills",
+          "stats": "Adds 3 Jewel Socket Passive Skills · Adds 5 Small Passive Skills which grant nothing"
+        },
+        {
+          "label": "Adds 7 Small Passive Skills",
+          "stats": "Adds 3 Jewel Socket Passive Skills · Adds 7 Small Passive Skills which grant nothing"
+        }
+      ]
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_BarrageModifier_dds.png?v=2",
+      "latest_stats": "(7-10)% increased Projectile Damage · With at least 40 Dexterity in Radius, Barrage fires an additional 6 projectiles simultaneously on the first and final attacks",
+      "latest_variant": "Current",
+      "name": "Volley Fire",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 3
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_MidQuestRewardRed_dds.png?v=2",
+      "latest_stats": "10% increased Attack Damage · +2 metres to Melee Strike Range",
+      "latest_variant": "Current",
+      "name": "Warlord's Reach",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_HinekoraJewel_dds.png?v=2",
+      "latest_stats": "100% increased effect of Tattoos in Radius",
+      "latest_variant": "Current",
+      "name": "Warrior's Tale",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Viridian Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GreenCorrupt4_dds.png?v=2",
+      "latest_stats": "(15-20)% increased Chaos Damage · 15% reduced Movement Speed",
+      "latest_variant": "Current",
+      "name": "Weight of Sin",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_str",
+        "not_int",
+        "not_for_sale",
+        "dexjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_DoubleDamageModifier_dds.png?v=2",
+      "latest_stats": "(8-12)% increased Global Physical Damage · With at least 40 Strength in Radius, Heavy Strike has a  20% chance to deal Double Damage",
+      "latest_variant": "Current",
+      "name": "Weight of the Empire",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_MoltenStrikeThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Fire Damage · With at least 40 Strength in Radius, Molten Strike Projectiles Chain on impacting ground · With at least 40 Strength in Radius, Molten Strike Projectiles Chain +1 time · With at least 40 Strength in Radius, Molten Strike fires 50% less Projectiles",
+      "latest_variant": "Current",
+      "name": "Wildfire",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 2
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Crimson Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_GlacialHammerThreshold_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Cold Damage · With at least 40 Strength in Radius, Glacial Hammer deals Cold-only Splash Damage to surrounding targets · With at least 40 Strength in Radius, 25% of Glacial Hammer Physical Damage Converted to Cold Damage",
+      "latest_variant": "Current",
+      "name": "Winter Burial",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_int",
+        "not_for_sale",
+        "strjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_ColdSnapModifier_dds.png?v=2",
+      "latest_stats": "(10-15)% increased Cold Damage · With at least 40 Intelligence in Radius, Cold Snap grants Power Charges instead of Frenzy Charges when Enemies die in its Area With at least 40 Intelligence in Radius, Cold Snap's Cooldown can be bypassed by Power Charges instead of Frenzy Charges",
+      "latest_variant": "Current",
+      "name": "Winter's Bounty",
+      "radius": "Medium",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
+    },
+    {
+      "allowed_slots": [
+        "jewel"
+      ],
+      "base": "Cobalt Jewel",
+      "data_source": "pob-resolved",
+      "icon": "/assets/poe1-agent/item_icons/Art_2DItems_Jewels_unique13_dds.png?v=2",
+      "latest_stats": "+(5-15) to Intelligence · When you Kill an Enemy Cursed with a Non-Aura Hex, become Immune to Curses for remaining Hex Duration",
+      "latest_variant": "Current",
+      "name": "Witchbane",
+      "req_level": 20,
+      "slot": "jewel",
+      "tags": [
+        "jewel",
+        "not_dex",
+        "not_str",
+        "not_for_sale",
+        "intjewel"
+      ],
+      "variant_count": 1
     },
     {
       "allowed_slots": [

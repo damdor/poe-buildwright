@@ -50,9 +50,10 @@ ids with PoE2, so never mix grounding files across games.
   Matter, Eldritch Battery, Resolute Technique, Elemental Overload,
   Acrobatics, Point Blank…). They're regular `targets` — but each
   reshapes the build; never take one incidentally.
-- Masteries and jewel sockets exist on the tree and render here, but
-  this planner doesn't pick mastery effects or socket jewels — don't
-  plan around them.
+- Masteries render but mastery-effect selection is not modeled yet.
+  Jewels are fully pickable and socketable; radius jewels show their
+  affected region, and cluster jewels are restricted to the outer-ring
+  Large Jewel Sockets.
 
 ## Tree geography
 
@@ -69,6 +70,8 @@ lists to cluster.
   the PoE2 file).
 - /assets/poe1-agent/graph.json — adjacency, if you want to reason
   about routes yourself.
+- /assets/poe1-agent/jewels.json — socket positions, PoE1 radius
+  geometry, and official cluster-socket eligibility.
 - /assets/poe1-agent/examples/index.json — two known-good plans
   modeled on popular poe.ninja Mirage-league builds, validated against
   this deployment's tree: an RF Chieftain (armour/regen archetype) and a

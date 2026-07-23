@@ -111,7 +111,11 @@ fn node_overlay(n: &json::Value, is_ascendancy: bool, has_unlock: bool) -> Strin
         return if b(n, "isJewelSocket") {
             "JewelSocketAltActive|JewelSocketAltCanAllocate|JewelSocketAltNormal".into()
         } else {
-            let t = if b(n, "isNotable") { "Notable" } else { "Normal" };
+            let t = if b(n, "isNotable") {
+                "Notable"
+            } else {
+                "Normal"
+            };
             format!(
                 "AscendancyFrame{t}Allocated|AscendancyFrame{t}CanAllocate|AscendancyFrame{t}Unallocated"
             )
@@ -205,7 +209,12 @@ pub fn shape_tree_json(data: &json::Value, asc_art: &AscArt) -> Result<TreeTsv, 
         let class_start: Vec<usize> = n
             .get("classStartIndex")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|x| x.as_i64()).map(|i| i as usize).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_i64())
+                    .map(|i| i as usize)
+                    .collect()
+            })
             .unwrap_or_default();
         let kind = kind_of(n, !class_start.is_empty());
         // Emit the ascendancy DISPLAY NAME (Infernalist), not the id
@@ -267,7 +276,10 @@ pub fn shape_tree_json(data: &json::Value, asc_art: &AscArt) -> Result<TreeTsv, 
         let (conn_art, unlock) = match uc {
             Some(u) => {
                 let asc_id = u.get("ascendancy").and_then(|a| a.as_str()).unwrap_or("");
-                let asc_name = valid_asc.get(asc_id).map(|(nm, ..)| nm.as_str()).unwrap_or(asc_id);
+                let asc_name = valid_asc
+                    .get(asc_id)
+                    .map(|(nm, ..)| nm.as_str())
+                    .unwrap_or(asc_id);
                 let ids = u
                     .get("nodes")
                     .and_then(|v| v.as_array())
@@ -293,8 +305,23 @@ pub fn shape_tree_json(data: &json::Value, asc_art: &AscArt) -> Result<TreeTsv, 
         push(
             &mut out_nodes,
             &[
-                &ids, &xs, &ys, kind, &klass, &ascendancy, &name, &stats, &gr, &orb, &oi, &icon,
-                &overlay, &active, &options, &conn_art, &unlock,
+                &ids,
+                &xs,
+                &ys,
+                kind,
+                &klass,
+                &ascendancy,
+                &name,
+                &stats,
+                &gr,
+                &orb,
+                &oi,
+                &icon,
+                &overlay,
+                &active,
+                &options,
+                &conn_art,
+                &unlock,
             ],
         );
     }
@@ -426,9 +453,14 @@ pub fn shape_tree_json(data: &json::Value, asc_art: &AscArt) -> Result<TreeTsv, 
         let mut opts: Vec<i64> = Vec::new();
         for key in ["out", "in"] {
             for e in n.get(key).and_then(|v| v.as_array()).unwrap_or(&[]) {
-                let oid = e.as_i64().or_else(|| e.as_str().and_then(|t| t.parse().ok()));
+                let oid = e
+                    .as_i64()
+                    .or_else(|| e.as_str().and_then(|t| t.parse().ok()));
                 let Some(oid) = oid else { continue };
-                if node_by_id.get(&oid).is_some_and(|o| b(o, "isMultipleChoiceOption")) {
+                if node_by_id
+                    .get(&oid)
+                    .is_some_and(|o| b(o, "isMultipleChoiceOption"))
+                {
                     opts.push(oid);
                 }
             }
@@ -500,7 +532,10 @@ mod tests {
             strip_markup("Grants Skill: <underline>{Fire Spell on Hit}"),
             "Grants Skill: Fire Spell on Hit"
         );
-        assert_eq!(strip_markup("[Physical|Physical] Damage"), "Physical Damage");
+        assert_eq!(
+            strip_markup("[Physical|Physical] Damage"),
+            "Physical Damage"
+        );
     }
 
     #[test]
@@ -524,7 +559,12 @@ mod tests {
         let art = AscArt::new();
         let t = shape_tree_json(&data, &art).unwrap();
         // node 200 (legacy Marauder ascendancy) is dropped; the rest kept.
-        let ids: Vec<&str> = t.nodes.lines().skip(1).map(|l| l.split('\t').next().unwrap()).collect();
+        let ids: Vec<&str> = t
+            .nodes
+            .lines()
+            .skip(1)
+            .map(|l| l.split('\t').next().unwrap())
+            .collect();
         assert_eq!(ids, vec!["100", "300", "400", "500"]);
         assert!(t.nodes.contains("+10 to maximum Life")); // markup stripped
         assert!(t.nodes.contains("\tnotable\t"));

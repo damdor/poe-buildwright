@@ -2,7 +2,8 @@
 
 import {
   baseAllowedForPlannerSlot, charmSlotsFor, flaskSlotsFor, gearSlotsFor,
-  groundingSlotFor, nextRepeatedItemSlotFor, normalizeItemSlotFor, plannerSlot,
+  groundingSlotFor, jewelAllowedInSocket, jewelLocateArtFor, jewelRadiusArtFor,
+  jewelSocketArtForBase, nextRepeatedItemSlotFor, normalizeItemSlotFor, plannerSlot,
 } from "./game.ts";
 import { assertGameEnvelope } from "./asset_loader.ts";
 
@@ -10,7 +11,7 @@ function keys(game: string): string[] {
   return gearSlotsFor(game).map(slot => slot.key);
 }
 
-Deno.test("PoE1 separates five flasks from regular gear and excludes jewels", () => {
+Deno.test("PoE1 separates five flasks and exposes shared jewel authoring", () => {
   const slots = keys("poe1");
   if (slots.some(slot => slot.startsWith("flask"))) throw new Error("flasks leaked into regular gear");
   const flasks = flaskSlotsFor("poe1");
@@ -18,10 +19,56 @@ Deno.test("PoE1 separates five flasks from regular gear and excludes jewels", ()
   if (!flasks.every(slot => slot.cat.includes("tincture"))) {
     throw new Error("every PoE1 flask position must accept tinctures");
   }
-  if (slots.includes("jewel")) throw new Error("PoE1 must not expose the deferred jewel editor");
+  if (!slots.includes("jewel")) throw new Error("PoE1 must expose the shared jewel editor");
   const offhand = gearSlotsFor("poe1").find(slot => slot.key === "offhand1");
   if (!offhand?.cat.includes("axe") || !offhand.cat.includes("shield")) {
     throw new Error("PoE1 offhands must accept one-hand weapons and dedicated offhands");
+  }
+});
+
+Deno.test("PoE1 cluster jewels follow expansion-socket size limits", () => {
+  if (!jewelAllowedInSocket("poe1", "Large Cluster Jewel", { cluster_size: 2, cluster_outer: true })) {
+    throw new Error("outer-ring Large Jewel Sockets must accept cluster jewels");
+  }
+  if (jewelAllowedInSocket("poe1", "Large Cluster Jewel", { cluster_size: 1 })) {
+    throw new Error("a Large cluster jewel leaked into a Medium expansion socket");
+  }
+  if (!jewelAllowedInSocket("poe1", "Medium Cluster Jewel", { cluster_size: 2 }) ||
+      !jewelAllowedInSocket("poe1", "Small Cluster Jewel", { cluster_size: 1 })) {
+    throw new Error("smaller cluster jewels must fit larger expansion sockets");
+  }
+  for (const socket of [{}, { cluster_outer: false }]) {
+    if (jewelAllowedInSocket("poe1", "Medium Cluster Jewel", socket)) {
+      throw new Error("cluster jewels leaked into an ordinary socket");
+    }
+  }
+  if (!jewelAllowedInSocket("poe1", "Crimson Jewel", { cluster_outer: false })) {
+    throw new Error("ordinary jewels must remain valid in ordinary sockets");
+  }
+  if (!jewelAllowedInSocket("poe2", "Large Cluster Jewel", {})) {
+    throw new Error("the PoE1-only cluster policy changed PoE2");
+  }
+});
+
+Deno.test("jewel art follows each game's native atlas", () => {
+  if (jewelSocketArtForBase("poe1", "Crimson Jewel") !==
+      "/assets/sprites/poe1_JewelSocketActiveRed.png") {
+    throw new Error("PoE1 crimson jewel did not select the native red socket art");
+  }
+  if (jewelSocketArtForBase("poe1", "Large Cluster Jewel") !==
+      "/assets/sprites/poe1_JewelSocketActiveAltPurple.png") {
+    throw new Error("PoE1 Large cluster jewel did not select purple native art");
+  }
+  if (!jewelSocketArtForBase("poe1", "Medium Cluster Jewel")?.includes("AltBlue") ||
+      !jewelSocketArtForBase("poe1", "Small Cluster Jewel")?.includes("AltRed")) {
+    throw new Error("PoE1 Medium/Small cluster jewels did not select their native size art");
+  }
+  if (jewelSocketArtForBase("poe2", "Ruby") !== null) {
+    throw new Error("PoE2 must retain its existing per-base jewel art chain");
+  }
+  if (!jewelRadiusArtFor("poe1").includes("poe1_JewelCircle1") ||
+      !jewelLocateArtFor("poe1").includes("poe1_JewelSocket")) {
+    throw new Error("PoE1 radius/locate overlays are not game-owned");
   }
 });
 

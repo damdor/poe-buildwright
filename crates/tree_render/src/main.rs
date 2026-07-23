@@ -229,7 +229,7 @@ fn run() -> Result<(), String> {
         "poe1" => concat!(
             "{\"schema\":1,\"id\":\"poe1\",\"storageNamespace\":\"poe1-planner\",",
             "\"budgets\":{\"main\":123,\"asc\":8},",
-            "\"features\":{\"gear\":true,\"skills\":true,\"jewels\":false,",
+            "\"features\":{\"gear\":true,\"skills\":true,\"jewels\":true,",
             "\"spirit\":false,\"weaponSets\":false,\"share\":false,",
             "\"ascInPlace\":true},",
             "\"socketModel\":\"links\",",
@@ -239,7 +239,8 @@ fn run() -> Result<(), String> {
             "\"itemCatalogue\":\"/assets/poe1-agent/item_catalogue.json\",",
             "\"bases\":\"/assets/poe1-agent/bases.json\",",
             "\"mods\":\"/assets/poe1-agent/mods.json\",",
-            "\"grantedSkills\":null,\"jewels\":null,\"spirit\":null,",
+            "\"grantedSkills\":null,\"jewels\":\"/assets/poe1-agent/jewels.json\",",
+            "\"spirit\":null,",
             "\"buildMeta\":\"/assets/poe1-agent/build_meta.json\",",
             "\"nodes\":\"/assets/poe1-agent/nodes.json\",",
             "\"graph\":\"/assets/poe1-agent/graph.json\",",
@@ -271,8 +272,20 @@ fn run() -> Result<(), String> {
         .to_string(),
         other => return Err(format!("unsupported game {other:?}; expected poe1 or poe2")),
     };
-    let chrome = emit::PageChrome { title: &args.title, game_json: &game_json, game: &args.game };
-    let html = render_canvas_html(&nodes, &edges, &canvas, &classes, &sprites, &asc_overrides, &chrome);
+    let chrome = emit::PageChrome {
+        title: &args.title,
+        game_json: &game_json,
+        game: &args.game,
+    };
+    let html = render_canvas_html(
+        &nodes,
+        &edges,
+        &canvas,
+        &classes,
+        &sprites,
+        &asc_overrides,
+        &chrome,
+    );
     fs::write(&args.output, html).map_err(|e| format!("writing {}: {e}", args.output.display()))?;
     eprintln!(
         "Canvas viewer: {} nodes, {} edges, {} classes, {} portraits → {}",
@@ -317,8 +330,7 @@ fn run() -> Result<(), String> {
         // pathable set the planner uses: no masteries).
         use std::collections::{HashMap, VecDeque};
         let mut adj: HashMap<u32, Vec<u32>> = HashMap::new();
-        let kind_of: HashMap<u32, &str> =
-            nodes.iter().map(|n| (n.id, n.kind.as_str())).collect();
+        let kind_of: HashMap<u32, &str> = nodes.iter().map(|n| (n.id, n.kind.as_str())).collect();
         for (a, b, _) in &edges {
             if kind_of.get(a) == Some(&"mastery") || kind_of.get(b) == Some(&"mastery") {
                 continue;
@@ -458,8 +470,10 @@ fn run() -> Result<(), String> {
             if let Some(nears) = near.get(&n.id)
                 && !nears.is_empty()
             {
-                let items: Vec<String> =
-                    nears.iter().map(|(id2, d)| format!("[{id2},{d}]")).collect();
+                let items: Vec<String> = nears
+                    .iter()
+                    .map(|(id2, d)| format!("[{id2},{d}]"))
+                    .collect();
                 out.push_str(&format!(",\"near\":[{}]", items.join(",")));
             }
             if !n.stats.is_empty() {
@@ -558,8 +572,7 @@ fn run() -> Result<(), String> {
         }
         g.push_str("]}\n");
         let graph_path = agent_dir.join("graph.json");
-        fs::write(&graph_path, g)
-            .map_err(|e| format!("writing {}: {e}", graph_path.display()))?;
+        fs::write(&graph_path, g).map_err(|e| format!("writing {}: {e}", graph_path.display()))?;
         eprintln!("Agent graph → {}", graph_path.display());
 
         // jewels.json — jewel sockets (position + what's reachable in
@@ -570,11 +583,78 @@ fn run() -> Result<(), String> {
         // predates the jewels dataset (`shape jewels`).
         let jewels_tsv = args.tree_dir.join("jewels.tsv");
         if let Ok(raw) = fs::read_to_string(&jewels_tsv) {
+            #[derive(Clone)]
+            struct ClusterTemplate {
+                size_index: i64,
+                min_nodes: i64,
+                max_nodes: i64,
+                total_indices: i64,
+                small: Vec<i64>,
+                notable: Vec<i64>,
+                socket: Vec<i64>,
+                base: String,
+            }
+            #[derive(Clone)]
+            struct ClusterSkill {
+                id: String,
+                size: String,
+                node_id: u32,
+                name: String,
+                stats: String,
+                icon: String,
+                mastery_icon: String,
+            }
+            #[derive(Clone)]
+            struct ClusterSpecial {
+                node_id: u32,
+                name: String,
+                stats: String,
+                icon: String,
+                kind: String,
+                order: i64,
+            }
+            #[derive(Clone)]
+            struct ClusterSlot {
+                size: String,
+                size_index: i64,
+                cluster_index: i64,
+                parent: Option<u32>,
+                proxy: u32,
+                start_indices: Vec<i64>,
+            }
             let mut rings: Vec<(String, i64, i64, i64)> = Vec::new(); // name, outer, inner, radius
             let mut bases: Vec<(String, i64)> = Vec::new();
             let mut adds: Vec<(String, i64)> = Vec::new();
+            // Socket id → (cluster size, parent socket, outer-ring
+            // attachment). PoE1's tree JSON is authoritative for
+            // expansion-jewel topology; PoE2 simply emits no rows.
+            let mut socket_meta: std::collections::BTreeMap<u32, (i64, Option<u32>, bool)> =
+                std::collections::BTreeMap::new();
+            let mut cluster_templates: std::collections::BTreeMap<String, ClusterTemplate> =
+                std::collections::BTreeMap::new();
+            let mut cluster_skills: Vec<ClusterSkill> = Vec::new();
+            let mut cluster_specials: std::collections::BTreeMap<String, ClusterSpecial> =
+                std::collections::BTreeMap::new();
+            let mut cluster_slots: std::collections::BTreeMap<u32, ClusterSlot> =
+                std::collections::BTreeMap::new();
             // (keystone name, faction, conqueror index, stat text)
             let mut timeless: Vec<(String, String, i64, String)> = Vec::new();
+            let nums = |value: Option<&&str>| -> Vec<i64> {
+                value
+                    .copied()
+                    .unwrap_or("")
+                    .split(',')
+                    .filter_map(|v| v.parse::<i64>().ok())
+                    .collect()
+            };
+            let size_index = |size: &str| -> i64 {
+                match size {
+                    "Small" => 0,
+                    "Medium" => 1,
+                    "Large" => 2,
+                    _ => -1,
+                }
+            };
             for line in raw.lines().skip(1) {
                 let c: Vec<&str> = line.split('\t').collect();
                 if c.len() < 3 {
@@ -585,6 +665,74 @@ fn run() -> Result<(), String> {
                     "ring" => rings.push((c[1].to_string(), num(2), num(3), num(4))),
                     "base" => bases.push((c[1].to_string(), num(2))),
                     "radius_add" => adds.push((c[1].to_string(), num(2))),
+                    "socket" => {
+                        if let Ok(id) = c[1].parse::<u32>() {
+                            let parent = c
+                                .get(3)
+                                .filter(|v| !v.is_empty())
+                                .and_then(|v| v.parse::<u32>().ok());
+                            socket_meta.insert(id, (num(2), parent, num(4) != 0));
+                        }
+                    }
+                    "cluster_template" if c.len() >= 10 => {
+                        cluster_templates.insert(
+                            c[1].to_string(),
+                            ClusterTemplate {
+                                size_index: num(2),
+                                min_nodes: num(3),
+                                max_nodes: num(4),
+                                total_indices: num(5),
+                                small: nums(c.get(6)),
+                                notable: nums(c.get(7)),
+                                socket: nums(c.get(8)),
+                                base: c[9].to_string(),
+                            },
+                        );
+                    }
+                    "cluster_skill" if c.len() >= 8 => {
+                        cluster_skills.push(ClusterSkill {
+                            id: c[1].to_string(),
+                            size: c[2].to_string(),
+                            node_id: c[3].parse().unwrap_or(0),
+                            name: c[4].to_string(),
+                            stats: c[5].to_string(),
+                            icon: c[6].to_string(),
+                            mastery_icon: c[7].to_string(),
+                        });
+                    }
+                    "cluster_special" if c.len() >= 8 => {
+                        cluster_specials.insert(
+                            c[1].to_string(),
+                            ClusterSpecial {
+                                node_id: c[2].parse().unwrap_or(0),
+                                name: c[3].to_string(),
+                                stats: c[4].to_string(),
+                                icon: c[5].to_string(),
+                                kind: c[6].to_string(),
+                                order: num(7),
+                            },
+                        );
+                    }
+                    "cluster_slot" if c.len() >= 7 => {
+                        let Ok(id) = c[1].parse::<u32>() else {
+                            continue;
+                        };
+                        let parent = c[4].parse::<u32>().ok();
+                        let size = c[2].to_string();
+                        let si = size_index(&size);
+                        cluster_slots.insert(
+                            id,
+                            ClusterSlot {
+                                size,
+                                size_index: si,
+                                cluster_index: num(3),
+                                parent,
+                                proxy: c[5].parse().unwrap_or(0),
+                                start_indices: nums(c.get(6)),
+                            },
+                        );
+                        socket_meta.insert(id, (si, parent, parent.is_none()));
+                    }
                     "timeless" => timeless.push((
                         c[1].to_string(),
                         c[2].to_string(),
@@ -618,7 +766,10 @@ fn run() -> Result<(), String> {
             // tree units, mastery/asc/start nodes excluded — jewels
             // affect the main tree only).
             let affectable = |n: &model::Node| {
-                matches!(n.kind.as_str(), "small" | "notable" | "keystone" | "attribute" | "jewel")
+                matches!(
+                    n.kind.as_str(),
+                    "small" | "notable" | "keystone" | "attribute" | "jewel"
+                )
             };
             let mut out = format!(
                 "{{\"format\":\"{}-agent-jewels\",\"version\":1,\"game\":{},",
@@ -662,6 +813,12 @@ fn run() -> Result<(), String> {
                 if n.kind != "jewel" {
                     continue;
                 }
+                // PoE1's seasonal Primalist "Charm Socket" nodes use
+                // the same low-level flag, but they are not jewel
+                // sockets and must never enter the jewel picker.
+                if args.game == "poe1" && !n.name.contains("Jewel Socket") {
+                    continue;
+                }
                 if !first {
                     out.push(',');
                 }
@@ -673,6 +830,15 @@ fn run() -> Result<(), String> {
                 if !n.name.is_empty() && n.name != "[Jewel] Socket" {
                     out.push_str(&format!(",\"name\":{}", text::json_str(&n.name)));
                 }
+                if let Some((size, parent, outer)) = socket_meta.get(&n.id) {
+                    out.push_str(&format!(",\"cluster_size\":{size}"));
+                    if let Some(parent) = parent {
+                        out.push_str(&format!(",\"cluster_parent\":{parent}"));
+                    }
+                    if *outer {
+                        out.push_str(",\"cluster_outer\":true");
+                    }
+                }
                 // Not every socket is an ordinary jewel home: Sinister
                 // sockets only activate via the Voices unique, and the
                 // named specials (Zarokh's Gift, Crystalline
@@ -680,29 +846,32 @@ fn run() -> Result<(), String> {
                 if n.name.contains("Sinister") {
                     out.push_str(",\"sinister\":true");
                 } else if !n.name.is_empty() && !n.name.contains("[Jewel]") {
-                    out.push_str(",\"special\":true");
+                    if args.game != "poe1" {
+                        out.push_str(",\"special\":true");
+                    }
                 }
                 out.push_str(",\"in_radius\":{");
                 let mut rfirst = true;
-                let emit_list = |key: String, lo2: f64, hi2: f64, out: &mut String, rfirst: &mut bool| {
-                    let mut ids: Vec<u32> = Vec::new();
-                    for m in &nodes {
-                        if m.id == n.id || !affectable(m) {
-                            continue;
+                let emit_list =
+                    |key: String, lo2: f64, hi2: f64, out: &mut String, rfirst: &mut bool| {
+                        let mut ids: Vec<u32> = Vec::new();
+                        for m in &nodes {
+                            if m.id == n.id || !affectable(m) {
+                                continue;
+                            }
+                            let (dx, dy) = (m.x - n.x, m.y - n.y);
+                            let d2 = dx * dx + dy * dy;
+                            if d2 > lo2 && d2 <= hi2 {
+                                ids.push(m.id);
+                            }
                         }
-                        let (dx, dy) = (m.x - n.x, m.y - n.y);
-                        let d2 = dx * dx + dy * dy;
-                        if d2 > lo2 && d2 <= hi2 {
-                            ids.push(m.id);
+                        if !*rfirst {
+                            out.push(',');
                         }
-                    }
-                    if !*rfirst {
-                        out.push(',');
-                    }
-                    *rfirst = false;
-                    let list: Vec<String> = ids.iter().map(u32::to_string).collect();
-                    out.push_str(&format!("\"{key}\":[{}]", list.join(",")));
-                };
+                        *rfirst = false;
+                        let list: Vec<String> = ids.iter().map(u32::to_string).collect();
+                        out.push_str(&format!("\"{key}\":[{}]", list.join(",")));
+                    };
                 for r in &radii_set {
                     emit_list(r.to_string(), -1.0, (*r * *r) as f64, &mut out, &mut rfirst);
                 }
@@ -718,6 +887,118 @@ fn run() -> Result<(), String> {
                 out.push_str("}}");
             }
             out.push_str("],");
+            if !cluster_templates.is_empty() {
+                let sprite_url = |source: &str| -> String {
+                    let png_key = source
+                        .strip_suffix(".dds")
+                        .map(|p| format!("{p}.png"))
+                        .unwrap_or_else(|| source.to_string());
+                    sprites
+                        .get(&png_key)
+                        .or_else(|| sprites.get(source))
+                        .map(|s| format!("/assets/sprites/{}", s.png))
+                        .unwrap_or_default()
+                };
+                out.push_str("\"cluster\":{\"templates\":{");
+                let mut cfirst = true;
+                for (size, t) in &cluster_templates {
+                    if !cfirst {
+                        out.push(',');
+                    }
+                    cfirst = false;
+                    let list =
+                        |v: &[i64]| v.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+                    out.push_str(&format!(
+                        "{}:{{\"size_index\":{},\"min_nodes\":{},\"max_nodes\":{},\
+                         \"total_indices\":{},\"small_indices\":[{}],\"notable_indices\":[{}],\
+                         \"socket_indices\":[{}],\"base\":{}}}",
+                        text::json_str(size),
+                        t.size_index,
+                        t.min_nodes,
+                        t.max_nodes,
+                        t.total_indices,
+                        list(&t.small),
+                        list(&t.notable),
+                        list(&t.socket),
+                        text::json_str(&t.base),
+                    ));
+                }
+                out.push_str("},\"skills\":[");
+                cfirst = true;
+                for skill in &cluster_skills {
+                    if !cfirst {
+                        out.push(',');
+                    }
+                    cfirst = false;
+                    out.push_str(&format!(
+                        "{{\"id\":{},\"size\":{},\"node_id\":{},\"name\":{},\"stats\":{},\
+                         \"icon\":{},\"mastery_icon\":{}}}",
+                        text::json_str(&skill.id),
+                        text::json_str(&skill.size),
+                        skill.node_id,
+                        text::json_str(&skill.name),
+                        text::json_str(&skill.stats),
+                        text::json_str(&sprite_url(&skill.icon)),
+                        text::json_str(&sprite_url(&skill.mastery_icon)),
+                    ));
+                }
+                out.push_str("],\"specials\":{");
+                cfirst = true;
+                for (stat, special) in &cluster_specials {
+                    if !cfirst {
+                        out.push(',');
+                    }
+                    cfirst = false;
+                    out.push_str(&format!(
+                        "{}:{{\"node_id\":{},\"name\":{},\"stats\":{},\"icon\":{},\
+                         \"kind\":{},\"order\":{}}}",
+                        text::json_str(stat),
+                        special.node_id,
+                        text::json_str(&special.name),
+                        text::json_str(&special.stats),
+                        text::json_str(&sprite_url(&special.icon)),
+                        text::json_str(&special.kind),
+                        special.order,
+                    ));
+                }
+                out.push_str("},\"slots\":{");
+                cfirst = true;
+                for (id, slot) in &cluster_slots {
+                    let Some(proxy_node) = nodes.iter().find(|n| n.id == slot.proxy) else {
+                        continue;
+                    };
+                    let Some((cx, cy)) = canvas.groups.get(&proxy_node.group) else {
+                        continue;
+                    };
+                    if !cfirst {
+                        out.push(',');
+                    }
+                    cfirst = false;
+                    let starts = slot
+                        .start_indices
+                        .iter()
+                        .map(i64::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    out.push_str(&format!(
+                        "\"{id}\":{{\"size\":{},\"size_index\":{},\"cluster_index\":{},\
+                         \"parent\":{},\"proxy\":{},\"group\":{},\"cx\":{:.2},\"cy\":{:.2},\
+                         \"start_indices\":[{}]}}",
+                        text::json_str(&slot.size),
+                        slot.size_index,
+                        slot.cluster_index,
+                        slot.parent
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "null".to_string()),
+                        slot.proxy,
+                        proxy_node.group,
+                        cx,
+                        cy,
+                        starts,
+                    ));
+                }
+                out.push_str("}},");
+            }
             // Keystone-proximity lists (From Nothing: "Passives in
             // Radius of <Keystone> can be Allocated without being
             // connected"). Radius = the mined
@@ -729,7 +1010,9 @@ fn run() -> Result<(), String> {
             // conqueror (ConquerorIndex); art ships as TK_<Name>.png.
             out.push_str("\"timeless_keystones\":[");
             let san = |n: &str| -> String {
-                n.chars().map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' }).collect()
+                n.chars()
+                    .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+                    .collect()
             };
             let mut tfirst = true;
             for (name, faction, idx, stats) in &timeless {
@@ -768,7 +1051,11 @@ fn run() -> Result<(), String> {
                 let list: Vec<String> = ids.iter().map(u32::to_string).collect();
                 out.push_str(&format!(
                     "{}:{{\"id\":{},\"x\":{:.1},\"y\":{:.1},\"in_radius\":[{}]}}",
-                    text::json_str(&n.name), n.id, n.x, n.y, list.join(","),
+                    text::json_str(&n.name),
+                    n.id,
+                    n.x,
+                    n.y,
+                    list.join(","),
                 ));
             }
             out.push_str("}}\n");

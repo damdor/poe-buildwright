@@ -2475,6 +2475,50 @@ main#viewport canvas { display: block; width: 100%; height: 100%; }
   border: 1px solid var(--line, #2c2f3a);
   border-radius: 6px; padding: 3px 6px;
 }
+.gp-cluster {
+  display: grid;
+  grid-template-columns: 105px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 8px;
+  margin: 10px 0 2px;
+  padding: 9px;
+  border: 1px solid rgba(124, 104, 177, 0.42);
+  border-radius: 7px;
+  background: rgba(50, 35, 72, 0.16);
+}
+.gp-cluster.hidden { display: none; }
+.gp-cluster-head {
+  grid-column: 1 / -1;
+  color: #bca8df;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.gp-cluster label {
+  color: var(--muted, #8a8fa3);
+  font-size: 10.5px;
+}
+.gp-cluster select {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--text, #d8dbe6);
+  background: var(--panel, #14161d);
+  border: 1px solid var(--line, #2c2f3a);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+.gp-cluster-fixed {
+  color: var(--text, #d8dbe6);
+  font-size: 11.5px;
+}
+.gp-cluster-note {
+  grid-column: 1 / -1;
+  color: var(--muted, #8a8fa3);
+  font-size: 10px;
+  line-height: 1.35;
+}
 #jewel-picker .jp-note {
   font-size: 10.5px; color: #c98b4a; padding: 0 8px 6px;
 }

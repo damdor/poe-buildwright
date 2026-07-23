@@ -15,8 +15,8 @@
 //! committed or linked). The shipped artefact (viewer/) touches none
 //! of this.
 
-mod handlers;
 mod game_profile;
+mod handlers;
 mod help;
 mod ui;
 

@@ -123,7 +123,11 @@ fn top_level_spans(s: &str) -> Vec<(String, (usize, usize))> {
     };
     let mut out = Vec::new();
     let n = b.len();
-    let skip_ws = |i: &mut usize| while *i < n && (b[*i] as char).is_ascii_whitespace() { *i += 1 };
+    let skip_ws = |i: &mut usize| {
+        while *i < n && (b[*i] as char).is_ascii_whitespace() {
+            *i += 1
+        }
+    };
     loop {
         skip_ws(&mut i);
         if i >= n || b[i] == b'}' {
@@ -140,7 +144,9 @@ fn top_level_spans(s: &str) -> Vec<(String, (usize, usize))> {
         let ks = i + 1;
         i += 1;
         while i < n && b[i] != b'"' {
-            if b[i] == b'\\' { i += 1; }
+            if b[i] == b'\\' {
+                i += 1;
+            }
             i += 1;
         }
         if i >= n {
@@ -161,14 +167,19 @@ fn top_level_spans(s: &str) -> Vec<(String, (usize, usize))> {
         while i < n {
             let c = b[i];
             if in_str {
-                if c == b'\\' { i += 1; }
-                else if c == b'"' { in_str = false; }
+                if c == b'\\' {
+                    i += 1;
+                } else if c == b'"' {
+                    in_str = false;
+                }
             } else {
                 match c {
                     b'"' => in_str = true,
                     b'{' | b'[' => depth += 1,
                     b'}' | b']' => {
-                        if depth == 0 { break; }   // root closing brace ends the value
+                        if depth == 0 {
+                            break;
+                        } // root closing brace ends the value
                         depth -= 1;
                     }
                     b',' if depth == 0 => break,
@@ -190,7 +201,10 @@ mod merge_tests {
         let old = r#"{"a":1,"uniques":{"x":{"r":[1,2]},"s":"br{ace] \" ok"}}"#;
         let new = String::from("{\"a\":2,\"b\":[3]}\n");
         let merged = preserve_unknown_top_level(old, new);
-        assert_eq!(merged, "{\"a\":2,\"b\":[3],\"uniques\":{\"x\":{\"r\":[1,2]},\"s\":\"br{ace] \\\" ok\"}}\n");
+        assert_eq!(
+            merged,
+            "{\"a\":2,\"b\":[3],\"uniques\":{\"x\":{\"r\":[1,2]},\"s\":\"br{ace] \\\" ok\"}}\n"
+        );
     }
 
     #[test]
@@ -202,7 +216,10 @@ mod merge_tests {
 
     #[test]
     fn garbage_old_is_a_noop() {
-        assert_eq!(preserve_unknown_top_level("not json", String::from("{}")), "{}");
+        assert_eq!(
+            preserve_unknown_top_level("not json", String::from("{}")),
+            "{}"
+        );
         assert_eq!(preserve_unknown_top_level("", String::from("{}")), "{}");
     }
 }

@@ -187,6 +187,11 @@ export function flushPersistNow(): void {
   // "type a name, allocate nothing yet" still persists and the chrome
   // refreshes its top-bar name (the Summary step gates on plan.name).
   window.PoE2Plan.save();
+  // Dynamic graph owners (currently PoE1 cluster jewels) need the
+  // committed allocation map, not the pre-save snapshot. A generated
+  // child socket becoming allocated can materialise another nested
+  // graph; deallocation can remove one and cascade its orphaned ids.
+  window.dispatchEvent(new CustomEvent("buildwright-passives-change"));
 }
 export function persistToWizardStore(): void {
   if (!window.PoE2Plan) return;
