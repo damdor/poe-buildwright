@@ -41,7 +41,11 @@ pub(crate) const POE2: GameProfile = GameProfile {
 
 impl GameProfile {
     pub(crate) fn from_patch(patch: &str) -> Self {
-        if patch.starts_with(POE1.patch_prefix) { POE1 } else { POE2 }
+        if patch.starts_with(POE1.patch_prefix) {
+            POE1
+        } else {
+            POE2
+        }
     }
 
     pub(crate) fn from_id(id: &str) -> Result<Self, String> {
@@ -81,8 +85,14 @@ mod tests {
         let root = Path::new("/repo");
         assert_eq!(GameProfile::from_patch("poe1_3.28.0k"), POE1);
         assert_eq!(GameProfile::from_patch("4.5.4.4_native"), POE2);
-        assert!(POE1.catalogue_dir(root).starts_with("/repo/viewer/assets/poe1-agent"));
-        assert!(POE1.grounding_dir(root).starts_with("/repo/viewer/assets/poe1-agent"));
+        assert!(
+            POE1.catalogue_dir(root)
+                .starts_with("/repo/viewer/assets/poe1-agent")
+        );
+        assert!(
+            POE1.grounding_dir(root)
+                .starts_with("/repo/viewer/assets/poe1-agent")
+        );
         assert_ne!(POE1.skill_stats_path(root), POE2.skill_stats_path(root));
     }
 }

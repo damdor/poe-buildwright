@@ -258,16 +258,18 @@ pub fn shape_bases(ts: &TableSet) -> Result<String, ShapeError> {
     };
     let c_id = col("Id")?;
     let c_name = col("Name")?;
-    let c_class = column_any(bs, &["ItemClass", "ItemClassesKey"])
-        .ok_or(ShapeError::MissingColumn("BaseItemTypes", "ItemClass/ItemClassesKey"))?;
+    let c_class = column_any(bs, &["ItemClass", "ItemClassesKey"]).ok_or(
+        ShapeError::MissingColumn("BaseItemTypes", "ItemClass/ItemClassesKey"),
+    )?;
     let c_w = col("Width")?;
     let c_h = col("Height")?;
     let c_drop = col("DropLevel")?;
     let c_corrupt = col("IsCorrupted")?;
     let c_tags = column_any(bs, &["Tags", "TagsKeys"])
         .ok_or(ShapeError::MissingColumn("BaseItemTypes", "Tags/TagsKeys"))?;
-    let c_impl = column_any(bs, &["Implicit_Mods", "Implicit_ModsKeys"])
-        .ok_or(ShapeError::MissingColumn("BaseItemTypes", "Implicit_Mods/Implicit_ModsKeys"))?;
+    let c_impl = column_any(bs, &["Implicit_Mods", "Implicit_ModsKeys"]).ok_or(
+        ShapeError::MissingColumn("BaseItemTypes", "Implicit_Mods/Implicit_ModsKeys"),
+    )?;
     let c_iv = col("ItemVisualIdentity")?;
     // Base inventory art: BaseItemType → ItemVisualIdentity.DDSFile —
     // the same chain that resolves 100% of gems.
@@ -313,10 +315,7 @@ pub fn shape_bases(ts: &TableSet) -> Result<String, ShapeError> {
     let flask_i = reverse_index_any(ts, "Flasks", &["BaseItemType", "BaseItemTypesKey"]);
     let shield_i = reverse_index_any(ts, "ShieldTypes", &["BaseItemType", "BaseItemTypesKey"]);
     let (d_armour, s_armour) = (ts.dat("ArmourTypes"), ts.schema("ArmourTypes"));
-    let (d_req, s_req) = (
-        ts.dat(req_table),
-        ts.schema(req_table),
-    );
+    let (d_req, s_req) = (ts.dat(req_table), ts.schema(req_table));
     let (d_weapon, s_weapon) = (ts.dat("WeaponTypes"), ts.schema("WeaponTypes"));
     let (d_flask, s_flask) = (ts.dat("Flasks"), ts.schema("Flasks"));
     let (d_shield, s_shield) = (ts.dat("ShieldTypes"), ts.schema("ShieldTypes"));
@@ -350,20 +349,80 @@ pub fn shape_bases(ts: &TableSet) -> Result<String, ShapeError> {
             joined_i32_any(&d_req, s_req, &req_i, row, &["ReqStr"]),
             joined_i32_any(&d_req, s_req, &req_i, row, &["ReqDex"]),
             joined_i32_any(&d_req, s_req, &req_i, row, &["ReqInt"]),
-            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Armour", "ArmourMin"]),
-            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Evasion", "EvasionMin"]),
-            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["EnergyShield", "EnergyShieldMin"]),
+            joined_i32_any(
+                &d_armour,
+                s_armour,
+                &armour_i,
+                row,
+                &["Armour", "ArmourMin"],
+            ),
+            joined_i32_any(
+                &d_armour,
+                s_armour,
+                &armour_i,
+                row,
+                &["Evasion", "EvasionMin"],
+            ),
+            joined_i32_any(
+                &d_armour,
+                s_armour,
+                &armour_i,
+                row,
+                &["EnergyShield", "EnergyShieldMin"],
+            ),
             joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Ward", "WardMin"]),
-            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Armour", "ArmourMin"]),
-            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Armour", "ArmourMax"]),
-            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Evasion", "EvasionMin"]),
-            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Evasion", "EvasionMax"]),
-            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["EnergyShield", "EnergyShieldMin"]),
-            joined_i32_any(&d_armour, s_armour, &armour_i, row, &["EnergyShield", "EnergyShieldMax"]),
+            joined_i32_any(
+                &d_armour,
+                s_armour,
+                &armour_i,
+                row,
+                &["Armour", "ArmourMin"],
+            ),
+            joined_i32_any(
+                &d_armour,
+                s_armour,
+                &armour_i,
+                row,
+                &["Armour", "ArmourMax"],
+            ),
+            joined_i32_any(
+                &d_armour,
+                s_armour,
+                &armour_i,
+                row,
+                &["Evasion", "EvasionMin"],
+            ),
+            joined_i32_any(
+                &d_armour,
+                s_armour,
+                &armour_i,
+                row,
+                &["Evasion", "EvasionMax"],
+            ),
+            joined_i32_any(
+                &d_armour,
+                s_armour,
+                &armour_i,
+                row,
+                &["EnergyShield", "EnergyShieldMin"],
+            ),
+            joined_i32_any(
+                &d_armour,
+                s_armour,
+                &armour_i,
+                row,
+                &["EnergyShield", "EnergyShieldMax"],
+            ),
             joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Ward", "WardMin"]),
             joined_i32_any(&d_armour, s_armour, &armour_i, row, &["Ward", "WardMax"]),
             joined_i32(&d_shield, s_shield, &shield_i, row, "Block"),
-            joined_i32_any(&d_weapon, s_weapon, &weapon_i, row, &["CritChance", "Critical"]),
+            joined_i32_any(
+                &d_weapon,
+                s_weapon,
+                &weapon_i,
+                row,
+                &["CritChance", "Critical"],
+            ),
             joined_i32(&d_weapon, s_weapon, &weapon_i, row, "Speed"),
             joined_i32(&d_weapon, s_weapon, &weapon_i, row, "DamageMin"),
             joined_i32(&d_weapon, s_weapon, &weapon_i, row, "DamageMax"),
@@ -449,9 +508,9 @@ pub fn shape_gems(ts: &TableSet) -> Result<String, ShapeError> {
     let c_dex = scol("DexterityRequirementPercent")?;
     let c_int = scol("IntelligenceRequirementPercent")?;
     let c_colour = scol("GemColour")?;
-    let c_type = ss.column("GemType");             // PoE2 only
-    let c_tier = ss.column("Tier");                // PoE2 only
-    let c_minlvl = ss.column("MinLevelReq");       // PoE2 only; PoE1 falls back to the base item's DropLevel
+    let c_type = ss.column("GemType"); // PoE2 only
+    let c_tier = ss.column("Tier"); // PoE2 only
+    let c_minlvl = ss.column("MinLevelReq"); // PoE2 only; PoE1 falls back to the base item's DropLevel
     let c_vaal = scol("IsVaalVariant")?;
     let c_effects = scol_any(&["GemEffects", "GemVariants"])
         .ok_or(ShapeError::MissingColumn("SkillGems", "GemEffects"))?;
@@ -473,7 +532,7 @@ pub fn shape_gems(ts: &TableSet) -> Result<String, ShapeError> {
     let b_tags = bcol_any(&["Tags", "TagsKeys"])
         .ok_or(ShapeError::MissingColumn("BaseItemTypes", "Tags"))?;
     let b_iv = bcol("ItemVisualIdentity")?;
-    let b_drop = bs.column("DropLevel");   // min-level fallback (PoE1)
+    let b_drop = bs.column("DropLevel"); // min-level fallback (PoE1)
     // Gem inventory art: BaseItemType → ItemVisualIdentity.DDSFile
     // (resolves for 100% of gems — the audit-proven chain).
     let iv = ts.dat("ItemVisualIdentity");
@@ -530,13 +589,14 @@ pub fn shape_gems(ts: &TableSet) -> Result<String, ShapeError> {
         sets_s.column("Label"),
         lab_s.column("Text"),
     ) {
-        let mut seen: std::collections::HashSet<(usize, usize)> =
-            std::collections::HashSet::new();
+        let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
         for row in 0..sspl.row_count() {
             if sspl.i32(row, c_lvl).unwrap_or(0) != 1 {
                 continue;
             }
-            let Ok(Some(ssr)) = sspl.foreign(row, c_ss) else { continue };
+            let Ok(Some(ssr)) = sspl.foreign(row, c_ss) else {
+                continue;
+            };
             let ssr = ssr as usize;
             let text = sets
                 .foreign(ssr, c_label)
@@ -589,9 +649,7 @@ pub fn shape_gems(ts: &TableSet) -> Result<String, ShapeError> {
         let min_level = match c_minlvl {
             Some(c) => g(sg.i32(row, c).map(|v| v.to_string())),
             None => match (sg.foreign(row, c_base), b_drop) {
-                (Ok(Some(br)), Some(bd)) => {
-                    g(bit.i32(br as usize, bd).map(|v| v.to_string()))
-                }
+                (Ok(Some(br)), Some(bd)) => g(bit.i32(br as usize, bd).map(|v| v.to_string())),
                 _ => String::new(),
             },
         };
@@ -601,8 +659,12 @@ pub fn shape_gems(ts: &TableSet) -> Result<String, ShapeError> {
             tags,
             colour.to_string(),
             gem_colour_name(colour).to_string(),
-            c_type.map(|c| g(sg.i32(row, c).map(|v| v.to_string()))).unwrap_or_default(),
-            c_tier.map(|c| g(sg.i32(row, c).map(|v| v.to_string()))).unwrap_or_default(),
+            c_type
+                .map(|c| g(sg.i32(row, c).map(|v| v.to_string())))
+                .unwrap_or_default(),
+            c_tier
+                .map(|c| g(sg.i32(row, c).map(|v| v.to_string())))
+                .unwrap_or_default(),
             min_level,
             g(sg.i32(row, c_str).map(|v| v.to_string())),
             g(sg.i32(row, c_dex).map(|v| v.to_string())),
@@ -700,7 +762,9 @@ pub fn shape_active_skills(ts: &TableSet) -> Result<String, ShapeError> {
             resolve_array(&a, row, c_types, &type_ids),
             weapon_req,
             g(a.bool(row, c_manual).map(|b| b.to_string())),
-            c_hidden.map(|c| g(a.bool(row, c).map(|b| b.to_string()))).unwrap_or_default(),
+            c_hidden
+                .map(|c| g(a.bool(row, c).map(|b| b.to_string())))
+                .unwrap_or_default(),
             "active".to_string(),
             granted_effect_id,
         ];
@@ -775,9 +839,13 @@ pub fn shape_asc_overrides(
     let ov = ts
         .dat("AscendancyPassiveSkillOverrides")
         .ok_or("AscendancyPassiveSkillOverrides missing")?;
-    let ovs = ts.schema("AscendancyPassiveSkillOverrides").ok_or("AscendancyPassiveSkillOverrides schema missing")?;
+    let ovs = ts
+        .schema("AscendancyPassiveSkillOverrides")
+        .ok_or("AscendancyPassiveSkillOverrides schema missing")?;
     let ps = ts.dat("PassiveSkills").ok_or("PassiveSkills missing")?;
-    let pss = ts.schema("PassiveSkills").ok_or("PassiveSkills schema missing")?;
+    let pss = ts
+        .schema("PassiveSkills")
+        .ok_or("PassiveSkills schema missing")?;
     let asc = ts.dat("Ascendancy").ok_or("Ascendancy missing")?;
     let ascs = ts.schema("Ascendancy").ok_or("Ascendancy schema missing")?;
     let col = |s: &TableSchema, n: &str, t: &str| -> Result<usize, String> {
@@ -883,7 +951,6 @@ pub fn shape_asc_overrides(
     }
     Ok(out)
 }
-
 
 /// Map each support `GrantedEffects` row → the display name of the gem
 /// item that grants it. A support has no `ActiveSkill`; its name lives on
@@ -1360,12 +1427,16 @@ pub fn shape_unique_art(ts: &TableSet) -> Result<String, ShapeError> {
     let mut order: Vec<String> = Vec::new();
     for row in 0..usl.row_count() {
         let alt = usl.bool(row, c_alt).unwrap_or(false);
-        let Ok(Some(wr)) = usl.foreign(row, c_words) else { continue };
+        let Ok(Some(wr)) = usl.foreign(row, c_words) else {
+            continue;
+        };
         let name = words.string(wr as usize, w_text).unwrap_or_default();
         if name.is_empty() || (alt && seen.contains_key(&name)) {
             continue;
         }
-        let Ok(Some(ivr)) = usl.foreign(row, c_iv) else { continue };
+        let Ok(Some(ivr)) = usl.foreign(row, c_iv) else {
+            continue;
+        };
         let dds = iv.string(ivr as usize, iv_dds).unwrap_or_default();
         if dds.is_empty() {
             continue;
@@ -1399,6 +1470,11 @@ fn mod_domain(game: crate::fetch::Game, v: i32) -> String {
         // PoE1 jewel affixes as crafted item affixes leaks them into the
         // normal equipment picker.
         (crate::fetch::Game::Poe1, 10) => "jewel",
+        // Cluster-jewel affixes live in their own PoE1 domain. Keeping
+        // this distinct from ordinary jewels is required because their
+        // spawn weights are keyed by the selected expansion passive
+        // (affliction_* tags), not by the generic `jewel` tag.
+        (crate::fetch::Game::Poe1, 21) => "cluster_jewel",
         (crate::fetch::Game::Poe2, 10) => "crafted",
         (crate::fetch::Game::Poe2, 11) => "jewel",
         (_, 1) => "item",
@@ -1450,8 +1526,9 @@ pub fn shape_mods(ts: &TableSet, game: crate::fetch::Game) -> Result<String, Sha
     let c_families = col("Families")?;
     let c_tags = column_any(sm, &["Tags", "TagsKeys"])
         .ok_or(ShapeError::MissingColumn("Mods", "Tags/TagsKeys"))?;
-    let c_sw_tags = column_any(sm, &["SpawnWeight_Tags", "SpawnWeight_TagsKeys"])
-        .ok_or(ShapeError::MissingColumn("Mods", "SpawnWeight_Tags/SpawnWeight_TagsKeys"))?;
+    let c_sw_tags = column_any(sm, &["SpawnWeight_Tags", "SpawnWeight_TagsKeys"]).ok_or(
+        ShapeError::MissingColumn("Mods", "SpawnWeight_Tags/SpawnWeight_TagsKeys"),
+    )?;
     let c_sw_vals = col("SpawnWeight_Values")?;
     // PoE2 stores each range in an interval StatNValue column; PoE1
     // stores separate StatsKeyN + StatNMin/StatNMax columns.
@@ -1504,10 +1581,9 @@ pub fn shape_mods(ts: &TableSet, game: crate::fetch::Game) -> Result<String, Sha
                 }
                 let (lo, hi) = match bounds {
                     Bounds::Interval(value) => m.i32_interval(row, *value).unwrap_or((0, 0)),
-                    Bounds::Separate(min, max) => (
-                        m.i32(row, *min).unwrap_or(0),
-                        m.i32(row, *max).unwrap_or(0),
-                    ),
+                    Bounds::Separate(min, max) => {
+                        (m.i32(row, *min).unwrap_or(0), m.i32(row, *max).unwrap_or(0))
+                    }
                 };
                 if !stats.is_empty() {
                     stats.push('|');
@@ -1771,7 +1847,9 @@ pub fn shape_tree(
             // to a mastery group (MasteryGroup set) is a normal cluster
             // node, not a mastery — so don't key on MasteryGroup here.
             mastery: boolc(row, c_justicon),
-            is_asc: c_asc.and_then(|c| ps.foreign(row, c).ok().flatten()).is_some(),
+            is_asc: c_asc
+                .and_then(|c| ps.foreign(row, c).ok().flatten())
+                .is_some(),
             keystone: boolc(row, c_keystone),
             notable: boolc(row, c_notable),
             attribute: boolc(row, c_attr),
@@ -2071,16 +2149,17 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
     // ItemSpirit: BaseItemType row → SpiritGranted.
     let mut spirit: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
     if let (Some(isd), Some(iss)) = (ts.dat("ItemSpirit"), ts.schema("ItemSpirit"))
-        && let (Some(c_b), Some(c_s)) = (iss.column("BaseItemType"), iss.column("SpiritGranted")) {
-            for row in 0..isd.row_count() {
-                if let Ok(Some(bit_row)) = isd.foreign(row, c_b) {
-                    let sp = isd.i32(row, c_s).unwrap_or(0);
-                    if sp > 0 {
-                        spirit.insert(bit_row as usize, sp);
-                    }
+        && let (Some(c_b), Some(c_s)) = (iss.column("BaseItemType"), iss.column("SpiritGranted"))
+    {
+        for row in 0..isd.row_count() {
+            if let Ok(Some(bit_row)) = isd.foreign(row, c_b) {
+                let sp = isd.i32(row, c_s).unwrap_or(0);
+                if sp > 0 {
+                    spirit.insert(bit_row as usize, sp);
                 }
             }
         }
+    }
 
     // ModGrantedSkills: Mod row → granted gem's display name
     // (SkillGems row → its BaseItemType → Name).
@@ -2090,25 +2169,25 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
         ts.schema("ModGrantedSkills"),
         ts.dat("SkillGems"),
         ts.schema("SkillGems"),
-    )
-        && let (Some(c_mod), Some(c_skill), Some(c_sbit)) = (
-            mgs.column("Mod"),
-            mgs.column("Skill"),
-            sgs.column("BaseItemType"),
-        ) {
-            for row in 0..mgd.row_count() {
-                let (Ok(Some(mod_row)), Ok(Some(sg_row))) =
-                    (mgd.foreign(row, c_mod), mgd.foreign(row, c_skill))
-                else {
-                    continue;
-                };
-                if let Ok(Some(gbit)) = sgd.foreign(sg_row as usize, c_sbit)
-                    && let Ok(name) = bit.string(gbit as usize, c_name)
-                        && !name.is_empty() {
-                            mod_grants.insert(mod_row as usize, name);
-                        }
+    ) && let (Some(c_mod), Some(c_skill), Some(c_sbit)) = (
+        mgs.column("Mod"),
+        mgs.column("Skill"),
+        sgs.column("BaseItemType"),
+    ) {
+        for row in 0..mgd.row_count() {
+            let (Ok(Some(mod_row)), Ok(Some(sg_row))) =
+                (mgd.foreign(row, c_mod), mgd.foreign(row, c_skill))
+            else {
+                continue;
+            };
+            if let Ok(Some(gbit)) = sgd.foreign(sg_row as usize, c_sbit)
+                && let Ok(name) = bit.string(gbit as usize, c_name)
+                && !name.is_empty()
+            {
+                mod_grants.insert(mod_row as usize, name);
             }
         }
+    }
 
     // ItemInherentSkills: BaseItemType row → SkillsGranted (SkillGems
     // row array) → each gem's display name. This is how base sceptres
@@ -2121,29 +2200,28 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
         ts.schema("ItemInherentSkills"),
         ts.dat("SkillGems"),
         ts.schema("SkillGems"),
-    )
-        && let (Some(c_b), Some(c_sk), Some(c_sbit)) = (
-            iis.column("BaseItemType"),
-            iis.column("SkillsGranted"),
-            sgs.column("BaseItemType"),
-        ) {
-            for row in 0..iid.row_count() {
-                let Ok(Some(bit_row)) = iid.foreign(row, c_b) else {
-                    continue;
-                };
-                let names: Vec<String> = array_rows(&iid, row, c_sk)
-                    .into_iter()
-                    .filter_map(|sg_row| {
-                        let gbit = sgd.foreign(sg_row, c_sbit).ok().flatten()?;
-                        let name = bit.string(gbit as usize, c_name).ok()?;
-                        (!name.is_empty()).then_some(name)
-                    })
-                    .collect();
-                if !names.is_empty() {
-                    inherent.insert(bit_row as usize, names);
-                }
+    ) && let (Some(c_b), Some(c_sk), Some(c_sbit)) = (
+        iis.column("BaseItemType"),
+        iis.column("SkillsGranted"),
+        sgs.column("BaseItemType"),
+    ) {
+        for row in 0..iid.row_count() {
+            let Ok(Some(bit_row)) = iid.foreign(row, c_b) else {
+                continue;
+            };
+            let names: Vec<String> = array_rows(&iid, row, c_sk)
+                .into_iter()
+                .filter_map(|sg_row| {
+                    let gbit = sgd.foreign(sg_row, c_sbit).ok().flatten()?;
+                    let name = bit.string(gbit as usize, c_name).ok()?;
+                    (!name.is_empty()).then_some(name)
+                })
+                .collect();
+            if !names.is_empty() {
+                inherent.insert(bit_row as usize, names);
             }
         }
+    }
 
     let mut out = String::with_capacity(4096);
     out.push_str("base_id\tname\tspirit\tgrants\n");
@@ -2161,7 +2239,11 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
         let fields = [
             bit.string(row, c_id).unwrap_or_default(),
             bit.string(row, c_name).unwrap_or_default(),
-            if sp > 0 { sp.to_string() } else { String::new() },
+            if sp > 0 {
+                sp.to_string()
+            } else {
+                String::new()
+            },
             grants.join("|"),
         ];
         push_row(&mut out, &fields);
@@ -2192,7 +2274,10 @@ pub const GRANTS_TABLES: &[&str] = &[
 ///   base        name 0                   — radius-less jewel bases
 ///   radius_add  name add                 — rollable "+N to radius" mods
 ///                                           (Medium +150, Large +300)
-pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) -> Result<String, ShapeError> {
+pub fn shape_jewels(
+    ts: &TableSet,
+    sd: Option<&crate::csd::StatDescriptions>,
+) -> Result<String, ShapeError> {
     let mut out = String::with_capacity(2048);
     out.push_str("kind\tname\ta\tb\tc\n");
 
@@ -2203,8 +2288,16 @@ pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) ->
     let rs = ts
         .schema("PassiveJewelRadii")
         .ok_or(ShapeError::MissingTable("PassiveJewelRadii"))?;
-    let rcol = |n: &'static str| rs.column(n).ok_or(ShapeError::MissingColumn("PassiveJewelRadii", n));
-    let (r_id, r_out, r_in, r_r) = (rcol("ID")?, rcol("RingOuterRadius")?, rcol("RingInnerRadius")?, rcol("Radius")?);
+    let rcol = |n: &'static str| {
+        rs.column(n)
+            .ok_or(ShapeError::MissingColumn("PassiveJewelRadii", n))
+    };
+    let (r_id, r_out, r_in, r_r) = (
+        rcol("ID")?,
+        rcol("RingOuterRadius")?,
+        rcol("RingInnerRadius")?,
+        rcol("Radius")?,
+    );
     for row in 0..rad.row_count() {
         let fields = [
             "ring".to_string(),
@@ -2220,7 +2313,9 @@ pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) ->
     // base radius; JewelRadius*Size mods carry rollable "+N" adds).
     let mods = ts.dat("Mods").ok_or(ShapeError::MissingTable("Mods"))?;
     let ms = ts.schema("Mods").ok_or(ShapeError::MissingTable("Mods"))?;
-    let m_id = ms.column("Id").ok_or(ShapeError::MissingColumn("Mods", "Id"))?;
+    let m_id = ms
+        .column("Id")
+        .ok_or(ShapeError::MissingColumn("Mods", "Id"))?;
     let stat_ids = ts.id_list("Stats");
     let mut radius_of_mod: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
     for i in 1..=4usize {
@@ -2237,18 +2332,30 @@ pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) ->
                 .flatten()
                 .and_then(|sr| stat_ids.get(sr as usize))
                 .is_some_and(|sid| sid == "local_jewel_effect_base_radius");
-            if is_radius_stat
-                && let Ok(v) = mods.i32(row, cv) {
-                    radius_of_mod.insert(row, v);
-                }
+            if is_radius_stat && let Ok(v) = mods.i32(row, cv) {
+                radius_of_mod.insert(row, v);
+            }
         }
     }
 
     // Jewel bases: ItemClass "Jewel"; base radius from Implicit_Mods.
-    let bit = ts.dat("BaseItemTypes").ok_or(ShapeError::MissingTable("BaseItemTypes"))?;
-    let bs = ts.schema("BaseItemTypes").ok_or(ShapeError::MissingTable("BaseItemTypes"))?;
-    let bcol = |n: &'static str| bs.column(n).ok_or(ShapeError::MissingColumn("BaseItemTypes", n));
-    let (b_id, b_name, b_class, b_impl) = (bcol("Id")?, bcol("Name")?, bcol("ItemClass")?, bcol("Implicit_Mods")?);
+    let bit = ts
+        .dat("BaseItemTypes")
+        .ok_or(ShapeError::MissingTable("BaseItemTypes"))?;
+    let bs = ts
+        .schema("BaseItemTypes")
+        .ok_or(ShapeError::MissingTable("BaseItemTypes"))?;
+    let bcol = |n: &'static str| {
+        bs.column(n)
+            .ok_or(ShapeError::MissingColumn("BaseItemTypes", n))
+    };
+    let (b_id, b_name) = (bcol("Id")?, bcol("Name")?);
+    let b_class = column_any(bs, &["ItemClass", "ItemClassesKey"]).ok_or(
+        ShapeError::MissingColumn("BaseItemTypes", "ItemClass/ItemClassesKey"),
+    )?;
+    let b_impl = column_any(bs, &["Implicit_Mods", "Implicit_ModsKeys"]).ok_or(
+        ShapeError::MissingColumn("BaseItemTypes", "Implicit_Mods/Implicit_ModsKeys"),
+    )?;
     let class_ids = ts.id_list("ItemClasses");
     for row in 0..bit.row_count() {
         let is_jewel = bit
@@ -2284,25 +2391,33 @@ pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) ->
     // conqueror to its replacement keystone (ConquerorVersion 0 =
     // current; higher = legacy dupes). Seeded small/notable rewrites
     // stay out of scope (docs/next-data-targets.md).
-    if let (Some(apd), Some(aps)) = (ts.dat("AlternatePassiveSkills"), ts.schema("AlternatePassiveSkills")) {
+    if let (Some(apd), Some(aps)) = (
+        ts.dat("AlternatePassiveSkills"),
+        ts.schema("AlternatePassiveSkills"),
+    ) {
         let ac = |n: &'static str| aps.column(n);
         if let (Some(c_v), Some(c_n), Some(c_t), Some(c_ci), Some(c_cv), Some(c_st), Some(c_ic)) = (
-            ac("AlternateTreeVersion"), ac("Name"), ac("PassiveType"),
-            ac("ConquerorIndex"), ac("ConquerorVersion"), ac("Stats"), ac("DDSIcon"),
+            ac("AlternateTreeVersion"),
+            ac("Name"),
+            ac("PassiveType"),
+            ac("ConquerorIndex"),
+            ac("ConquerorVersion"),
+            ac("Stats"),
+            ac("DDSIcon"),
         ) {
             let ver_ids = ts.id_list("AlternateTreeVersions");
             for row in 0..apd.row_count() {
                 // PassiveType is a u32 ARRAY (4-byte elements — not
                 // foreignrow); keystones are [4].
-                let is_keystone = apd
-                    .array_ref(row, c_t)
-                    .ok()
-                    .and_then(|(cnt, off)| (cnt > 0).then(|| {
-                        apd.var()
-                            .get(off..off + 4)
-                            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
-                    }).flatten())
-                    == Some(4);
+                let is_keystone = apd.array_ref(row, c_t).ok().and_then(|(cnt, off)| {
+                    (cnt > 0)
+                        .then(|| {
+                            apd.var()
+                                .get(off..off + 4)
+                                .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+                        })
+                        .flatten()
+                }) == Some(4);
                 if !is_keystone || apd.i32(row, c_cv).unwrap_or(0) != 0 {
                     continue;
                 }
@@ -2323,17 +2438,19 @@ pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) ->
                     .filter_map(|(i, sr)| {
                         let id = stat_ids.get(*sr)?.clone();
                         let v = ac(match i {
-                            0 => "Stat1", 1 => "Stat2", 2 => "Stat3",
-                            3 => "Stat4", 4 => "Stat5", _ => "Stat6",
+                            0 => "Stat1",
+                            1 => "Stat2",
+                            2 => "Stat3",
+                            3 => "Stat4",
+                            4 => "Stat5",
+                            _ => "Stat6",
                         })
                         .and_then(|c| apd.i32(row, c).ok())
                         .unwrap_or(1) as i64;
                         Some((id, v))
                     })
                     .collect();
-                let stat = sd
-                    .map(|d| d.render(&pairs).join(" · "))
-                    .unwrap_or_default();
+                let stat = sd.map(|d| d.render(&pairs).join(" · ")).unwrap_or_default();
                 let fields = [
                     "timeless".to_string(),
                     apd.string(row, c_n).unwrap_or_default(),
@@ -2351,7 +2468,10 @@ pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) ->
     for (row, add) in &radius_of_mod {
         let id = mods.string(*row, m_id).unwrap_or_default();
         let stripped = id.strip_prefix("Crafted").unwrap_or(&id);
-        if let Some(size) = stripped.strip_prefix("JewelRadius").and_then(|s| s.strip_suffix("Size")) {
+        if let Some(size) = stripped
+            .strip_prefix("JewelRadius")
+            .and_then(|s| s.strip_suffix("Size"))
+        {
             let fields = [
                 "radius_add".to_string(),
                 size.to_string(),
@@ -2362,11 +2482,369 @@ pub fn shape_jewels(ts: &TableSet, sd: Option<&crate::csd::StatDescriptions>) ->
             push_row(&mut out, &fields);
         }
     }
+    if ts.has("PassiveTreeExpansionJewels")
+        && let Some(descriptions) = sd
+    {
+        append_cluster_jewels(&mut out, ts, descriptions)?;
+    }
     Ok(out)
 }
 
+/// Append PoE1's generated cluster-jewel tree contract to
+/// `tree/jewels.tsv`.
+///
+/// Every field comes from GGG's own expansion tables:
+/// - `cluster_template` describes the valid ring indices for each size.
+/// - `cluster_skill` maps the enchant/tag selecting the repeated small
+///   passive to its actual passive-tree node art and stats.
+/// - `cluster_special` maps an item affix stat to the notable/keystone
+///   node that affix creates.
+/// - `cluster_slot` describes the six outer expansion sockets and every
+///   nested Medium/Small socket/proxy placement.
+///
+/// The renderer combines these rows with exact group centres from the
+/// same patch's tree metadata. PoB is therefore not a runtime input.
+fn append_cluster_jewels(
+    out: &mut String,
+    ts: &TableSet,
+    sd: &crate::csd::StatDescriptions,
+) -> Result<(), ShapeError> {
+    let sizes = ts
+        .dat("PassiveTreeExpansionJewelSizes")
+        .ok_or(ShapeError::MissingTable("PassiveTreeExpansionJewelSizes"))?;
+    let size_names = ts.id_list("PassiveTreeExpansionJewelSizes");
+
+    let passives = ts
+        .dat("PassiveSkills")
+        .ok_or(ShapeError::MissingTable("PassiveSkills"))?;
+    let ps = ts
+        .schema("PassiveSkills")
+        .ok_or(ShapeError::MissingTable("PassiveSkills"))?;
+    let pcol = |n: &'static str| {
+        ps.column(n)
+            .ok_or(ShapeError::MissingColumn("PassiveSkills", n))
+    };
+    let (p_id, p_gid, p_name, p_icon, p_stats, p_keystone, p_notable) = (
+        pcol("Id")?,
+        pcol("PassiveSkillGraphId")?,
+        pcol("Name")?,
+        pcol("Icon_DDSFile")?,
+        pcol("Stats")?,
+        pcol("IsKeystone")?,
+        pcol("IsNotable")?,
+    );
+    let stat_ids = ts.id_list("Stats");
+    let value_cols: Vec<Option<usize>> = (1..=7)
+        .map(|i| {
+            ps.column(&format!("Stat{i}Value"))
+                .or_else(|| ps.column(&format!("StatValue{i}")))
+        })
+        .collect();
+    let render_passive_stats = |row: usize| -> String {
+        let rows = array_foreign_rows(&passives, row, p_stats);
+        let pairs: Vec<(String, i64)> = rows
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &rid)| {
+                let id = stat_ids.get(rid as usize)?.clone();
+                let value = value_cols
+                    .get(i)
+                    .and_then(|c| *c)
+                    .and_then(|c| passives.i32(row, c).ok())
+                    .unwrap_or(0) as i64;
+                Some((id, value))
+            })
+            .collect();
+        sd.render(&pairs).join("; ")
+    };
+    let passive_gid = |row: usize| passives.u16(row, p_gid).unwrap_or(0).to_string();
+
+    // Size templates.
+    let jewels = ts
+        .dat("PassiveTreeExpansionJewels")
+        .ok_or(ShapeError::MissingTable("PassiveTreeExpansionJewels"))?;
+    let js = ts
+        .schema("PassiveTreeExpansionJewels")
+        .ok_or(ShapeError::MissingTable("PassiveTreeExpansionJewels"))?;
+    let jcol = |n: &'static str| {
+        js.column(n)
+            .ok_or(ShapeError::MissingColumn("PassiveTreeExpansionJewels", n))
+    };
+    let (j_base, j_size, j_min, j_max, j_small, j_notable, j_socket, j_total) = (
+        jcol("BaseItemTypesKey")?,
+        jcol("PassiveTreeExpansionJewelSizesKey")?,
+        jcol("MinNodes")?,
+        jcol("MaxNodes")?,
+        jcol("SmallIndices")?,
+        jcol("NotableIndices")?,
+        jcol("SocketIndices")?,
+        jcol("TotalIndices")?,
+    );
+    let base_names = column_strings(ts, "BaseItemTypes", "Name");
+    let join_i32 = |v: Vec<i32>| {
+        v.into_iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    for row in 0..jewels.row_count() {
+        let size_row = jewels.foreign(row, j_size).ok().flatten().unwrap_or(0) as usize;
+        let size = size_names.get(size_row).cloned().unwrap_or_default();
+        let size_index = match size.as_str() {
+            "Small" => 0,
+            "Medium" => 1,
+            "Large" => 2,
+            _ => size_row,
+        };
+        let base = jewels
+            .foreign(row, j_base)
+            .ok()
+            .flatten()
+            .and_then(|r| base_names.get(r as usize).cloned())
+            .unwrap_or_default();
+        push_row(
+            out,
+            &[
+                "cluster_template".into(),
+                size,
+                size_index.to_string(),
+                jewels.i32(row, j_min).unwrap_or(0).to_string(),
+                jewels.i32(row, j_max).unwrap_or(0).to_string(),
+                jewels.i32(row, j_total).unwrap_or(0).to_string(),
+                join_i32(array_i32(&jewels, row, j_small)),
+                join_i32(array_i32(&jewels, row, j_notable)),
+                join_i32(array_i32(&jewels, row, j_socket)),
+                base,
+            ],
+        );
+    }
+
+    // Small-passive enchant choices.
+    let skills = ts
+        .dat("PassiveTreeExpansionSkills")
+        .ok_or(ShapeError::MissingTable("PassiveTreeExpansionSkills"))?;
+    let ss = ts
+        .schema("PassiveTreeExpansionSkills")
+        .ok_or(ShapeError::MissingTable("PassiveTreeExpansionSkills"))?;
+    let scol = |n: &'static str| {
+        ss.column(n)
+            .ok_or(ShapeError::MissingColumn("PassiveTreeExpansionSkills", n))
+    };
+    let (s_passive, s_mastery, s_tag, s_size) = (
+        scol("PassiveSkillsKey")?,
+        scol("Mastery_PassiveSkillsKey")?,
+        scol("TagsKey")?,
+        scol("PassiveTreeExpansionJewelSizesKey")?,
+    );
+    let tag_ids = ts.id_list("Tags");
+    for row in 0..skills.row_count() {
+        let Some(pr) = skills.foreign(row, s_passive).ok().flatten() else {
+            continue;
+        };
+        let pr = pr as usize;
+        let size = skills
+            .foreign(row, s_size)
+            .ok()
+            .flatten()
+            .and_then(|r| size_names.get(r as usize).cloned())
+            .unwrap_or_default();
+        let tag = skills
+            .foreign(row, s_tag)
+            .ok()
+            .flatten()
+            .and_then(|r| tag_ids.get(r as usize).cloned())
+            .unwrap_or_else(|| passives.string(pr, p_id).unwrap_or_default());
+        let mastery_icon = skills
+            .foreign(row, s_mastery)
+            .ok()
+            .flatten()
+            .map(|r| passives.string(r as usize, p_icon).unwrap_or_default())
+            .unwrap_or_default();
+        push_row(
+            out,
+            &[
+                "cluster_skill".into(),
+                tag,
+                size,
+                passive_gid(pr),
+                passives.string(pr, p_name).unwrap_or_default(),
+                render_passive_stats(pr),
+                passives.string(pr, p_icon).unwrap_or_default(),
+                mastery_icon,
+            ],
+        );
+    }
+
+    // Affix-stat → generated notable/keystone.
+    let specials = ts
+        .dat("PassiveTreeExpansionSpecialSkills")
+        .ok_or(ShapeError::MissingTable(
+            "PassiveTreeExpansionSpecialSkills",
+        ))?;
+    let sps = ts
+        .schema("PassiveTreeExpansionSpecialSkills")
+        .ok_or(ShapeError::MissingTable(
+            "PassiveTreeExpansionSpecialSkills",
+        ))?;
+    let sp_passive = sps
+        .column("PassiveSkillsKey")
+        .ok_or(ShapeError::MissingColumn(
+            "PassiveTreeExpansionSpecialSkills",
+            "PassiveSkillsKey",
+        ))?;
+    let sp_stat = sps.column("StatsKey").ok_or(ShapeError::MissingColumn(
+        "PassiveTreeExpansionSpecialSkills",
+        "StatsKey",
+    ))?;
+    let special_rows: Vec<(usize, usize)> = (0..specials.row_count())
+        .filter_map(|row| {
+            Some((
+                specials.foreign(row, sp_passive).ok().flatten()? as usize,
+                specials.foreign(row, sp_stat).ok().flatten()? as usize,
+            ))
+        })
+        .collect();
+    // Multiple stats can create the same named notable. GGG/PoB's
+    // generated name→order table keeps the last (therefore greatest)
+    // Stats row for that passive; canonicalise here so every alias
+    // places the notable at the same physical node.
+    let mut special_order = HashMap::<String, usize>::new();
+    for &(pr, sr) in &special_rows {
+        let name = passives.string(pr, p_name).unwrap_or_default();
+        special_order
+            .entry(name)
+            .and_modify(|order| *order = (*order).max(sr))
+            .or_insert(sr);
+    }
+    for (pr, sr) in special_rows {
+        let name = passives.string(pr, p_name).unwrap_or_default();
+        let kind = if passives.bool(pr, p_keystone).unwrap_or(false) {
+            "keystone"
+        } else if passives.bool(pr, p_notable).unwrap_or(false) {
+            "notable"
+        } else {
+            "small"
+        };
+        push_row(
+            out,
+            &[
+                "cluster_special".into(),
+                stat_ids.get(sr as usize).cloned().unwrap_or_default(),
+                passive_gid(pr),
+                passives.string(pr, p_name).unwrap_or_default(),
+                render_passive_stats(pr),
+                passives.string(pr, p_icon).unwrap_or_default(),
+                kind.into(),
+                // PoB and the client order generated notables by the
+                // backing Stats row, not by the special-skill row.
+                // That order decides which physical template index
+                // receives each selected notable.
+                special_order.get(&name).copied().unwrap_or(sr).to_string(),
+            ],
+        );
+    }
+
+    // Physical slot/proxy topology. ReplacesSlot is a self-reference
+    // into PassiveJewelSlots, so resolve it to that row's Slot passive.
+    let slots = ts
+        .dat("PassiveJewelSlots")
+        .ok_or(ShapeError::MissingTable("PassiveJewelSlots"))?;
+    let sls = ts
+        .schema("PassiveJewelSlots")
+        .ok_or(ShapeError::MissingTable("PassiveJewelSlots"))?;
+    let slcol = |n: &'static str| {
+        sls.column(n)
+            .ok_or(ShapeError::MissingColumn("PassiveJewelSlots", n))
+    };
+    let (sl_slot, sl_size, sl_index, sl_parent, sl_proxy, sl_start) = (
+        slcol("Slot")?,
+        slcol("ClusterJewelSize")?,
+        slcol("ClusterIndex")?,
+        slcol("ReplacesSlot")?,
+        slcol("ProxySlot")?,
+        slcol("StartIndices")?,
+    );
+    let slot_gid_at = |slot_row: usize| -> String {
+        slots
+            .foreign(slot_row, sl_slot)
+            .ok()
+            .flatten()
+            .map(|r| passive_gid(r as usize))
+            .unwrap_or_default()
+    };
+    for row in 0..slots.row_count() {
+        let Some(size_row) = slots.foreign(row, sl_size).ok().flatten() else {
+            continue;
+        };
+        let slot_id = slot_gid_at(row);
+        let proxy_id = slots
+            .foreign(row, sl_proxy)
+            .ok()
+            .flatten()
+            .map(|r| passive_gid(r as usize))
+            .unwrap_or_default();
+        if slot_id.is_empty() || proxy_id.is_empty() {
+            continue;
+        }
+        let parent_id = slots
+            .foreign(row, sl_parent)
+            .ok()
+            .flatten()
+            .map(|r| slot_gid_at(r as usize))
+            .unwrap_or_default();
+        push_row(
+            out,
+            &[
+                "cluster_slot".into(),
+                slot_id,
+                size_names
+                    .get(size_row as usize)
+                    .cloned()
+                    .unwrap_or_default(),
+                slots.i32(row, sl_index).unwrap_or(0).to_string(),
+                parent_id,
+                proxy_id,
+                join_i32(array_i32(&slots, row, sl_start)),
+            ],
+        );
+    }
+
+    // Silence a misleading unused warning if a future schema supplies
+    // an empty sizes table: the parsed table itself is the required
+    // contract, while names are joined through `size_names`.
+    let _ = sizes.row_count();
+    Ok(())
+}
+
 /// Tables `shape_jewels` needs.
-pub const JEWELS_TABLES: &[&str] = &["PassiveJewelRadii", "BaseItemTypes", "ItemClasses", "Mods", "Stats", "AlternatePassiveSkills", "AlternateTreeVersions"];
+pub const JEWELS_TABLES: &[&str] = &[
+    "PassiveJewelRadii",
+    "BaseItemTypes",
+    "ItemClasses",
+    "Mods",
+    "Stats",
+    "AlternatePassiveSkills",
+    "AlternateTreeVersions",
+];
+
+/// PoE1 adds generated cluster-tree tables to the shared jewel
+/// geometry contract. PoE2 deliberately never loads these.
+pub const JEWELS_TABLES_POE1: &[&str] = &[
+    "PassiveJewelRadii",
+    "BaseItemTypes",
+    "ItemClasses",
+    "Mods",
+    "Stats",
+    "AlternatePassiveSkills",
+    "AlternateTreeVersions",
+    "PassiveTreeExpansionJewelSizes",
+    "PassiveTreeExpansionJewels",
+    "PassiveTreeExpansionSkills",
+    "PassiveTreeExpansionSpecialSkills",
+    "PassiveJewelSlots",
+    "PassiveSkills",
+    "Tags",
+];
 
 #[cfg(test)]
 mod tests {
@@ -2378,6 +2856,7 @@ mod tests {
         assert_eq!(mod_domain(Game::Poe1, 1), "item");
         assert_eq!(mod_domain(Game::Poe1, 2), "flask");
         assert_eq!(mod_domain(Game::Poe1, 10), "jewel");
+        assert_eq!(mod_domain(Game::Poe1, 21), "cluster_jewel");
         assert_eq!(mod_domain(Game::Poe2, 10), "crafted");
         assert_eq!(mod_domain(Game::Poe2, 11), "jewel");
         assert_eq!(mod_domain(Game::Poe1, 34), "tincture");

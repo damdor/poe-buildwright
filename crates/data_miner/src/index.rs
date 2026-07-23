@@ -248,7 +248,11 @@ impl Index {
             let end = start + rep.size as usize;
             // Path specs whose bytes fell in an undecodable block are
             // zero-filled garbage — skip them rather than parse junk.
-            if self.dead_ranges.iter().any(|r| start < r.end && end > r.start) {
+            if self
+                .dead_ranges
+                .iter()
+                .any(|r| start < r.end && end > r.start)
+            {
                 skipped += 1;
                 continue;
             }

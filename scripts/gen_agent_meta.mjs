@@ -99,6 +99,7 @@ const grounding = [
   `${profile.publicAgent}/graph.json`,
   `${profile.publicAgent}/bases.json`,
   `${profile.publicAgent}/mods.json`,
+  `${profile.publicAgent}/jewels.json`,
   `${profile.publicAgent}/support_compat.json`,
   `${profile.publicCatalogue}/skill_catalogue.json`,
   `${profile.publicCatalogue}/item_catalogue.json`,
@@ -143,11 +144,12 @@ writeFileSync(`${profile.agentDir}/capabilities.json`, JSON.stringify({
     ring1: ["ring1", "ring"],
     ring2: ["ring2"],
     belt: ["belt"],
+    jewel: ["jewel"],
     flask: game === "poe1" ? ["flask1", "flask", "life_flask", "mana_flask", "utility_flask", "tincture"] : ["flask", "life_flask", "mana_flask"],
     ...(game === "poe1" ? {
       flask2: ["flask2"], flask3: ["flask3"], flask4: ["flask4"], flask5: ["flask5"],
     } : {
-      charm1: ["charm1", "charm", "utility_flask"], charm2: ["charm2"], charm3: ["charm3"], jewel: ["jewel"],
+      charm1: ["charm1", "charm", "utility_flask"], charm2: ["charm2"], charm3: ["charm3"],
     }),
   },
 }, null, 1));

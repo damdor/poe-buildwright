@@ -436,7 +436,11 @@ pub fn autofit(data: &[u8], schema: &TableSchema) -> Option<TableSchema> {
             cols.push(Column::unnamed(ColumnType::U8));
         }
         let fixed = TableSchema::new(cols);
-        return if Dat::parse(data, &fixed).is_ok() { Some(fixed) } else { None };
+        return if Dat::parse(data, &fixed).is_ok() {
+            Some(fixed)
+        } else {
+            None
+        };
     }
     if actual < cur && cur - actual <= 128 {
         // Schema AHEAD of the live table (the community schema tracks
@@ -455,7 +459,11 @@ pub fn autofit(data: &[u8], schema: &TableSchema) -> Option<TableSchema> {
             cols.push(Column::unnamed(ColumnType::U8));
         }
         let fixed = TableSchema::new(cols);
-        return if Dat::parse(data, &fixed).is_ok() { Some(fixed) } else { None };
+        return if Dat::parse(data, &fixed).is_ok() {
+            Some(fixed)
+        } else {
+            None
+        };
     }
     None
 }

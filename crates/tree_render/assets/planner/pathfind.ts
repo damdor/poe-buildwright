@@ -20,14 +20,6 @@ import { currentCharacterLevel } from "./captures_bar.ts";
 import type { TreeNode } from "../../../../types/shared.d.ts";
 
 export const adj: Map<string, Set<string>> = new Map();
-for (const [a, b] of TREE.edges_for_sel) {
-  const sa = String(a), sb = String(b);
-  if (isMcOption(sa) || isMcOption(sb)) continue;
-  if (!adj.has(sa)) adj.set(sa, new Set());
-  if (!adj.has(sb)) adj.set(sb, new Set());
-  adj.get(sa)!.add(sb);
-  adj.get(sb)!.add(sa);
-}
 
 // Mastery lighting is driven by the exact per-node map `n.lm` (mastery
 // node ids a node lights when allocated), emitted from tree/masteries.tsv
@@ -42,9 +34,25 @@ for (const [a, b] of TREE.edges_for_sel) {
 // tessellation to draw individual edges along a BFS path.
 type EdgeMeta = (string | number)[];
 export const edgeMetaByPair = new Map<string, EdgeMeta>();
-for (const m of TREE.edges_meta) {
-  edgeMetaByPair.set(m[1] + '|' + m[2], m);
+/** Re-index TREE after a game-owned dynamic graph (PoE1 cluster
+ * jewels) adds or removes nodes/edges. Base trees call this once at
+ * module load; dynamic graph owners call it after an atomic rebuild. */
+export function rebuildGraphIndexes(): void {
+  adj.clear();
+  for (const [a, b] of TREE.edges_for_sel) {
+    const sa = String(a), sb = String(b);
+    if (isMcOption(sa) || isMcOption(sb)) continue;
+    if (!adj.has(sa)) adj.set(sa, new Set());
+    if (!adj.has(sb)) adj.set(sb, new Set());
+    adj.get(sa)!.add(sb);
+    adj.get(sb)!.add(sa);
+  }
+  edgeMetaByPair.clear();
+  for (const m of TREE.edges_meta) {
+    edgeMetaByPair.set(m[1] + '|' + m[2], m);
+  }
 }
+rebuildGraphIndexes();
 export function getEdgeMeta(a: string, b: string): EdgeMeta | undefined {
   return edgeMetaByPair.get(a + '|' + b) || edgeMetaByPair.get(b + '|' + a);
 }
@@ -72,14 +80,14 @@ export const ALLOWED_SETS_FOR_MODE: Record<SetMode, Set<string>> = {
 // are always roots: they live in a disjoint subgraph and don't
 // belong to a weapon set.
 // Jewel-granted pathing rules — gear_overlay computes these from the
-// ACTIVE capture's socketed jewels (see window.PoE2JewelRules):
+// ACTIVE capture's socketed jewels (see window.BuildwrightJewelRules):
 //   starts:    class-start names ("Warrior", "Shadow"…) usable as
 //              extra pathing roots (Split Personality's rolled start)
 //   freeAlloc: node ids allocatable WITHOUT connection (Controlled
 //              Metamorphosis's ring). Intuitive-Leap semantics: such
 //              nodes never act as connection points for anything else.
 function jewelRules(): { starts: string[]; freeAlloc: Set<string>; freeAllocBySocket: Record<string, string[]> } {
-  const r = window.PoE2JewelRules;
+  const r = window.BuildwrightJewelRules;
   return {
     starts: r?.starts ?? [],
     freeAlloc: new Set(r?.freeAlloc ?? []),
@@ -864,7 +872,7 @@ export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; al
     // allocated, sinister without Voices) — then the click falls
     // through to normal allocation handling.
     if (jn && jn.k === 'jewel'
-        && window.PoE2Jewels?.handleSocketClick(id, cx, cy)) {
+        && window.BuildwrightJewels?.handleSocketClick(id, cx, cy)) {
       return;
     }
   }
@@ -1164,4 +1172,3 @@ export function findClassStartHub(klass: string): TreeNode | null {
   }
   return null;
 }
-

@@ -41,18 +41,15 @@ fn resolve_frame_sprite<'a>(
     None
 }
 
-fn resolve_frame_url(
-    sprites: &HashMap<String, Sprite>,
-    name: &str,
-    kind: &str,
-) -> Option<String> {
+fn resolve_frame_url(sprites: &HashMap<String, Sprite>, name: &str, kind: &str) -> Option<String> {
     if let Some(s) = sprite_lookup(sprites, name) {
         return Some(format!("/assets/sprites/{}", s.png));
     }
     if let Some(alias) = portrait_frame_alias(name, kind)
-        && let Some(s) = sprite_lookup(sprites, &alias) {
-            return Some(format!("/assets/sprites/{}", s.png));
-        }
+        && let Some(s) = sprite_lookup(sprites, &alias)
+    {
+        return Some(format!("/assets/sprites/{}", s.png));
+    }
     // PoE1 ships GENERIC ascendancy frames (AscendancyFrameLargeNormal
     // etc.) instead of PoE2's per-ascendancy sets — swap the asc-name
     // prefix for "Ascendancy" as a last resort.
@@ -217,8 +214,7 @@ pub(crate) fn build_meta_json(
                     .filter(|c| c.is_ascii_alphanumeric())
                     .collect::<String>()
             );
-            let sp = sprite_lookup(sprites, &face_key)
-                .or_else(|| sprite_lookup(sprites, &p.image));
+            let sp = sprite_lookup(sprites, &face_key).or_else(|| sprite_lookup(sprites, &p.image));
             let Some(sp) = sp else {
                 continue;
             };
@@ -284,7 +280,6 @@ fn node_sizes_poe1(
     }
     ts
 }
-
 
 pub(crate) fn build_tree_data(
     nodes: &[Node],
@@ -354,7 +349,8 @@ pub(crate) fn build_tree_data(
     let mut first_m = true;
     // BTreeMap: emitted as JSON keys — deterministic output means a
     // rebake of unchanged data is byte-identical (diffable, hashable).
-    let mut asc_edges: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    let mut asc_edges: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
     // Multi-choice OPTION nodes render nowhere (the planner offers
     // them via the parent's popout), so their parent↔option edges
     // must not render OR join the adjacency graph — an option is
@@ -559,18 +555,19 @@ pub(crate) fn build_tree_data(
         // unless state.asc matches uc.a — see isLocked() in the embedded
         // JS. Empty for the ~99% of nodes with no constraint.
         if !n.unlock_constraint.is_empty()
-            && let Some((asc, ids_csv)) = n.unlock_constraint.split_once(':') {
-                let _ = write!(out, r#","uc":{{"a":{},"n":["#, json_str(asc));
-                let mut first_uc = true;
-                for id_part in ids_csv.split(',').filter(|s| !s.is_empty()) {
-                    if !first_uc {
-                        out.push(',');
-                    }
-                    first_uc = false;
-                    let _ = write!(out, "{}", json_str(id_part));
+            && let Some((asc, ids_csv)) = n.unlock_constraint.split_once(':')
+        {
+            let _ = write!(out, r#","uc":{{"a":{},"n":["#, json_str(asc));
+            let mut first_uc = true;
+            for id_part in ids_csv.split(',').filter(|s| !s.is_empty()) {
+                if !first_uc {
+                    out.push(',');
                 }
-                out.push_str("]}");
+                first_uc = false;
+                let _ = write!(out, "{}", json_str(id_part));
             }
+            out.push_str("]}");
+        }
         if !n.stats.is_empty() {
             let _ = write!(out, r#","s":{}"#, json_str(&n.stats));
         }
@@ -707,16 +704,26 @@ pub(crate) fn build_tree_data(
                 out.push(',');
             }
             first_v = false;
-            let _ = write!(out, r#"{}:{{"parent":{},"nodes":{{"#,
-                json_str(variant), json_str(parent));
+            let _ = write!(
+                out,
+                r#"{}:{{"parent":{},"nodes":{{"#,
+                json_str(variant),
+                json_str(parent)
+            );
             for (i, row) in rows.iter().enumerate() {
                 if i > 0 {
                     out.push(',');
                 }
-                let icon_url = sprite_lookup(sprites, &row[7])
-                    .map(|sp| format!("/assets/sprites/{}", sp.png));
-                let _ = write!(out, r#""{}":{{"n":{},"s":{},"k":{}"#,
-                    row[3], json_str(&row[5]), json_str(&row[6]), json_str(&row[8]));
+                let icon_url =
+                    sprite_lookup(sprites, &row[7]).map(|sp| format!("/assets/sprites/{}", sp.png));
+                let _ = write!(
+                    out,
+                    r#""{}":{{"n":{},"s":{},"k":{}"#,
+                    row[3],
+                    json_str(&row[5]),
+                    json_str(&row[6]),
+                    json_str(&row[8])
+                );
                 if let Some(u) = icon_url {
                     let _ = write!(out, r#","i":{}"#, json_str(&u));
                 }
@@ -738,7 +745,9 @@ pub(crate) fn build_tree_data(
                 continue;
             }
             let emblem = format!("center{}", n.klass.to_lowercase());
-            let Some(sp) = sprite_lookup(sprites, &emblem) else { continue };
+            let Some(sp) = sprite_lookup(sprites, &emblem) else {
+                continue;
+            };
             if !first_cm {
                 out.push(',');
             }
@@ -918,7 +927,15 @@ pub(crate) fn render_canvas_html(
     chrome: &PageChrome,
 ) -> String {
     let (title, game_json) = (chrome.title, chrome.game_json);
-    let tree_data = build_tree_data(nodes, edges, canvas, classes, sprites, asc_overrides, chrome.game == "poe1");
+    let tree_data = build_tree_data(
+        nodes,
+        edges,
+        canvas,
+        classes,
+        sprites,
+        asc_overrides,
+        chrome.game == "poe1",
+    );
     let title_e = escape_html(title);
 
     // Sidebar class options — sorted alphabetically (PoE2 has no

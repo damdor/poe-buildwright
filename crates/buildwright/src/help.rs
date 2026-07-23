@@ -303,19 +303,19 @@ USAGE
 buildwright mine — systematic first-party table export
 
 The repeatable 'load a new patch through the miner' step. Fetches a set
-of GGG tables from the CDN, decodes each via the dat reader, and writes
-clean first-party TSVs to data/parsed/<patch>_native/dat/. Then
-`manifest`/`verify` hash + index it exactly like the PoB-derived data,
-and `diff <patch> <patch>_native` cross-validates. Tables missing from
-the schema/index, or that don't fit their schema, are skipped (warned),
-not fatal.
+of GGG tables from the correct game's CDN and decodes each via that
+game's dat schema. PoE1 writes to data/parsed/<patch>/dat/; PoE2 keeps
+the historical data/parsed/<patch>_native/dat/ layout used to
+cross-validate the PoB-derived dataset. `manifest`/`verify` hash either
+layout. Tables missing from the schema/index, or that don't fit their
+schema, are skipped (warned), not fatal.
 
 USAGE
     buildwright mine [--patch <p>] [--tables A,B,C] [--out <dir>]
 
 OPTIONS
     --tables   comma list (default: a curated passive/skill/item set)
-    --out      output dir (default data/parsed/<patch>_native/dat)
+    --out      output dir (default is the game-owned patch dat/ dir)
 
 EXAMPLES
     buildwright mine --patch 0_5
@@ -402,7 +402,7 @@ buildwright poe1-tree — PoE1 passive tree from the official export
 
 Fetches https://www.pathofexile.com/passive-skill-tree (or reads
 --json <file>), extracts the embedded passiveSkillTreeData, and emits
-data/parsed/poe1_<label>/tree/{nodes,edges,meta}.tsv in the same
+data/parsed/poe1_<label>/tree/{nodes,edges,meta,jewels}.tsv in the same
 shape the PoE2 pipeline produces — tree_render and the agent
 emitters work unchanged. Re-run each league.
 
@@ -471,7 +471,7 @@ USAGE
 buildwright poe1-item-icons — inventory art for the gear overlay
 
 Reads shaped items/bases.tsv + items/unique_art.tsv, limits bases to
-real equipment classes (jewels excluded), pulls each DDS from PoE1's
+real equippable classes (including jewels), pulls each DDS from PoE1's
 patch CDN, and writes /assets/poe1-agent/item_icons/*.png. Run after
 `shape bases`, `shape unique_art`, and `uniques` for a PoE1 patch.
 
@@ -595,8 +595,9 @@ command takes the *minimal* seam: it reads only `src/Export/Uniques/*.lua`
 pinned checkout (`data/pob1` for PoE1, `data/pob2` for PoE2), then resolves
 every mod id against OUR first-party items/mods.tsv + official stat
 descriptions. So the stat text, ranges and ordering are all ours; PoB
-contributes nothing but the list. PoE1 jewel recipes are omitted because
-the PoE1 item feature deliberately does not expose jewels yet.
+contributes nothing but the list. Jewel `Radius:` metadata is preserved
+for the passive-tree overlay, while game-specific effects remain data-
+driven.
 
 Writes items/uniques.tsv (one row per unique, latest variant) +
 items/uniques_variants.tsv (every historical variant) +

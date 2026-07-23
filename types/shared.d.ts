@@ -94,6 +94,18 @@ export interface Item {
   // Jewels only: the tree node id of the jewel socket this jewel sits
   // in (kind=jewel node). Unset = jewel exists but isn't placed yet.
   socket?: number;
+  // PoE1 cluster jewels generate a real passive-tree subgraph. These
+  // are structural item properties, separate from ordinary affixes:
+  // the enchant-selected small passive, number of generated passives,
+  // and its size-derived number of child jewel sockets. `sockets`
+  // remains persisted so old plans stay readable, but is normalised
+  // to Large=2, Medium=1, Small=0 by the current rules.
+  cluster?: {
+    size: "Small" | "Medium" | "Large";
+    skill: string;
+    nodeCount: number;
+    sockets: number;
+  };
   // Per-allocation level stamp + level interval (for items the author
   // marks as "swap in at level L"). Mirrors Allocation/Skill semantics.
   level?: number;
@@ -366,6 +378,20 @@ declare global {
       };
     };
     PoE2Plan?: PoE2PlanAPI;
+    /** Shared jewel interaction bridge. The implementation and data
+     * source are selected by the embedded game descriptor. */
+    BuildwrightJewels?: {
+      handleSocketClick: (nodeId: string, cx: number, cy: number) => boolean;
+      infoForSocket?: (nodeId: string) => { title: string; lines: string[] } | null;
+      conversionForKeystone?: (nodeId: string) => { title: string; lines: string[] } | null;
+    };
+    /** Jewel-granted pathing rules for the active capture. */
+    BuildwrightJewelRules?: {
+      starts: string[];
+      freeAlloc: string[];
+      freeAllocBySocket: Record<string, string[]>;
+      voicesActive: boolean;
+    };
     PoE2SliderDebug?: PoE2SliderDebugAPI;
     PoE2SliderExit?: () => void;
     PoE2SliderExitRestore?: () => void;

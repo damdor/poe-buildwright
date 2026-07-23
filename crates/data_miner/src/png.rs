@@ -58,7 +58,11 @@ fn filter_scanlines(width: usize, height: usize, rgba: &[u8]) -> Vec<u8> {
     let mut best = vec![0u8; stride];
     for y in 0..height {
         let row = &rgba[y * stride..(y + 1) * stride];
-        let prev = if y > 0 { &rgba[(y - 1) * stride..y * stride] } else { &[][..] };
+        let prev = if y > 0 {
+            &rgba[(y - 1) * stride..y * stride]
+        } else {
+            &[][..]
+        };
         let mut best_filter = 0u8;
         let mut best_cost = u64::MAX;
         for filter in 0u8..=4 {
@@ -92,7 +96,11 @@ fn filter_scanlines(width: usize, height: usize, rgba: &[u8]) -> Vec<u8> {
 /// Paeth predictor (RFC 2083 §6.6).
 fn paeth(a: u8, b: u8, c: u8) -> u8 {
     let p = a as i32 + b as i32 - c as i32;
-    let (pa, pb, pc) = ((p - a as i32).abs(), (p - b as i32).abs(), (p - c as i32).abs());
+    let (pa, pb, pc) = (
+        (p - a as i32).abs(),
+        (p - b as i32).abs(),
+        (p - c as i32).abs(),
+    );
     if pa <= pb && pa <= pc {
         a
     } else if pb <= pc {
@@ -138,7 +146,9 @@ const DIST_EXTRA: [u8; 30] = [
     13,
 ];
 /// Order in which code-length-code lengths are transmitted (§3.2.7).
-const CL_ORDER: [usize; 19] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+const CL_ORDER: [usize; 19] = [
+    16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+];
 
 fn length_index(len: usize) -> usize {
     LEN_BASE.partition_point(|&b| (b as usize) <= len) - 1
@@ -232,8 +242,7 @@ fn huff_lengths(freqs: &[u64], limit: u8) -> Vec<u8> {
     // (≤286 symbols, ≤15 levels), so the Vec-of-Vecs is fine.
     let mut list: Vec<(u64, Vec<u16>)> = leaves.iter().map(|&(f, s)| (f, vec![s])).collect();
     for _ in 1..limit {
-        let mut next: Vec<(u64, Vec<u16>)> =
-            leaves.iter().map(|&(f, s)| (f, vec![s])).collect();
+        let mut next: Vec<(u64, Vec<u16>)> = leaves.iter().map(|&(f, s)| (f, vec![s])).collect();
         for pair in list.chunks_exact(2) {
             let mut syms = pair[0].1.clone();
             syms.extend_from_slice(&pair[1].1);
@@ -249,7 +258,10 @@ fn huff_lengths(freqs: &[u64], limit: u8) -> Vec<u8> {
     }
     // Kraft equality must hold or the canonical code is malformed.
     debug_assert_eq!(
-        lens.iter().filter(|&&l| l > 0).map(|&l| 1u64 << (limit - l)).sum::<u64>(),
+        lens.iter()
+            .filter(|&&l| l > 0)
+            .map(|&l| 1u64 << (limit - l))
+            .sum::<u64>(),
         1u64 << limit
     );
     lens
@@ -383,7 +395,11 @@ fn deflate(data: &[u8], out: &mut Vec<u8>) {
             p = nxt;
             chain -= 1;
         }
-        if best_len >= MIN_MATCH { (best_len, best_dist) } else { (0, 0) }
+        if best_len >= MIN_MATCH {
+            (best_len, best_dist)
+        } else {
+            (0, 0)
+        }
     };
 
     let mut toks: Vec<Tok> = Vec::with_capacity(BLOCK_TOKENS);
@@ -404,7 +420,10 @@ fn deflate(data: &[u8], out: &mut Vec<u8>) {
                 toks.push(Tok::Lit(data[i]));
                 i += 1;
             } else {
-                toks.push(Tok::Match { len: len as u16, dist: dist as u16 });
+                toks.push(Tok::Match {
+                    len: len as u16,
+                    dist: dist as u16,
+                });
                 for j in i + 1..i + len {
                     insert(&mut head, &mut prev, j);
                 }
@@ -470,7 +489,11 @@ fn write_block(bw: &mut BitWriter, toks: &[Tok], span: &[u8], bfinal: bool) {
         dyn_bits += cl_lens[sym as usize] as u64 + ebits as u64;
     }
     for s in 0..286 {
-        let extra = if s >= 257 { LEN_EXTRA[s - 257] as u64 } else { 0 };
+        let extra = if s >= 257 {
+            LEN_EXTRA[s - 257] as u64
+        } else {
+            0
+        };
         dyn_bits += lit_freq[s] * (lit_lens[s] as u64 + extra);
     }
     for d in 0..30 {
@@ -565,7 +588,10 @@ pub fn decode_rgba(png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
         crc.update(payload);
         let want = u32::from_be_bytes(png[pos + 8 + len..pos + 12 + len].try_into().unwrap());
         if crc.finish() != want {
-            return Err(format!("bad CRC in {} chunk", String::from_utf8_lossy(kind)));
+            return Err(format!(
+                "bad CRC in {} chunk",
+                String::from_utf8_lossy(kind)
+            ));
         }
         match kind {
             b"IHDR" => {
@@ -631,9 +657,17 @@ fn unfilter(width: usize, height: usize, data: &[u8], bpp: usize) -> Result<Vec<
         let ft = data[y * (stride + 1)];
         let row = &data[y * (stride + 1) + 1..(y + 1) * (stride + 1)];
         for x in 0..stride {
-            let a = if x >= bpp { out[y * stride + x - bpp] } else { 0 };
+            let a = if x >= bpp {
+                out[y * stride + x - bpp]
+            } else {
+                0
+            };
             let b = if y > 0 { out[(y - 1) * stride + x] } else { 0 };
-            let c = if y > 0 && x >= bpp { out[(y - 1) * stride + x - bpp] } else { 0 };
+            let c = if y > 0 && x >= bpp {
+                out[(y - 1) * stride + x - bpp]
+            } else {
+                0
+            };
             out[y * stride + x] = match ft {
                 0 => row[x],
                 1 => row[x].wrapping_add(a),
@@ -657,7 +691,12 @@ struct BitReader<'a> {
 
 impl<'a> BitReader<'a> {
     fn new(d: &'a [u8]) -> Self {
-        BitReader { d, pos: 0, buf: 0, n: 0 }
+        BitReader {
+            d,
+            pos: 0,
+            buf: 0,
+            n: 0,
+        }
     }
     fn bits(&mut self, want: u32) -> Result<u32, String> {
         while self.n < want {
@@ -916,7 +955,9 @@ mod tests {
     fn lcg_bytes(n: usize, mut seed: u64) -> Vec<u8> {
         let mut v = Vec::with_capacity(n);
         for _ in 0..n {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             v.push((seed >> 33) as u8);
         }
         v

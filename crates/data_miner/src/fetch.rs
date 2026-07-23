@@ -222,7 +222,10 @@ impl CdnClient {
             .unwrap_or_else(|| PathBuf::from(".cache"))
             .join("poe-buildwright")
             .join(game.cache_name());
-        Ok(Self::new(patch_info_from(game.patch_server())?, &cache_root))
+        Ok(Self::new(
+            patch_info_from(game.patch_server())?,
+            &cache_root,
+        ))
     }
 
     /// Fetch a game-relative path (e.g. `Bundles2/_.index.bin`) into

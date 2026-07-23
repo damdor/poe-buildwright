@@ -45,7 +45,7 @@
 //!   unlike ooz there is no out-of-bounds scribble area).
 //! - The handle is never closed: the decoder lives for the process.
 
-use std::ffi::{c_char, c_int, c_void, CString};
+use std::ffi::{CString, c_char, c_int, c_void};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -116,7 +116,10 @@ impl std::fmt::Display for OodleError {
                 "oodle: decode returned {status}, expected {expected} bytes",
             ),
             Self::SourceTooLarge { len } => {
-                write!(f, "oodle: compressed block of {len} bytes exceeds FFI limits")
+                write!(
+                    f,
+                    "oodle: compressed block of {len} bytes exceeds FFI limits"
+                )
             }
         }
     }
@@ -144,16 +147,16 @@ type OodleLzDecompress = unsafe extern "C" fn(
     comp_buf_size: isize,
     raw_buf: *mut u8,
     raw_len: isize,
-    fuzz_safe: c_int,        // OodleLZ_FuzzSafe_Yes = 1
-    check_crc: c_int,        // OodleLZ_CheckCRC_No = 0
-    verbosity: c_int,        // OodleLZ_Verbosity_None = 0
-    dec_buf_base: *mut u8,   // window base; null = block is independent
+    fuzz_safe: c_int,      // OodleLZ_FuzzSafe_Yes = 1
+    check_crc: c_int,      // OodleLZ_CheckCRC_No = 0
+    verbosity: c_int,      // OodleLZ_Verbosity_None = 0
+    dec_buf_base: *mut u8, // window base; null = block is independent
     dec_buf_size: isize,
     fp_callback: *mut c_void,
     callback_user_data: *mut c_void,
     decoder_memory: *mut c_void,
     decoder_memory_size: isize,
-    thread_phase: c_int,     // OodleLZ_Decode_ThreadPhaseAll = 3
+    thread_phase: c_int, // OodleLZ_Decode_ThreadPhaseAll = 3
 ) -> isize;
 
 struct Decoder(OodleLzDecompress);
@@ -223,7 +226,10 @@ fn locate_lib() -> Result<PathBuf, OodleError> {
     let got = sha256_hex(&bytes);
     if got != want {
         let _ = std::fs::remove_file(&tmp);
-        return Err(OodleError::HashMismatch { expected: want.to_string(), got });
+        return Err(OodleError::HashMismatch {
+            expected: want.to_string(),
+            got,
+        });
     }
     std::fs::rename(&tmp, &path).map_err(|e| OodleError::Fetch(e.to_string()))?;
     Ok(path)
@@ -253,7 +259,9 @@ fn load() -> Result<Decoder, OodleError> {
         if sym.is_null() {
             return Err(OodleError::Load("OodleLZ_Decompress not exported".into()));
         }
-        Ok(Decoder(std::mem::transmute::<*mut c_void, OodleLzDecompress>(sym)))
+        Ok(Decoder(
+            std::mem::transmute::<*mut c_void, OodleLzDecompress>(sym),
+        ))
     }
 }
 
@@ -271,8 +279,8 @@ pub fn decompress_into(src: &[u8], dst: &mut [u8]) -> Result<(), OodleError> {
         Ok(d) => d,
         Err(e) => return Err(e.clone()),
     };
-    let src_len = isize::try_from(src.len())
-        .map_err(|_| OodleError::SourceTooLarge { len: src.len() })?;
+    let src_len =
+        isize::try_from(src.len()).map_err(|_| OodleError::SourceTooLarge { len: src.len() })?;
     let want = dst.len();
     // SAFETY: `src`/`dst` are live slices for the duration of the call;
     // fuzzSafe=1 contractually confines writes to `dst[..want]`. Null
@@ -297,7 +305,10 @@ pub fn decompress_into(src: &[u8], dst: &mut [u8]) -> Result<(), OodleError> {
         )
     };
     if status != want as isize {
-        return Err(OodleError::Decode { status, expected: want });
+        return Err(OodleError::Decode {
+            status,
+            expected: want,
+        });
     }
     Ok(())
 }

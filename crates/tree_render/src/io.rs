@@ -144,7 +144,11 @@ pub(crate) fn read_buffs(path: &Path) -> Vec<(String, String, String)> {
         let cols: Vec<&str> = line.split('\t').collect();
         // buffs.tsv: buff_id, name, description
         if cols.len() >= 3 && !cols[1].is_empty() && !cols[2].is_empty() {
-            out.push((cols[1].to_lowercase(), cols[1].to_string(), cols[2].to_string()));
+            out.push((
+                cols[1].to_lowercase(),
+                cols[1].to_string(),
+                cols[2].to_string(),
+            ));
         }
     }
     out
@@ -309,13 +313,15 @@ mod tests {
     // shared constant — if the contract ever changes, change BOTH in
     // the same commit (tree_tsv's own tests pin the column count on
     // the emitter side; this pins the reader's positional mapping).
-    const NODES_HEADER: &str =
-        "id\tx\ty\tkind\tklass\tascendancy\tname\tstats\tgroup\torbit\t\
+    const NODES_HEADER: &str = "id\tx\ty\tkind\tklass\tascendancy\tname\tstats\tgroup\torbit\t\
          orbit_index\ticon\tnode_overlay\tactive_effect\tnode_options\t\
          connection_art\tunlock_constraint";
 
     fn write_tmp(name: &str, content: &str) -> std::path::PathBuf {
-        let p = std::env::temp_dir().join(format!("tree_render_io_test_{name}_{}.tsv", std::process::id()));
+        let p = std::env::temp_dir().join(format!(
+            "tree_render_io_test_{name}_{}.tsv",
+            std::process::id()
+        ));
         fs::write(&p, content).unwrap();
         p
     }
@@ -352,7 +358,9 @@ mod tests {
         let p = write_tmp("short", &format!("{NODES_HEADER}\n{short}\n"));
         let res = read_nodes(&p);
         fs::remove_file(&p).ok();
-        let Err(err) = res else { panic!("short row was accepted") };
+        let Err(err) = res else {
+            panic!("short row was accepted")
+        };
         assert!(err.contains("expected 17 columns"), "{err}");
     }
 }

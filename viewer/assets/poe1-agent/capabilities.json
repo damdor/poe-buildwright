@@ -12,6 +12,7 @@
   "/assets/poe1-agent/graph.json",
   "/assets/poe1-agent/bases.json",
   "/assets/poe1-agent/mods.json",
+  "/assets/poe1-agent/jewels.json",
   "/assets/poe1-agent/support_compat.json",
   "/assets/poe1-agent/skill_catalogue.json",
   "/assets/poe1-agent/item_catalogue.json"
@@ -78,6 +79,9 @@
   ],
   "belt": [
    "belt"
+  ],
+  "jewel": [
+   "jewel"
   ],
   "flask": [
    "flask1",

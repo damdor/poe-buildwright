@@ -449,14 +449,15 @@ const DEFAULT_TABLES: &[&str] = &[
 ];
 
 /// Systematically export a set of GGG tables to first-party TSVs — the
-/// repeatable "load a new patch through the miner" step. Writes each
-/// table to `data/parsed/<patch>_native/dat/<Table>.tsv` (a sibling of
-/// the PoB-derived data, so `buildwright diff` can cross-validate), then
-/// `manifest`/`verify` hash it like everything else. Tables that aren't
-/// in the schema, aren't in the index, or don't fit their schema are
+/// repeatable "load a new patch through the miner" step. PoE1 writes
+/// into its first-party patch directory; PoE2 retains the historical
+/// `<patch>_native` sibling used for PoB cross-validation. `manifest`
+/// and `verify` hash either layout like every other dataset. Tables
+/// absent from the schema/index, or that don't fit their schema, are
 /// skipped with a warning rather than aborting the run.
 pub fn mine(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let patch = resolve_patch(ctx, args)?;
+    let profile = GameProfile::from_patch(&patch);
     let (_, rest) = take_patch(args);
 
     let mut tables: Option<Vec<String>> = None;
@@ -484,10 +485,12 @@ pub fn mine(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     // Schema + live index.
     let schema_path = dat_schema_path(ctx)?;
-    let set =
-        SchemaSet::from_json(&std::fs::read_to_string(&schema_path).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
-    let client = CdnClient::connect().map_err(|e| e.to_string())?;
+    let set = SchemaSet::from_json_for(
+        &std::fs::read_to_string(&schema_path).map_err(|e| e.to_string())?,
+        profile.game,
+    )
+    .map_err(|e| e.to_string())?;
+    let client = CdnClient::connect_for(profile.game).map_err(|e| e.to_string())?;
     let index = load_index(&client)?;
 
     // Resolve every .datc64 path once → base filename → ranked
@@ -496,11 +499,14 @@ pub fn mine(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     let out_dir = match out_override {
         Some(o) => ctx.root.join(o),
-        None => ctx
-            .root
-            .join("data/parsed")
-            .join(format!("{patch}_native"))
-            .join("dat"),
+        None => {
+            let parsed_dir = if profile.game == data_miner::fetch::Game::Poe1 {
+                patch.clone()
+            } else {
+                format!("{patch}_native")
+            };
+            ctx.root.join("data/parsed").join(parsed_dir).join("dat")
+        }
     };
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
 
@@ -594,9 +600,14 @@ pub fn mine(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             shown.display(),
         ),
     );
+    let manifest_patch = if profile.game == data_miner::fetch::Game::Poe1 {
+        patch
+    } else {
+        format!("{patch}_native")
+    };
     ui::note(
         ctx.style,
-        &format!("hash + index it: buildwright manifest --patch {patch}_native"),
+        &format!("hash + index it: buildwright manifest --patch {manifest_patch}"),
     );
     Ok(())
 }
@@ -624,10 +635,14 @@ fn resolve_table_paths(index: &Index) -> Result<BTreeMap<String, Vec<String>>, S
     Ok(paths)
 }
 
-/// Extract the newest copy of a table that actually PARSES: try each
-/// candidate path in rank order, autofit the schema against its bytes,
-/// and return the first `(bytes, fitted_schema)` that `Dat::parse`
-/// accepts — logging when a newer-but-undecodable copy was skipped.
+/// Extract the newest populated copy of a table that actually PARSES.
+///
+/// The PoE CDN can contain a zero-row placeholder in the preferred
+/// `data/balance/` location while the populated copy still lives at a
+/// lower-ranked path.  A zero-row DAT is structurally valid, so stopping
+/// at the first successful parse silently erases whole joined datasets.
+/// Keep that empty copy as a fallback, but continue until a populated
+/// candidate is found.
 fn extract_parseable(
     client: &CdnClient,
     index: &Index,
@@ -636,6 +651,7 @@ fn extract_parseable(
     schema: &data_miner::dat::TableSchema,
 ) -> Result<(Vec<u8>, data_miner::dat::TableSchema), String> {
     let mut last_err = format!("{name}: no candidate paths in index");
+    let mut empty_fallback = None;
     for (i, vpath) in candidates.iter().enumerate() {
         let bytes = match extract_by_path(client, index, vpath) {
             Ok(b) => b,
@@ -646,16 +662,23 @@ fn extract_parseable(
         };
         let fitted = data_miner::dat::autofit(&bytes, schema).unwrap_or_else(|| schema.clone());
         match Dat::parse(&bytes, &fitted) {
-            Ok(_) => {
+            Ok(dat) if dat.row_count() > 0 => {
                 if i > 0 {
                     eprintln!(
-                        "note: {name}: newest copy undecodable with current dat-schema — using older {vpath}"
+                        "note: {name}: preferred copy empty or undecodable — using populated {vpath}"
                     );
                 }
                 return Ok((bytes, fitted));
             }
+            Ok(_) => {
+                empty_fallback.get_or_insert((bytes, fitted));
+                last_err = format!("{name}: {vpath}: table has zero rows");
+            }
             Err(e) => last_err = format!("{name}: {vpath}: {e}"),
         }
+    }
+    if let Some(pair) = empty_fallback {
+        return Ok(pair);
     }
     Err(last_err)
 }
@@ -828,8 +851,16 @@ fn emit_asc_overrides(ctx: &Ctx, dir: &Path) -> Result<(), String> {
     let index = load_index(&client)?;
     let paths = resolve_table_paths(&index)?;
     let mut ts = data_miner::shape::TableSet::new();
-    for name in ["AscendancyPassiveSkillOverrides", "PassiveSkills", "Ascendancy", "Characters", "Stats"] {
-        let schema = set.table(name).ok_or_else(|| format!("{name}: not in schema"))?;
+    for name in [
+        "AscendancyPassiveSkillOverrides",
+        "PassiveSkills",
+        "Ascendancy",
+        "Characters",
+        "Stats",
+    ] {
+        let schema = set
+            .table(name)
+            .ok_or_else(|| format!("{name}: not in schema"))?;
         let base = format!("{}.datc64", name.to_ascii_lowercase());
         let cands = paths.get(&base).map(Vec::as_slice).unwrap_or(&[]);
         let (bytes, schema) = extract_parseable(&client, &index, name, cands, schema)?;
@@ -846,14 +877,18 @@ fn emit_asc_overrides(ctx: &Ctx, dir: &Path) -> Result<(), String> {
     std::fs::write(&p, &tsv).map_err(|e| format!("write {}: {e}", p.display()))?;
     ui::note(
         ctx.style,
-        &format!("{} variant-asc node overrides → tree/asc_overrides.tsv", tsv.lines().count().saturating_sub(1)),
+        &format!(
+            "{} variant-asc node overrides → tree/asc_overrides.tsv",
+            tsv.lines().count().saturating_sub(1)
+        ),
     );
     Ok(())
 }
 
 fn shape_tree_datajson(ctx: &Ctx, patch: &str) -> Result<(), String> {
-    let url =
-        format!("https://raw.githubusercontent.com/{TREE_EXPORT_REPO}/{TREE_EXPORT_COMMIT}/data.json");
+    let url = format!(
+        "https://raw.githubusercontent.com/{TREE_EXPORT_REPO}/{TREE_EXPORT_COMMIT}/data.json"
+    );
     ui::note(ctx.style, &format!("GGG export: {url}"));
     let body = fetch_url(&url)?;
     let data = json::parse(&body).map_err(|e| format!("data.json parse: {e}"))?;
@@ -898,7 +933,10 @@ fn shape_tree_datajson(ctx: &Ctx, patch: &str) -> Result<(), String> {
     // Provenance (hashed by the manifest → the pinned export commit is diffable).
     let mut prov = json::Map::new();
     prov.insert("dataset".into(), json::Value::Str("tree".into()));
-    prov.insert("source".into(), json::Value::Str(format!("ggg:{TREE_EXPORT_REPO}")));
+    prov.insert(
+        "source".into(),
+        json::Value::Str(format!("ggg:{TREE_EXPORT_REPO}")),
+    );
     prov.insert("commit".into(), json::Value::Str(TREE_EXPORT_COMMIT.into()));
     prov.insert("file".into(), json::Value::Str("data.json".into()));
     std::fs::write(
@@ -943,7 +981,14 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             "items/bases.tsv",
         ),
         "grants" => (data_miner::shape::GRANTS_TABLES, "items/grants.tsv"),
-        "jewels" => (data_miner::shape::JEWELS_TABLES, "tree/jewels.tsv"),
+        "jewels" => (
+            if game == data_miner::fetch::Game::Poe1 {
+                data_miner::shape::JEWELS_TABLES_POE1
+            } else {
+                data_miner::shape::JEWELS_TABLES
+            },
+            "tree/jewels.tsv",
+        ),
         "gems" => (data_miner::shape::GEMS_TABLES, "skills/gems.tsv"),
         "active_skills" => (
             data_miner::shape::ACTIVE_SKILLS_TABLES,
@@ -967,10 +1012,7 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         // Unique art IS first-party (unlike unique mod lists): the
         // UniqueStashLayout table names every unique and keys its
         // inventory art. Complements `buildwright uniques`.
-        "unique_art" => (
-            data_miner::shape::UNIQUE_ART_TABLES,
-            "items/unique_art.tsv",
-        ),
+        "unique_art" => (data_miner::shape::UNIQUE_ART_TABLES, "items/unique_art.tsv"),
         // Deliberately not table-shapeable — GGG ships no source for these
         // (verified against dat-schema). Fail loudly with the real reason
         // rather than emit a misleading partial file.
@@ -1045,7 +1087,10 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             // the chain is unavailable).
             let mut sd = data_miner::csd::StatDescriptions::new();
             let mut seen = std::collections::HashSet::new();
-            for path in data_miner::shape::TREE_STAT_CSD {
+            for path in [
+                item_stat_descriptions_path(game),
+                passive_stat_descriptions_path(game),
+            ] {
                 let _ = load_csd_chain(&client, &index, path, &mut seen, &mut sd);
             }
             data_miner::shape::shape_jewels(&ts, Some(&sd)).map_err(|e| e.to_string())?
@@ -1075,11 +1120,7 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     } else {
         format!("{patch}_native")
     };
-    let out_path = ctx
-        .root
-        .join("data/parsed")
-        .join(parsed_dir)
-        .join(out_rel);
+    let out_path = ctx.root.join("data/parsed").join(parsed_dir).join(out_rel);
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -1326,7 +1367,10 @@ const ITEM_ART_REVISION: u32 = 2;
 /// so collapse that sheet to one conventional RGBA icon at extraction time.
 /// Single-cell tinctures/charms and all non-flask art pass through unchanged.
 fn full_flask_icon(key: &str, image: data_miner::dds::Image) -> data_miner::dds::Image {
-    let is_flask = key.to_ascii_lowercase().replace('\\', "/").contains("/flasks/");
+    let is_flask = key
+        .to_ascii_lowercase()
+        .replace('\\', "/")
+        .contains("/flasks/");
     // A flask occupies one inventory column by two rows, so each logical
     // cell is exactly half the sheet height. The DDS encoder may trim up
     // to two fully-transparent columns from either end of the three-cell
@@ -1362,8 +1406,7 @@ fn full_flask_icon(key: &str, image: data_miner::dds::Image) -> data_miner::dds:
         }
         let mut out = [0u8; 4];
         for c in 0..3 {
-            let premul = src[c] as u32 * sa
-                + (dst[c] as u32 * da * (255 - sa) + 127) / 255;
+            let premul = src[c] as u32 * sa + (dst[c] as u32 * da * (255 - sa) + 127) / 255;
             out[c] = ((premul + oa / 2) / oa).min(255) as u8;
         }
         out[3] = oa.min(255) as u8;
@@ -1378,7 +1421,11 @@ fn full_flask_icon(key: &str, image: data_miner::dds::Image) -> data_miner::dds:
             rgba[i..i + 4].copy_from_slice(&out);
         }
     }
-    data_miner::dds::Image { width: cell, height: image.height, rgba }
+    data_miner::dds::Image {
+        width: cell,
+        height: image.height,
+        rgba,
+    }
 }
 
 /// Map the renderer's frame/background sprite keys (from
@@ -1536,11 +1583,31 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // most of it never reaches a gear slot.
     if let Ok(b) = std::fs::read_to_string(dir.join("items/bases.tsv")) {
         const EQUIP_CLASSES: &[&str] = &[
-            "Body Armour", "Helmet", "Gloves", "Boots", "Amulet", "Talisman",
-            "Ring", "Belt", "One Hand Mace", "Two Hand Mace", "Sceptre",
-            "Spear", "Bow", "Crossbow", "Wand", "Staff", "Warstaff",
-            "Shield", "Buckler", "Focus", "Quiver", "LifeFlask", "ManaFlask",
-            "UtilityFlask", "Jewel",
+            "Body Armour",
+            "Helmet",
+            "Gloves",
+            "Boots",
+            "Amulet",
+            "Talisman",
+            "Ring",
+            "Belt",
+            "One Hand Mace",
+            "Two Hand Mace",
+            "Sceptre",
+            "Spear",
+            "Bow",
+            "Crossbow",
+            "Wand",
+            "Staff",
+            "Warstaff",
+            "Shield",
+            "Buckler",
+            "Focus",
+            "Quiver",
+            "LifeFlask",
+            "ManaFlask",
+            "UtilityFlask",
+            "Jewel",
         ];
         let hdr: Vec<&str> = b.lines().next().unwrap_or("").split('\t').collect();
         let ic = hdr.iter().position(|h| *h == "icon_dds");
@@ -1698,14 +1765,25 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     {
         let ui = "art/textures/interface/2d/2dart/uiimages/ingame/";
         let sanitize = |n: &str| -> String {
-            n.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect()
+            n.chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect()
         };
         let mut jobs: Vec<(String, String)> = vec![
-            ("Jewel_ring.png".into(), format!("{ui}passiveskillscreenjewelcircle1.dds")),
-            ("Jewel_glow.png".into(), format!("{ui}passiveskillscreenjeweleffectglow.dds")),
+            (
+                "Jewel_ring.png".into(),
+                format!("{ui}passiveskillscreenjewelcircle1.dds"),
+            ),
+            (
+                "Jewel_glow.png".into(),
+                format!("{ui}passiveskillscreenjeweleffectglow.dds"),
+            ),
             // The plain "activated" socket frame — used to light
             // Voices-activated sinister sockets without a jewel.
-            ("Jewel_socket_active.png".into(), format!("{ui}passiveskillscreenjewelsocketactive.dds")),
+            (
+                "Jewel_socket_active.png".into(),
+                format!("{ui}passiveskillscreenjewelsocketactive.dds"),
+            ),
         ];
         for (base, stem) in [
             ("Ruby", "rubyjewel"),
@@ -1752,10 +1830,10 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     if name.is_empty() || art.is_empty() {
                         continue;
                     }
-                    let vpath = art
-                        .to_ascii_lowercase()
-                        .replace("art/2dart/uiimages/", "art/textures/interface/2d/2dart/uiimages/")
-                        + ".dds";
+                    let vpath = art.to_ascii_lowercase().replace(
+                        "art/2dart/uiimages/",
+                        "art/textures/interface/2d/2dart/uiimages/",
+                    ) + ".dds";
                     jobs.push((format!("Jewel_U_{}.png", sanitize(name)), vpath));
                 }
             }
@@ -1769,8 +1847,11 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     let png = data_miner::png::encode_rgba(img.width, img.height, &img.rgba);
                     std::fs::write(assets.join(&out_name), &png)
                         .map_err(|e| format!("write {out_name}: {e}"))?;
-                    out.push_str(&format!("{out_name}	{out_name}	{}	{}
-", img.width, img.height));
+                    out.push_str(&format!(
+                        "{out_name}	{out_name}	{}	{}
+",
+                        img.width, img.height
+                    ));
                     ok += 1;
                 }
                 None => ui::warn(ctx.style, &format!("jewel art {vpath}: missing — skipped")),
@@ -1804,7 +1885,10 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             .ok()
             .and_then(|b| data_miner::dds::decode(&b).ok())
         else {
-            ui::warn(ctx.style, &format!("class backdrop {class} ({path}): missing"));
+            ui::warn(
+                ctx.style,
+                &format!("class backdrop {class} ({path}): missing"),
+            );
             continue;
         };
         let png = data_miner::png::encode_rgba(img.width, img.height, &img.rgba);
@@ -1837,13 +1921,33 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // visually validated (3b decodes to the undead face). Keys are
     // Face<Name> with spaces/apostrophes stripped.
     const FACE_SETS: &[(&str, &str, &[&str])] = &[
-        ("Warrior", "strfourb", &["Titan", "Warbringer", "Smith of Kitava"]),
+        (
+            "Warrior",
+            "strfourb",
+            &["Titan", "Warbringer", "Smith of Kitava"],
+        ),
         ("Witch", "intfour", &["Infernalist", "Blood Mage", "Lich"]),
-        ("Sorceress", "intfourb", &["Stormweaver", "Chronomancer", "Disciple of Varashta"]),
+        (
+            "Sorceress",
+            "intfourb",
+            &["Stormweaver", "Chronomancer", "Disciple of Varashta"],
+        ),
         ("Ranger", "dexfour", &["Deadeye", "Pathfinder"]),
-        ("Huntress", "dexfourb", &["Amazon", "Spirit Walker", "Ritualist"]),
-        ("Mercenary", "strdexfourb", &["Tactician", "Witchhunter", "Gemling Legionnaire"]),
-        ("Monk", "dexintfourb", &["Martial Artist", "Invoker", "Acolyte of Chayula"]),
+        (
+            "Huntress",
+            "dexfourb",
+            &["Amazon", "Spirit Walker", "Ritualist"],
+        ),
+        (
+            "Mercenary",
+            "strdexfourb",
+            &["Tactician", "Witchhunter", "Gemling Legionnaire"],
+        ),
+        (
+            "Monk",
+            "dexintfourb",
+            &["Martial Artist", "Invoker", "Acolyte of Chayula"],
+        ),
         ("Druid", "strintfourb", &["Oracle", "Shaman"]),
     ];
     let mut face_jobs: Vec<(String, String)> = Vec::new(); // (display name, vpath)
@@ -1867,18 +1971,26 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             .ok()
             .and_then(|b| data_miner::dds::decode(&b).ok())
         else {
-            ui::warn(ctx.style, &format!("face portrait {name} ({path}): missing"));
+            ui::warn(
+                ctx.style,
+                &format!("face portrait {name} ({path}): missing"),
+            );
             continue;
         };
         let png = data_miner::png::encode_rgba(img.width, img.height, &img.rgba);
         let key = format!(
             "Face{}",
-            name.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>()
+            name.chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .collect::<String>()
         );
         let png_name = format!("{key}.png");
         std::fs::write(assets.join(&png_name), &png)
             .map_err(|e| format!("write {png_name}: {e}"))?;
-        out.push_str(&format!("{key}\t{png_name}\t{}\t{}\n", img.width, img.height));
+        out.push_str(&format!(
+            "{key}\t{png_name}\t{}\t{}\n",
+            img.width, img.height
+        ));
         ok += 1;
     }
 
@@ -1950,8 +2062,12 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         let png = data_miner::png::encode_rgba(image.width, image.height, &image.rgba);
         let key = format!("AscBg{id}");
         let png_name = format!("{key}.png");
-        std::fs::write(assets.join(&png_name), &png).map_err(|e| format!("write {png_name}: {e}"))?;
-        out.push_str(&format!("{key}\t{png_name}\t{}\t{}\n", image.width, image.height));
+        std::fs::write(assets.join(&png_name), &png)
+            .map_err(|e| format!("write {png_name}: {e}"))?;
+        out.push_str(&format!(
+            "{key}\t{png_name}\t{}\t{}\n",
+            image.width, image.height
+        ));
         portrait_rows.push_str(&format!(
             "portrait\tasc\t{disp}\t{key}\t{}\t{}\t{}\t{}\n",
             cx as i64, cy as i64, image.width, image.height
@@ -2126,7 +2242,10 @@ fn load_csd_chain(
     for line in text.lines().take(64) {
         let l = line.trim_start_matches('\u{feff}').trim();
         if let Some(inc) = l.strip_prefix("include \"") {
-            let inc = inc.trim_end_matches('"').replace('\\', "/").to_ascii_lowercase();
+            let inc = inc
+                .trim_end_matches('"')
+                .replace('\\', "/")
+                .to_ascii_lowercase();
             load_csd_chain(client, index, &inc, seen, sd)?;
         }
     }
@@ -2143,11 +2262,18 @@ fn item_stat_descriptions_path(game: data_miner::fetch::Game) -> &'static str {
 
 fn skill_stat_descriptions_path(game: data_miner::fetch::Game) -> &'static str {
     match game {
+        data_miner::fetch::Game::Poe1 => "metadata/statdescriptions/skill_stat_descriptions.txt",
+        data_miner::fetch::Game::Poe2 => "data/statdescriptions/skill_stat_descriptions.csd",
+    }
+}
+
+fn passive_stat_descriptions_path(game: data_miner::fetch::Game) -> &'static str {
+    match game {
         data_miner::fetch::Game::Poe1 => {
-            "metadata/statdescriptions/skill_stat_descriptions.txt"
+            "metadata/statdescriptions/passive_skill_stat_descriptions.txt"
         }
         data_miner::fetch::Game::Poe2 => {
-            "data/statdescriptions/skill_stat_descriptions.csd"
+            "data/statdescriptions/passive_skill_stat_descriptions.csd"
         }
     }
 }
@@ -2238,7 +2364,9 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         "GrantedEffectsPerLevel",
         "Stats",
     ] {
-        let schema = set.table(name).ok_or_else(|| format!("{name}: not in dat-schema"))?;
+        let schema = set
+            .table(name)
+            .ok_or_else(|| format!("{name}: not in dat-schema"))?;
         let base = format!("{}.datc64", name.to_ascii_lowercase());
         let cands = paths.get(&base).map(Vec::as_slice).unwrap_or(&[]);
         let (bytes, schema) = extract_parseable(&client, &index, name, cands, schema)?;
@@ -2249,7 +2377,9 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // ladder; PoE2 does. Their absence must degrade only those optional
     // fields, never cross-wire a PoE2 table into the PoE1 output.
     for name in ["GrantedEffectLabels", "GrantedSkillSocketNumbers"] {
-        let Some(schema) = set.table(name) else { continue };
+        let Some(schema) = set.table(name) else {
+            continue;
+        };
         let base = format!("{}.datc64", name.to_ascii_lowercase());
         let cands = paths.get(&base).map(Vec::as_slice).unwrap_or(&[]);
         if cands.is_empty() {
@@ -2274,12 +2404,18 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let stat_ids = ts.id_list("Stats");
     let sets = ts.dat("GrantedEffectStatSets").ok_or("no stat sets")?;
     let sets_s = ts.schema("GrantedEffectStatSets").ok_or("no stat sets")?;
-    let sspl = ts.dat("GrantedEffectStatSetsPerLevel").ok_or("no per-level")?;
-    let sspl_s = ts.schema("GrantedEffectStatSetsPerLevel").ok_or("no per-level")?;
+    let sspl = ts
+        .dat("GrantedEffectStatSetsPerLevel")
+        .ok_or("no per-level")?;
+    let sspl_s = ts
+        .schema("GrantedEffectStatSetsPerLevel")
+        .ok_or("no per-level")?;
     let gepl = ts.dat("GrantedEffectsPerLevel").ok_or("no gepl")?;
     let gepl_s = ts.schema("GrantedEffectsPerLevel").ok_or("no gepl")?;
     let labels = ts.dat("GrantedEffectLabels");
-    let lab_text = ts.schema("GrantedEffectLabels").and_then(|s| s.column("Text"));
+    let lab_text = ts
+        .schema("GrantedEffectLabels")
+        .and_then(|s| s.column("Text"));
     let col = |s: &data_miner::dat::TableSchema, n: &str| -> Result<usize, String> {
         s.column(n).ok_or_else(|| format!("missing column {n}"))
     };
@@ -2310,7 +2446,9 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     // Raw array readers (element layouts: foreignrow 16B, i32 4B).
     let rows_of = |dat: &data_miner::dat::Dat<'_>, row: usize, c: usize| -> Vec<usize> {
-        let Ok((count, offset)) = dat.array_ref(row, c) else { return vec![] };
+        let Ok((count, offset)) = dat.array_ref(row, c) else {
+            return vec![];
+        };
         (0..count)
             .filter_map(|i| {
                 let b = dat.var().get(offset + i * 16..offset + i * 16 + 8)?;
@@ -2319,7 +2457,9 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             .collect()
     };
     let i32s_of = |dat: &data_miner::dat::Dat<'_>, row: usize, c: usize| -> Vec<i64> {
-        let Ok((count, offset)) = dat.array_ref(row, c) else { return vec![] };
+        let Ok((count, offset)) = dat.array_ref(row, c) else {
+            return vec![];
+        };
         (0..count)
             .filter_map(|i| {
                 let b = dat.var().get(offset + i * 4..offset + i * 4 + 4)?;
@@ -2352,7 +2492,9 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         if eids.is_empty() {
             continue;
         }
-        let Ok(Some(ssr)) = sspl.foreign(row, c_ss) else { continue };
+        let Ok(Some(ssr)) = sspl.foreign(row, c_ss) else {
+            continue;
+        };
         let ssr = ssr as usize;
         // Per-level stats: floats (with pre-resolved values) + additional.
         let mut stats: Vec<(String, i64, i64)> = Vec::new();
@@ -2410,14 +2552,19 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // Cost / reservation / cooldown ladders:
     // effect id → level → (cost, reservation, cooldown, cost multiplier).
     type CostLadder = std::collections::BTreeMap<i64, (i64, i64, i64, i64)>;
-    let mut costs: std::collections::BTreeMap<String, CostLadder> = std::collections::BTreeMap::new();
+    let mut costs: std::collections::BTreeMap<String, CostLadder> =
+        std::collections::BTreeMap::new();
     for row in 0..gepl.row_count() {
         let lvl = gepl.i32(row, g_lvl).unwrap_or(0);
         if !(1..=MAX_LEVEL).contains(&lvl) {
             continue;
         }
-        let Ok(Some(ger)) = gepl.foreign(row, g_ge) else { continue };
-        let Some(eid) = granted_ids.get(ger as usize) else { continue };
+        let Ok(Some(ger)) = gepl.foreign(row, g_ge) else {
+            continue;
+        };
+        let Some(eid) = granted_ids.get(ger as usize) else {
+            continue;
+        };
         if !player_effects.contains(eid) {
             continue;
         }
@@ -2428,7 +2575,10 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             .unwrap_or(0) as i64;
         let cd = gepl.i32(row, g_cd).unwrap_or(0) as i64;
         let mult = gepl.i32(row, g_costmult).unwrap_or(100) as i64;
-        costs.entry(eid.clone()).or_default().insert(lvl as i64, (cost, resv, cd, mult));
+        costs
+            .entry(eid.clone())
+            .or_default()
+            .insert(lvl as i64, (cost, resv, cd, mult));
     }
 
     // Emit.
@@ -2439,7 +2589,10 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     );
     out.insert("version".into(), json::Value::Integer(1));
     out.insert("game".into(), json::Value::Str(profile.id.into()));
-    out.insert("patch".into(), json::Value::Str(profile.patch_label(&patch)));
+    out.insert(
+        "patch".into(),
+        json::Value::Str(profile.patch_label(&patch)),
+    );
     out.insert("source".into(), json::Value::Str("ggg".into()));
     let mut eff_map = json::Map::new();
     for (eid, parts) in &effects {
@@ -2459,7 +2612,13 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 if !p.const_lines.is_empty() {
                     pm.insert(
                         "const".into(),
-                        json::Value::Array(p.const_lines.iter().cloned().map(json::Value::Str).collect()),
+                        json::Value::Array(
+                            p.const_lines
+                                .iter()
+                                .cloned()
+                                .map(json::Value::Str)
+                                .collect(),
+                        ),
                     );
                 }
                 let mut lm = json::Map::new();
@@ -2514,18 +2673,23 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     // Granted-skill support sockets: item-granted skills socket
     // supports for free; how many depends on the granted level.
-    if let (Some(gssn), Some(gssn_s)) = (ts.dat("GrantedSkillSocketNumbers"), ts.schema("GrantedSkillSocketNumbers"))
-        && let (Some(c_l), Some(c_n)) = (gssn_s.column("Level"), gssn_s.column("Sockets")) {
-            let mut sm = json::Map::new();
-            for row in 0..gssn.row_count() {
-                let l = gssn.i32(row, c_l).unwrap_or(0);
-                let n = gssn.i32(row, c_n).unwrap_or(0);
-                if l > 0 { sm.insert(l.to_string(), json::Value::Integer(n as i64)); }
-            }
-            if !sm.is_empty() {
-                out.insert("granted_skill_sockets".into(), json::Value::Object(sm));
+    if let (Some(gssn), Some(gssn_s)) = (
+        ts.dat("GrantedSkillSocketNumbers"),
+        ts.schema("GrantedSkillSocketNumbers"),
+    ) && let (Some(c_l), Some(c_n)) = (gssn_s.column("Level"), gssn_s.column("Sockets"))
+    {
+        let mut sm = json::Map::new();
+        for row in 0..gssn.row_count() {
+            let l = gssn.i32(row, c_l).unwrap_or(0);
+            let n = gssn.i32(row, c_n).unwrap_or(0);
+            if l > 0 {
+                sm.insert(l.to_string(), json::Value::Integer(n as i64));
             }
         }
+        if !sm.is_empty() {
+            out.insert("granted_skill_sockets".into(), json::Value::Object(sm));
+        }
+    }
     out.insert("count".into(), json::Value::Integer(eff_map.len() as i64));
     out.insert("effects".into(), json::Value::Object(eff_map));
     let path = profile.skill_stats_path(&ctx.root);
@@ -2577,10 +2741,7 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     // 3. The pinned PoB recipe: src/Export/Uniques/*.lua (mod-id lists).
     let (pob_dir, source_name) = match game {
-        data_miner::fetch::Game::Poe1 => (
-            "data/pob1",
-            "path-of-building-community/PathOfBuilding",
-        ),
+        data_miner::fetch::Game::Poe1 => ("data/pob1", "path-of-building-community/PathOfBuilding"),
         data_miner::fetch::Game::Poe2 => (
             "data/pob2",
             "path-of-building-community/PathOfBuilding-PoE2",
@@ -2602,18 +2763,12 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("lua"))
-        // PoE1 item support intentionally excludes every jewel. Do not
-        // mine the recipe only to hide it later: omission here keeps the
-        // shaped data, catalogues, and UI capability in agreement.
-        .filter(|p| {
-            game != data_miner::fetch::Game::Poe1
-                || p.file_stem().and_then(|x| x.to_str()) != Some("jewel")
-        })
         .collect();
     slots.sort();
 
-    let mut rows =
-        String::from("name\tbase\tslot_file\tvariant_count\tlatest_variant\tlatest_stats\tdata_source\n");
+    let mut rows = String::from(
+        "name\tbase\tslot_file\tvariant_count\tlatest_variant\tlatest_stats\tradius\tdata_source\n",
+    );
     let mut vrows = String::from("name\tvariant_index\tvariant_label\tstat\n");
     let mut files_used: Vec<String> = Vec::new();
     let mut total = 0usize;
@@ -2625,8 +2780,8 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_string();
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("read {}: {e}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let parsed = data_miner::uniques::parse(&text);
         if !parsed.is_empty() {
             files_used.push(format!("Export/Uniques/{slot}.lua"));
@@ -2646,7 +2801,11 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             let nvar = u.variants.len().max(1);
             let mut latest_stats = String::new();
             for v in 1..=nvar {
-                let label = u.variants.get(v - 1).map(String::as_str).unwrap_or("Current");
+                let label = u
+                    .variants
+                    .get(v - 1)
+                    .map(String::as_str)
+                    .unwrap_or("Current");
                 let mut lines: Vec<String> = Vec::new();
                 for m in &u.mods {
                     let active = m.variants.is_empty() || m.variants.contains(&(v as u32));
@@ -2667,8 +2826,10 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             }
             let latest_label = u.variants.last().map(String::as_str).unwrap_or("Current");
             rows.push_str(&format!(
-                "{}\t{}\t{slot}\t{nvar}\t{latest_label}\t{latest_stats}\tpob-resolved\n",
-                u.name, u.base
+                "{}\t{}\t{slot}\t{nvar}\t{latest_label}\t{latest_stats}\t{}\tpob-resolved\n",
+                u.name,
+                u.base,
+                u.radius.as_deref().unwrap_or(""),
             ));
             total += 1;
         }
@@ -2709,11 +2870,18 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             let mut seen: std::collections::HashSet<String> = Default::default();
             for r in &grows {
                 let name = r.get(c_w).cloned().unwrap_or_default();
-                if name.is_empty() || name.starts_with('#') || have.contains(&name) || !seen.insert(name.clone()) {
+                if name.is_empty()
+                    || name.starts_with('#')
+                    || have.contains(&name)
+                    || !seen.insert(name.clone())
+                {
                     continue;
                 }
                 let ty = r.get(c_t).cloned().unwrap_or_default();
-                rows.push_str(&format!("{name}\t\t{}\t0\t\t\tggg-name-only\n", slot_of(&ty)));
+                rows.push_str(&format!(
+                    "{name}\t\t{}\t0\t\t\t\tggg-name-only\n",
+                    slot_of(&ty)
+                ));
                 game_only += 1;
             }
         }
@@ -2721,7 +2889,9 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     if game_only > 0 {
         ui::note(
             ctx.style,
-            &format!("{game_only} uniques known to the game but not the PoB pin — added name/slot only (stats pending)"),
+            &format!(
+                "{game_only} uniques known to the game but not the PoB pin — added name/slot only (stats pending)"
+            ),
         );
     }
 
@@ -2735,10 +2905,7 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     let mut prov = json::Map::new();
     prov.insert("dataset".into(), json::Value::Str("uniques".into()));
-    prov.insert(
-        "source".into(),
-        json::Value::Str(source_name.into()),
-    );
+    prov.insert("source".into(), json::Value::Str(source_name.into()));
     prov.insert("pob_commit".into(), json::Value::Str(commit.clone()));
     prov.insert(
         "source_files".into(),
@@ -2748,7 +2915,10 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         "resolved_against".into(),
         json::Value::Str(format!("items/mods.tsv + {csd} (first-party)")),
     );
-    prov.insert("uniques_resolved".into(), json::Value::Integer(total as i64));
+    prov.insert(
+        "uniques_resolved".into(),
+        json::Value::Integer(total as i64),
+    );
     prov.insert(
         "uniques_skipped".into(),
         json::Value::Integer(skipped.len() as i64),
@@ -3035,7 +3205,9 @@ pub fn verify(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         if perimeter == 0 {
             ui::ok(
                 s,
-                &format!("referential: all {links} mastery triggers are GGG connections (no perimeter)"),
+                &format!(
+                    "referential: all {links} mastery triggers are GGG connections (no perimeter)"
+                ),
             );
         } else {
             println!(
@@ -3245,7 +3417,12 @@ pub fn tree_diff(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         shared.len().max(1),
         100 * exact / shared.len().max(1)
     );
-    println!("  only in {a}: {}   only in {b}: {}   moved: {}", only_a.len(), only_b.len(), moved.len());
+    println!(
+        "  only in {a}: {}   only in {b}: {}   moved: {}",
+        only_a.len(),
+        only_b.len(),
+        moved.len()
+    );
     let sample = |label: &str, v: &[&String], m: &BTreeMap<String, (f64, f64, String)>| {
         for id in v.iter().take(8) {
             let k = m.get(*id).map(|t| t.2.as_str()).unwrap_or("");
@@ -3453,7 +3630,8 @@ fn trunc_plain(s: &str) -> String {
 /// Read a TSV into (header, rows). Columns are looked up by name via the
 /// returned `col` closure pattern at the call site.
 fn read_tsv(path: &Path) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let mut lines = text.lines();
     let header: Vec<String> = lines
         .next()
@@ -3490,16 +3668,33 @@ fn equipment_slot(class: &str, game: data_miner::fetch::Game) -> Option<&'static
         "Amulet" | "Talisman" => "amulet",
         "Ring" => "ring1",
         "Belt" => "belt",
-        "Claw" | "Dagger" | "Rune Dagger" | "One Hand Sword"
-        | "Thrusting One Hand Sword" | "Two Hand Sword" | "One Hand Axe"
-        | "Two Hand Axe" | "One Hand Mace" | "Two Hand Mace" | "Sceptre"
-        | "Spear" | "Bow" | "Crossbow" | "Wand" | "Staff" | "Warstaff"
+        "Claw"
+        | "Dagger"
+        | "Rune Dagger"
+        | "One Hand Sword"
+        | "Thrusting One Hand Sword"
+        | "Two Hand Sword"
+        | "One Hand Axe"
+        | "Two Hand Axe"
+        | "One Hand Mace"
+        | "Two Hand Mace"
+        | "Sceptre"
+        | "Spear"
+        | "Bow"
+        | "Crossbow"
+        | "Wand"
+        | "Staff"
+        | "Warstaff"
         | "FishingRod" => "weapon1",
         "Shield" | "Buckler" | "Focus" | "Quiver" => "offhand1",
         "LifeFlask" | "ManaFlask" | "HybridFlask" | "UtilityFlask" | "Tincture" => {
-            if game == data_miner::fetch::Game::Poe1 { "flask1" } else { "flask" }
+            if game == data_miner::fetch::Game::Poe1 {
+                "flask1"
+            } else {
+                "flask"
+            }
         }
-        "Jewel" if game == data_miner::fetch::Game::Poe2 => "jewel",
+        "Jewel" => "jewel",
         _ => return None,
     })
 }
@@ -3629,8 +3824,15 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let (gh, grows) = read_tsv(&parsed.join("skills/gems.tsv"))?;
     let gc = |n: &str| idx(&gh, n).ok_or_else(|| format!("gems.tsv missing column {n}"));
     let (g_id, g_name, g_tags, g_col, g_coln, g_str, g_dex, g_int, g_ge, g_minlvl) = (
-        gc("id")?, gc("name")?, gc("tags")?, gc("gem_colour")?, gc("colour_name")?,
-        gc("req_str_pct")?, gc("req_dex_pct")?, gc("req_int_pct")?, gc("granted_effect_id")?,
+        gc("id")?,
+        gc("name")?,
+        gc("tags")?,
+        gc("gem_colour")?,
+        gc("colour_name")?,
+        gc("req_str_pct")?,
+        gc("req_dex_pct")?,
+        gc("req_int_pct")?,
+        gc("granted_effect_id")?,
         gc("min_level")?,
     );
 
@@ -3642,7 +3844,13 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         idx(&ah, "description").unwrap_or(usize::MAX),
         idx(&ah, "cast_time").unwrap_or(usize::MAX),
     );
-    let get = |r: &[String], i: usize| if i == usize::MAX { String::new() } else { r.get(i).cloned().unwrap_or_default() };
+    let get = |r: &[String], i: usize| {
+        if i == usize::MAX {
+            String::new()
+        } else {
+            r.get(i).cloned().unwrap_or_default()
+        }
+    };
     let active: std::collections::HashMap<String, Vec<String>> = arows
         .iter()
         .filter(|r| !get(r, a_ge).is_empty())
@@ -3677,7 +3885,8 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         && let (Some(l_id), Some(l_lvl)) = (idx(&lh, "skill_id"), idx(&lh, "level"))
     {
         for r in &lrows {
-            if let (Some(id), Some(Ok(lvl))) = (r.get(l_id), r.get(l_lvl).map(|s| s.parse::<i64>())) {
+            if let (Some(id), Some(Ok(lvl))) = (r.get(l_id), r.get(l_lvl).map(|s| s.parse::<i64>()))
+            {
                 let e = max_level.entry(id.clone()).or_insert(0);
                 *e = (*e).max(lvl);
             }
@@ -3739,18 +3948,30 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         };
         m.insert("tag_string".into(), json::Value::Str(tag_str));
         for (k, i) in [("req_str", g_str), ("req_dex", g_dex), ("req_int", g_int)] {
-            m.insert(k.into(), json::Value::Integer(get(r, i).parse().unwrap_or(0)));
+            m.insert(
+                k.into(),
+                json::Value::Integer(get(r, i).parse().unwrap_or(0)),
+            );
         }
         // GrantedEffectsPerLevel runs to ~40 to leave headroom for +levels
         // from supports/items; a gem's own natural cap is 20 (1 for
         // non-leveling gems, which have a single-level table).
-        m.insert("natural_max_level".into(), json::Value::Integer(max_level.get(&ge).copied().unwrap_or(0).min(20)));
-        m.insert("req_level".into(), json::Value::Integer(get(r, g_minlvl).parse().unwrap_or(0)));
+        m.insert(
+            "natural_max_level".into(),
+            json::Value::Integer(max_level.get(&ge).copied().unwrap_or(0).min(20)),
+        );
+        m.insert(
+            "req_level".into(),
+            json::Value::Integer(get(r, g_minlvl).parse().unwrap_or(0)),
+        );
         // (skill_levels' level_requirement column is unpopulated in 0.5
         // data — per-gem-level char requirements can't be emitted yet;
         // req_level + the primer's gem-level rule of thumb cover it.)
         m.insert("granted_effect_id".into(), json::Value::Str(ge.clone()));
-        m.insert("color".into(), json::Value::Integer(get(r, g_col).parse().unwrap_or(0)));
+        m.insert(
+            "color".into(),
+            json::Value::Integer(get(r, g_col).parse().unwrap_or(0)),
+        );
         m.insert("color_name".into(), json::Value::Str(get(r, g_coln)));
         // Description: actives carry theirs on active_skills; supports on
         // support_skills — agents (and the picker) need to know what a
@@ -3761,7 +3982,10 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             .or_else(|| sup.map(|s| get(s, s_desc)))
             .unwrap_or_default();
         m.insert("description".into(), json::Value::Str(desc));
-        m.insert("cast_time".into(), json::Value::Str(act.map(|a| get(a, a_cast)).unwrap_or_default()));
+        m.insert(
+            "cast_time".into(),
+            json::Value::Str(act.map(|a| get(a, a_cast)).unwrap_or_default()),
+        );
         // Gem inventory art, extracted by `sprites` from icon_dds.
         let icon_dds = idx(&gh, "icon_dds").map(|i| get(r, i)).unwrap_or_default();
         if icon_dds.is_empty() {
@@ -3771,7 +3995,10 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             // /assets/poe1-agent/gem_icons/ (buildwright poe1-gem-icons);
             // PoE2's is in the shared sprite dir (buildwright sprites).
             let icon_url = if is_poe1 {
-                format!("/assets/poe1-agent/gem_icons/{}.png", sprite_safe_name(&icon_dds))
+                format!(
+                    "/assets/poe1-agent/gem_icons/{}.png",
+                    sprite_safe_name(&icon_dds)
+                )
             } else {
                 format!("/assets/sprites/{}.png", sprite_safe_name(&icon_dds))
             };
@@ -3786,9 +4013,18 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             json_arr(&idx(&gh, "parts").map(|i| get(r, i)).unwrap_or_default()),
         );
         // Actives grant their skill_types; supports gate on require/exclude.
-        m.insert("skill_types".into(), json_arr(&act.map(|a| get(a, a_types)).unwrap_or_default()));
-        m.insert("require_skill_types".into(), json_arr(&sup.map(|s| get(s, s_types)).unwrap_or_default()));
-        m.insert("exclude_skill_types".into(), json_arr(&sup.map(|s| get(s, s_excl)).unwrap_or_default()));
+        m.insert(
+            "skill_types".into(),
+            json_arr(&act.map(|a| get(a, a_types)).unwrap_or_default()),
+        );
+        m.insert(
+            "require_skill_types".into(),
+            json_arr(&sup.map(|s| get(s, s_types)).unwrap_or_default()),
+        );
+        m.insert(
+            "exclude_skill_types".into(),
+            json_arr(&sup.map(|s| get(s, s_excl)).unwrap_or_default()),
+        );
         gems.push(json::Value::Object(m));
     }
     // Dedupe exact name+type duplicates (Skeletal Sniper ships twice;
@@ -3807,11 +4043,18 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             (id.contains("UniqueSkillGem"), types_empty, id.to_string())
         };
         gems.sort_by_key(|a| pref(a));
-        let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+        let mut seen: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
         gems.retain(|g| {
             let key = (
-                g.get("name").and_then(|x| x.as_str()).unwrap_or_default().to_lowercase(),
-                g.get("gem_type").and_then(|x| x.as_str()).unwrap_or_default().to_string(),
+                g.get("name")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or_default()
+                    .to_lowercase(),
+                g.get("gem_type")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
             );
             seen.insert(key)
         });
@@ -3819,10 +4062,18 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let gem_count = gems.len();
     // Stable sort by name → id so the JSON diffs cleanly across patches.
     gems.sort_by(|a, b| {
-        let k = |v: &json::Value| (
-            v.get("name").and_then(|x| x.as_str()).unwrap_or_default().to_string(),
-            v.get("id").and_then(|x| x.as_str()).unwrap_or_default().to_string(),
-        );
+        let k = |v: &json::Value| {
+            (
+                v.get("name")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                v.get("id")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        };
         k(a).cmp(&k(b))
     });
     let mut skill = json::Map::new();
@@ -3833,8 +4084,11 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     skill.insert("count".into(), json::Value::Integer(gems.len() as i64));
     skill.insert("gems".into(), json::Value::Array(gems));
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
-    std::fs::write(assets.join("skill_catalogue.json"), json::emit_pretty(&json::Value::Object(skill)) + "\n")
-        .map_err(|e| e.to_string())?;
+    std::fs::write(
+        assets.join("skill_catalogue.json"),
+        json::emit_pretty(&json::Value::Object(skill)) + "\n",
+    )
+    .map_err(|e| e.to_string())?;
 
     // ---- Item catalogue (uniques ⋈ base ⋈ unique_art) ----
     // Unique inventory art is first-party (UniqueStashLayout → Words →
@@ -3899,19 +4153,25 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let mut variants_by_name: std::collections::HashMap<String, Vec<(String, String)>> =
         std::collections::HashMap::new();
     if let Ok((vh, vvrows)) = read_tsv(&parsed.join("items/uniques_variants.tsv"))
-        && let (Some(v_n), Some(v_l), Some(v_s)) =
-            (idx(&vh, "name"), idx(&vh, "variant_label"), idx(&vh, "stat"))
-        {
-            for r in &vvrows {
-                let (Some(n), Some(l), Some(st)) = (r.get(v_n), r.get(v_l), r.get(v_s)) else {
-                    continue;
-                };
-                if l.starts_with("Pre ") || l.is_empty() || n.is_empty() {
-                    continue;
-                }
-                variants_by_name.entry(n.clone()).or_default().push((l.clone(), st.clone()));
+        && let (Some(v_n), Some(v_l), Some(v_s)) = (
+            idx(&vh, "name"),
+            idx(&vh, "variant_label"),
+            idx(&vh, "stat"),
+        )
+    {
+        for r in &vvrows {
+            let (Some(n), Some(l), Some(st)) = (r.get(v_n), r.get(v_l), r.get(v_s)) else {
+                continue;
+            };
+            if l.starts_with("Pre ") || l.is_empty() || n.is_empty() {
+                continue;
             }
+            variants_by_name
+                .entry(n.clone())
+                .or_default()
+                .push((l.clone(), st.clone()));
         }
+    }
     if let Ok((uh, urows)) = read_tsv(&parsed.join("items/uniques.tsv")) {
         let uc = |n: &str| idx(&uh, n);
         let bases = read_tsv(&parsed.join("items/bases.tsv")).ok();
@@ -3921,7 +4181,12 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             .map(|(bn, brows)| {
                 brows
                     .iter()
-                    .map(|r| (base_name_key(r.get(bn).map(String::as_str).unwrap_or_default()), r.clone()))
+                    .map(|r| {
+                        (
+                            base_name_key(r.get(bn).map(String::as_str).unwrap_or_default()),
+                            r.clone(),
+                        )
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -3943,9 +4208,6 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             let brow = base_map.get(&base_name_key(&base));
             let mut m = json::Map::new();
             let name = cell("name");
-            if is_poe1 && cell("slot_file") == "jewel" {
-                continue;
-            }
             m.insert("name".into(), json::Value::Str(name.clone()));
             let canonical_base = brow
                 .zip(bh_name)
@@ -3954,9 +4216,22 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 .unwrap_or(base);
             m.insert("base".into(), json::Value::Str(canonical_base));
             m.insert("slot".into(), json::Value::Str(cell("slot_file")));
-            m.insert("variant_count".into(), json::Value::Integer(cell("variant_count").parse().unwrap_or(1)));
-            m.insert("latest_variant".into(), json::Value::Str(cell("latest_variant")));
-            m.insert("latest_stats".into(), json::Value::Str(cell("latest_stats")));
+            m.insert(
+                "variant_count".into(),
+                json::Value::Integer(cell("variant_count").parse().unwrap_or(1)),
+            );
+            m.insert(
+                "latest_variant".into(),
+                json::Value::Str(cell("latest_variant")),
+            );
+            m.insert(
+                "latest_stats".into(),
+                json::Value::Str(cell("latest_stats")),
+            );
+            let radius = cell("radius");
+            if !radius.is_empty() {
+                m.insert("radius".into(), json::Value::Str(radius));
+            }
             m.insert("data_source".into(), json::Value::Str(cell("data_source")));
             // Rollable variants (current-era only — "Pre X" labels are
             // legacy history): label + stat lines, so the planner and
@@ -4002,18 +4277,33 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     None => json::Value::Null,
                 },
             );
-            m.insert("req_level".into(), brow.zip(bh_req).map(|(b, i)| json::Value::Integer(b.get(i).and_then(|s| s.parse().ok()).unwrap_or(0))).unwrap_or(json::Value::Null));
-            m.insert("tags".into(), json_arr(&brow.zip(bh_tags).map(|(b, i)| b.get(i).cloned().unwrap_or_default()).unwrap_or_default()));
-            if let Some(class) = brow
-                .zip(bh_class)
-                .and_then(|(b, i)| b.get(i))
-            {
+            m.insert(
+                "req_level".into(),
+                brow.zip(bh_req)
+                    .map(|(b, i)| {
+                        json::Value::Integer(b.get(i).and_then(|s| s.parse().ok()).unwrap_or(0))
+                    })
+                    .unwrap_or(json::Value::Null),
+            );
+            m.insert(
+                "tags".into(),
+                json_arr(
+                    &brow
+                        .zip(bh_tags)
+                        .map(|(b, i)| b.get(i).cloned().unwrap_or_default())
+                        .unwrap_or_default(),
+                ),
+            );
+            if let Some(class) = brow.zip(bh_class).and_then(|(b, i)| b.get(i)) {
                 let allowed = allowed_equipment_slots(class, game);
                 if !allowed.is_empty() {
                     m.insert(
                         "allowed_slots".into(),
                         json::Value::Array(
-                            allowed.into_iter().map(|s| json::Value::Str(s.into())).collect(),
+                            allowed
+                                .into_iter()
+                                .map(|s| json::Value::Str(s.into()))
+                                .collect(),
                         ),
                     );
                 }
@@ -4021,10 +4311,18 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             items.push(json::Value::Object(m));
         }
         items.sort_by(|a, b| {
-            let k = |v: &json::Value| (
-                v.get("slot").and_then(|x| x.as_str()).unwrap_or_default().to_string(),
-                v.get("name").and_then(|x| x.as_str()).unwrap_or_default().to_string(),
-            );
+            let k = |v: &json::Value| {
+                (
+                    v.get("slot")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    v.get("name")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                )
+            };
             k(a).cmp(&k(b))
         });
         uniq_count = items.len();
@@ -4035,15 +4333,23 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         item.insert("source".into(), json::Value::Str("hybrid".into()));
         item.insert(
             "sources".into(),
-            json::Value::Array([
-                "ggg: names, bases, mods, descriptions, art",
-                "pob: pinned unique mod recipes",
-            ].into_iter().map(|s| json::Value::Str(s.into())).collect()),
+            json::Value::Array(
+                [
+                    "ggg: names, bases, mods, descriptions, art",
+                    "pob: pinned unique mod recipes",
+                ]
+                .into_iter()
+                .map(|s| json::Value::Str(s.into()))
+                .collect(),
+            ),
         );
         item.insert("count".into(), json::Value::Integer(items.len() as i64));
         item.insert("uniques".into(), json::Value::Array(items));
-        std::fs::write(assets.join("item_catalogue.json"), json::emit_pretty(&json::Value::Object(item)) + "\n")
-            .map_err(|e| e.to_string())?;
+        std::fs::write(
+            assets.join("item_catalogue.json"),
+            json::emit_pretty(&json::Value::Object(item)) + "\n",
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     // Shared stat-description source for base implicits + affix-family
@@ -4073,8 +4379,7 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // its slot, attribute requirements and defence numbers so a plan can
     // say {base:"Expert Hexer's Robe", rarity:"rare", mods:[...]}.
     let mut base_count = 0usize;
-    let mut equipment_tags: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
+    let mut equipment_tags: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     // Grants sidecar (items/grants.tsv, `shape grants`): base name →
     // (spirit granted, item-granted skill names). Absent = fields
     // simply don't appear (older datasets).
@@ -4082,9 +4387,12 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         std::collections::HashMap::new();
     if let Ok((gh, grows)) = read_tsv(&parsed.join("items/grants.tsv")) {
         let gcol = |n: &str| idx(&gh, n);
-        if let (Some(g_id), Some(g_name), Some(g_sp), Some(g_gr)) =
-            (gcol("base_id"), gcol("name"), gcol("spirit"), gcol("grants"))
-        {
+        if let (Some(g_id), Some(g_name), Some(g_sp), Some(g_gr)) = (
+            gcol("base_id"),
+            gcol("name"),
+            gcol("spirit"),
+            gcol("grants"),
+        ) {
             for r in &grows {
                 // Unique-only base variants (…SceptreUnique1) share the
                 // display name of the normal base but grant a skill a
@@ -4096,7 +4404,12 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 let sp: i64 = r.get(g_sp).and_then(|s| s.parse().ok()).unwrap_or(0);
                 let gr: Vec<String> = r
                     .get(g_gr)
-                    .map(|s| s.split('|').filter(|x| !x.is_empty()).map(str::to_string).collect())
+                    .map(|s| {
+                        s.split('|')
+                            .filter(|x| !x.is_empty())
+                            .map(str::to_string)
+                            .collect()
+                    })
                     .unwrap_or_default();
                 if !name.is_empty() {
                     // Same display name can cover several base variants
@@ -4122,20 +4435,26 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 i.and_then(|i| r.get(i)).cloned().unwrap_or_default()
             };
             let num = |r: &[String], i: Option<usize>| -> i64 {
-                i.and_then(|i| r.get(i)).and_then(|s| s.parse().ok()).unwrap_or(0)
+                i.and_then(|i| r.get(i))
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0)
             };
             let (b_str, b_dex, b_int) = (bcol("req_str"), bcol("req_dex"), bcol("req_int"));
             let (b_ar, b_ev, b_es) = (bcol("armour"), bcol("evasion"), bcol("energy_shield"));
             let (b_ward, b_block) = (bcol("ward"), bcol("block"));
-            let range_cols = |name: &str| (bcol(&format!("{name}_min")), bcol(&format!("{name}_max")));
+            let range_cols =
+                |name: &str| (bcol(&format!("{name}_min")), bcol(&format!("{name}_max")));
             let (b_ar_min, b_ar_max) = range_cols("armour");
             let (b_ev_min, b_ev_max) = range_cols("evasion");
             let (b_es_min, b_es_max) = range_cols("energy_shield");
             let (b_ward_min, b_ward_max) = range_cols("ward");
             let (b_dmin, b_dmax) = (bcol("damage_min"), bcol("damage_max"));
             let (b_crit, b_speed) = (bcol("crit_chance"), bcol("attack_speed"));
-            let (b_flife, b_fmana, b_frecovery) =
-                (bcol("flask_life"), bcol("flask_mana"), bcol("flask_recovery"));
+            let (b_flife, b_fmana, b_frecovery) = (
+                bcol("flask_life"),
+                bcol("flask_mana"),
+                bcol("flask_recovery"),
+            );
             let b_icon = bcol("icon_dds");
             let b_tags2 = bcol("tags");
             let b_implicits = bcol("implicit_mods");
@@ -4143,7 +4462,9 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             for r in &brows {
                 let name = g2(r, Some(b_name));
                 let class = g2(r, Some(b_class));
-                let Some(slot) = equipment_slot(&class, game) else { continue };
+                let Some(slot) = equipment_slot(&class, game) else {
+                    continue;
+                };
                 if name.trim().is_empty() || name.contains("{0}") || name.starts_with("[DNT") {
                     continue;
                 }
@@ -4197,9 +4518,16 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                         .iter()
                         .map(|tag| (*tag).to_string()),
                 );
-                for (k, i2) in [("str", b_str), ("dex", b_dex), ("int", b_int),
-                                ("ar", b_ar), ("ev", b_ev), ("es", b_es),
-                                ("ward", b_ward), ("block", b_block)] {
+                for (k, i2) in [
+                    ("str", b_str),
+                    ("dex", b_dex),
+                    ("int", b_int),
+                    ("ar", b_ar),
+                    ("ev", b_ev),
+                    ("es", b_es),
+                    ("ward", b_ward),
+                    ("block", b_block),
+                ] {
                     let v = num(r, i2);
                     if v > 0 {
                         m.insert(k.into(), json::Value::Integer(v));
@@ -4227,23 +4555,27 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 // stores basis points).
                 let (dmin, dmax) = (num(r, b_dmin), num(r, b_dmax));
                 if dmax > 0 {
-                    m.insert("dmg".into(), json::Value::Array(vec![
-                        json::Value::Integer(dmin), json::Value::Integer(dmax),
-                    ]));
+                    m.insert(
+                        "dmg".into(),
+                        json::Value::Array(vec![
+                            json::Value::Integer(dmin),
+                            json::Value::Integer(dmax),
+                        ]),
+                    );
                     let speed = num(r, b_speed);
                     if speed > 0 {
-                        m.insert("aps".into(), json::Value::Float((1000.0 / speed as f64 * 100.0).round() / 100.0));
+                        m.insert(
+                            "aps".into(),
+                            json::Value::Float((1000.0 / speed as f64 * 100.0).round() / 100.0),
+                        );
                     }
                     let crit = num(r, b_crit);
                     if crit > 0 {
                         m.insert("crit".into(), json::Value::Float(crit as f64 / 100.0));
                     }
                 }
-                let (life, mana, recovery) = (
-                    num(r, b_flife),
-                    num(r, b_fmana),
-                    num(r, b_frecovery),
-                );
+                let (life, mana, recovery) =
+                    (num(r, b_flife), num(r, b_fmana), num(r, b_frecovery));
                 if life > 0 {
                     m.insert("life_recovery".into(), json::Value::Integer(life));
                 }
@@ -4284,18 +4616,26 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                         m.insert("spirit".into(), json::Value::Integer(*sp));
                     }
                     if !gr.is_empty() {
-                        m.insert("grants".into(), json::Value::Array(
-                            gr.iter().map(|s| json::Value::Str(s.clone())).collect(),
-                        ));
+                        m.insert(
+                            "grants".into(),
+                            json::Value::Array(
+                                gr.iter().map(|s| json::Value::Str(s.clone())).collect(),
+                            ),
+                        );
                     }
                 }
                 arr.push(json::Value::Object(m));
             }
             arr.sort_by(|a, b| {
-                let k = |v: &json::Value| (
-                    v.get("slot").and_then(|x| x.as_str()).unwrap_or_default().to_string(),
-                    v.get("lvl").and_then(|x| x.as_i64()).unwrap_or(0),
-                );
+                let k = |v: &json::Value| {
+                    (
+                        v.get("slot")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        v.get("lvl").and_then(|x| x.as_i64()).unwrap_or(0),
+                    )
+                };
                 k(a).cmp(&k(b))
             });
             base_count = arr.len();
@@ -4303,7 +4643,14 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             let mut root = json::Map::new();
             root.insert(
                 "format".into(),
-                json::Value::Str(if is_poe1 { "poe1-agent-bases" } else { "poe2-agent-bases" }.into()),
+                json::Value::Str(
+                    if is_poe1 {
+                        "poe1-agent-bases"
+                    } else {
+                        "poe2-agent-bases"
+                    }
+                    .into(),
+                ),
             );
             root.insert("version".into(), json::Value::Integer(1));
             root.insert("game".into(), json::Value::Str(profile.id.into()));
@@ -4329,13 +4676,19 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     if let Ok((mh, mrows)) = read_tsv(&parsed.join("items/mods.tsv")) {
         let mcol = |n: &str| idx(&mh, n);
         if let (Some(m_dom), Some(m_gen), Some(m_type), Some(m_stats), Some(m_sw)) = (
-            mcol("domain"), mcol("generation_type"), mcol("mod_type"),
-            mcol("stats"), mcol("spawn_weights"),
+            mcol("domain"),
+            mcol("generation_type"),
+            mcol("mod_type"),
+            mcol("stats"),
+            mcol("spawn_weights"),
         ) {
             let g2 = |r: &[String], i: usize| r.get(i).cloned().unwrap_or_default();
             let m_lvl = mcol("required_level");
             if item_sd.is_none() {
-                ui::warn(ctx.style, "mods.json: stat_descriptions.csd unavailable — no display text");
+                ui::warn(
+                    ctx.style,
+                    "mods.json: stat_descriptions.csd unavailable — no display text",
+                );
             }
             // mod family → kind, stat ids, slot tags, plus a rendering
             // recipe: the highest-level row's stat ORDER with the range
@@ -4355,11 +4708,14 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 rep: Vec<(String, i64, i64)>,
                 span: std::collections::BTreeMap<String, (i64, i64)>,
             }
-            let mut fam: std::collections::BTreeMap<String, Fam> = std::collections::BTreeMap::new();
+            let mut fam: std::collections::BTreeMap<String, Fam> =
+                std::collections::BTreeMap::new();
             for r in &mrows {
                 let dom = g2(r, m_dom);
-                let supported_domain = matches!(dom.as_str(), "item" | "flask" | "tincture")
-                    || (!is_poe1 && dom == "jewel");
+                let supported_domain = matches!(
+                    dom.as_str(),
+                    "item" | "flask" | "tincture" | "jewel" | "cluster_jewel"
+                );
                 if !supported_domain {
                     continue;
                 }
@@ -4367,7 +4723,8 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 if gentype != "prefix" && gentype != "suffix" {
                     continue;
                 }
-                let mut slots: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+                let mut slots: std::collections::BTreeSet<String> =
+                    std::collections::BTreeSet::new();
                 for sw in g2(r, m_sw).split('|') {
                     let mut it = sw.split(':');
                     let (tag, w) = (it.next().unwrap_or(""), it.next().unwrap_or("0"));
@@ -4376,8 +4733,16 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     }
                     // Jewel mods gated only by `default` roll on every
                     // jewel — give them the generic tag.
-                    if !is_poe1 && dom == "jewel" && tag == "default" && w != "0" {
+                    if dom == "jewel" && tag == "default" && w != "0" {
                         slots.insert("jewel".to_string());
+                    }
+                    // Cluster-jewel affixes are gated by the selected
+                    // expansion skill's `affliction_*` tag, not merely
+                    // by the base item. Preserve those first-party tags
+                    // so the editor can apply the exact same gate after
+                    // the small-passive enchant is chosen.
+                    if dom == "cluster_jewel" && tag.starts_with("affliction_") && w != "0" {
+                        slots.insert(tag.to_string());
                     }
                 }
                 if slots.is_empty() {
@@ -4442,8 +4807,14 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                         m.insert("text".into(), json::Value::Str(lines.join(" · ")));
                     }
                 }
-                m.insert("stats".into(), json::Value::Array(f.stats.into_iter().map(json::Value::Str).collect()));
-                m.insert("slots".into(), json::Value::Array(f.slots.into_iter().map(json::Value::Str).collect()));
+                m.insert(
+                    "stats".into(),
+                    json::Value::Array(f.stats.into_iter().map(json::Value::Str).collect()),
+                );
+                m.insert(
+                    "slots".into(),
+                    json::Value::Array(f.slots.into_iter().map(json::Value::Str).collect()),
+                );
                 // Ordered gate lists, one per distinct spawn-weight
                 // string: [[tag, weight], ...]. A family can roll on a
                 // base iff ANY gate list's FIRST tag matching the
@@ -4477,7 +4848,14 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             let mut root = json::Map::new();
             root.insert(
                 "format".into(),
-                json::Value::Str(if is_poe1 { "poe1-agent-mods" } else { "poe2-agent-mods" }.into()),
+                json::Value::Str(
+                    if is_poe1 {
+                        "poe1-agent-mods"
+                    } else {
+                        "poe2-agent-mods"
+                    }
+                    .into(),
+                ),
             );
             root.insert("version".into(), json::Value::Integer(1));
             root.insert("game".into(), json::Value::Str(profile.id.into()));
@@ -4512,10 +4890,14 @@ pub fn render(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     let profile = GameProfile::from_id(requested_game.as_deref().unwrap_or("poe2"))?;
     if profile.id == "poe1" && tree_dir.is_none() {
-        return Err("a PoE1 render requires its explicit --tree-dir data/parsed/poe1_<patch>/tree".into());
+        return Err(
+            "a PoE1 render requires its explicit --tree-dir data/parsed/poe1_<patch>/tree".into(),
+        );
     }
     if profile.id == "poe1" && tree_dir.as_deref().is_some_and(|p| !p.contains("poe1_")) {
-        return Err("--game poe1 requires a poe1_* tree directory; refusing cross-game input".into());
+        return Err(
+            "--game poe1 requires a poe1_* tree directory; refusing cross-game input".into(),
+        );
     }
     if profile.id == "poe2" && tree_dir.as_deref().is_some_and(|p| p.contains("poe1_")) {
         return Err("--game poe2 cannot render a poe1_* tree directory".into());
@@ -4659,26 +5041,94 @@ pub fn fixture(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
     // Icons (discs) + frames (rings) — dim "off", bright "on".
     write("fixture_icon_small.png", 48, &fx_disc(48, [90, 140, 220]))?;
     write("fixture_icon_notable.png", 56, &fx_disc(56, [220, 180, 80]))?;
-    write("fixture_icon_keystone.png", 80, &fx_disc(80, [170, 110, 220]))?;
+    write(
+        "fixture_icon_keystone.png",
+        80,
+        &fx_disc(80, [170, 110, 220]),
+    )?;
     write("fixture_icon_asc_a.png", 48, &fx_disc(48, [110, 210, 140]))?;
     write("fixture_icon_asc_b.png", 48, &fx_disc(48, [220, 110, 110]))?;
-    write("fixture_frame_small_off.png", 64, &fx_ring(64, [110, 110, 120], 4.0))?;
-    write("fixture_frame_small_on.png", 64, &fx_ring(64, [230, 230, 200], 4.0))?;
-    write("fixture_frame_notable_off.png", 96, &fx_ring(96, [130, 115, 80], 6.0))?;
-    write("fixture_frame_notable_on.png", 96, &fx_ring(96, [255, 215, 130], 6.0))?;
-    write("fixture_frame_keystone_off.png", 128, &fx_ring(128, [120, 95, 140], 8.0))?;
-    write("fixture_frame_keystone_on.png", 128, &fx_ring(128, [220, 170, 255], 8.0))?;
-    write("fixture_frame_asc_off.png", 96, &fx_ring(96, [80, 130, 130], 6.0))?;
-    write("fixture_frame_asc_on.png", 96, &fx_ring(96, [140, 240, 240], 6.0))?;
-    write("fixture_frame_class_start.png", 48, &fx_ring(48, [200, 200, 210], 3.0))?;
-    write("fixture_asc_middle.png", 100, &fx_ring(100, [180, 220, 220], 10.0))?;
-    write("fixture_mastery_glow.png", 256, &fx_glow(256, [120, 160, 255]))?;
-    write("fixture_face_alpha.png", 128, &fx_square(128, [40, 70, 110], [140, 180, 230]))?;
-    write("fixture_face_beta.png", 128, &fx_square(128, [110, 50, 50], [230, 150, 150]))?;
-    write("fixture_panel_alpha.png", 256, &fx_square(256, [24, 40, 60], [90, 130, 170]))?;
-    write("fixture_panel_beta.png", 256, &fx_square(256, [60, 28, 28], [170, 100, 100]))?;
+    write(
+        "fixture_frame_small_off.png",
+        64,
+        &fx_ring(64, [110, 110, 120], 4.0),
+    )?;
+    write(
+        "fixture_frame_small_on.png",
+        64,
+        &fx_ring(64, [230, 230, 200], 4.0),
+    )?;
+    write(
+        "fixture_frame_notable_off.png",
+        96,
+        &fx_ring(96, [130, 115, 80], 6.0),
+    )?;
+    write(
+        "fixture_frame_notable_on.png",
+        96,
+        &fx_ring(96, [255, 215, 130], 6.0),
+    )?;
+    write(
+        "fixture_frame_keystone_off.png",
+        128,
+        &fx_ring(128, [120, 95, 140], 8.0),
+    )?;
+    write(
+        "fixture_frame_keystone_on.png",
+        128,
+        &fx_ring(128, [220, 170, 255], 8.0),
+    )?;
+    write(
+        "fixture_frame_asc_off.png",
+        96,
+        &fx_ring(96, [80, 130, 130], 6.0),
+    )?;
+    write(
+        "fixture_frame_asc_on.png",
+        96,
+        &fx_ring(96, [140, 240, 240], 6.0),
+    )?;
+    write(
+        "fixture_frame_class_start.png",
+        48,
+        &fx_ring(48, [200, 200, 210], 3.0),
+    )?;
+    write(
+        "fixture_asc_middle.png",
+        100,
+        &fx_ring(100, [180, 220, 220], 10.0),
+    )?;
+    write(
+        "fixture_mastery_glow.png",
+        256,
+        &fx_glow(256, [120, 160, 255]),
+    )?;
+    write(
+        "fixture_face_alpha.png",
+        128,
+        &fx_square(128, [40, 70, 110], [140, 180, 230]),
+    )?;
+    write(
+        "fixture_face_beta.png",
+        128,
+        &fx_square(128, [110, 50, 50], [230, 150, 150]),
+    )?;
+    write(
+        "fixture_panel_alpha.png",
+        256,
+        &fx_square(256, [24, 40, 60], [90, 130, 170]),
+    )?;
+    write(
+        "fixture_panel_beta.png",
+        256,
+        &fx_square(256, [60, 28, 28], [170, 100, 100]),
+    )?;
     write("fixture_bgtree.png", 256, &fx_glow(256, [40, 44, 56]))?;
-    write("fixture_bg_tile.png", 64, &fx_square(64, [14, 15, 19], [20, 22, 28]))?;
+    write(
+        "fixture_bg_tile.png",
+        64,
+        &fx_square(64, [14, 15, 19], [20, 22, 28]),
+    )?;
 
     // Orbit connector sprites: the planner fetches these 90 fixed
     // names directly (image_preload) — same tiny strip per state.
@@ -4706,20 +5156,22 @@ pub fn fixture(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
             for idx in 0..=9u32 {
                 let name = format!("{prefix}_orbit_{state}{idx}.png");
                 let png = data_miner::png::encode_rgba(24, 6, &strip(rgb));
-                std::fs::write(dir.join(&name), png)
-                    .map_err(|e| format!("writing {name}: {e}"))?;
+                std::fs::write(dir.join(&name), png).map_err(|e| format!("writing {name}: {e}"))?;
             }
         }
     }
     println!("fixture sprites → viewer/assets/sprites/ (all procedural, zero game content)");
 
     // Render the committed toy tree, then remind about the bundles.
-    render(ctx, &[
-        "--tree-dir".to_string(),
-        "data/fixture/tree".to_string(),
-        "--title".to_string(),
-        "poe-buildwright fixture tree".to_string(),
-    ])?;
+    render(
+        ctx,
+        &[
+            "--tree-dir".to_string(),
+            "data/fixture/tree".to_string(),
+            "--title".to_string(),
+            "poe-buildwright fixture tree".to_string(),
+        ],
+    )?;
     println!("\nFixture viewer ready:");
     println!("  ./bw js       # build the JS bundles (once per TS edit)");
     println!("  ./bw serve    # http://127.0.0.1:8000/planner.html");
@@ -4870,7 +5322,10 @@ pub fn update_native(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // this warns and the first-party datasets above still stand + hash.
     ui::step_banner(style, "uniques (pob-pinned)");
     if let Err(e) = uniques(ctx, &man_args) {
-        ui::warn(style, &format!("uniques: {e} — skipped (native data intact)"));
+        ui::warn(
+            style,
+            &format!("uniques: {e} — skipped (native data intact)"),
+        );
     }
 
     // Wizard skill/item catalogues — first-party JSON joined from the
@@ -5069,12 +5524,18 @@ mod tests {
     }
 
     #[test]
-    fn poe1_equipment_taxonomy_excludes_jewels_and_handles_dual_wield() {
+    fn equipment_taxonomy_includes_jewels_and_handles_poe1_dual_wield() {
         use data_miner::fetch::Game::{Poe1, Poe2};
-        assert_eq!(allowed_equipment_slots("One Hand Axe", Poe1), vec!["weapon1", "offhand1"]);
-        assert_eq!(allowed_equipment_slots("Two Hand Axe", Poe1), vec!["weapon1"]);
+        assert_eq!(
+            allowed_equipment_slots("One Hand Axe", Poe1),
+            vec!["weapon1", "offhand1"]
+        );
+        assert_eq!(
+            allowed_equipment_slots("Two Hand Axe", Poe1),
+            vec!["weapon1"]
+        );
         assert_eq!(allowed_equipment_slots("LifeFlask", Poe1), vec!["flask1"]);
-        assert!(allowed_equipment_slots("Jewel", Poe1).is_empty());
+        assert_eq!(allowed_equipment_slots("Jewel", Poe1), vec!["jewel"]);
         assert_eq!(allowed_equipment_slots("Jewel", Poe2), vec!["jewel"]);
     }
 
@@ -5113,7 +5574,11 @@ mod tests {
         }
         let full = full_flask_icon(
             "Art/2DItems/Flasks/Test.dds",
-            data_miner::dds::Image { width: 7, height: 6, rgba },
+            data_miner::dds::Image {
+                width: 7,
+                height: 6,
+                rgba,
+            },
         );
         assert_eq!((full.width, full.height), (3, 6));
         assert_eq!(full.rgba[3], 255);
@@ -5188,15 +5653,27 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // 1. Obtain the JSON: --json <file> or fetch the live page.
     let (raw_html, label) = if json_arg.is_some() {
         let Some(label) = label_arg else {
-            return Err("--json needs an explicit --label (an offline file carries no version marker)".into());
+            return Err(
+                "--json needs an explicit --label (an offline file carries no version marker)"
+                    .into(),
+            );
         };
-        ui::note(ctx.style, &format!("offline --json: label \"{label}\" is UNVERIFIED"));
+        ui::note(
+            ctx.style,
+            &format!("offline --json: label \"{label}\" is UNVERIFIED"),
+        );
         (None, label)
     } else {
         let page_path = ctx.root.join("data/parsed/.poe1_page.tmp.html");
         let status = std::process::Command::new("curl")
-            .args(["-fsSL", "--retry", "3", "-A",
-                   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "-o"])
+            .args([
+                "-fsSL",
+                "--retry",
+                "3",
+                "-A",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+                "-o",
+            ])
             .arg(&page_path)
             .arg("https://www.pathofexile.com/passive-skill-tree")
             .status()
@@ -5287,22 +5764,36 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         .iter()
         .filter_map(json::Value::as_f64)
         .collect();
-    let groups = tree.get("groups").and_then(json::Value::as_object).ok_or("no groups")?;
-    let classes = tree.get("classes").and_then(json::Value::as_array).ok_or("no classes")?;
+    let groups = tree
+        .get("groups")
+        .and_then(json::Value::as_object)
+        .ok_or("no groups")?;
+    let classes = tree
+        .get("classes")
+        .and_then(json::Value::as_array)
+        .ok_or("no classes")?;
     let class_names: Vec<String> = classes.iter().map(|c| s(c.get("name"))).collect();
 
     // 3. Nodes → nodes.tsv (same 17 columns the PoE2 shaper emits).
-    let nodes_obj = tree.get("nodes").and_then(json::Value::as_object).ok_or("no nodes")?;
+    let nodes_obj = tree
+        .get("nodes")
+        .and_then(json::Value::as_object)
+        .ok_or("no nodes")?;
     let mut nodes_out = String::from(data_miner::tree_tsv::NODES_HEADER);
     let mut edges: std::collections::BTreeSet<(u64, u64)> = std::collections::BTreeSet::new();
     let mut n_nodes = 0usize;
     for (nid, n) in nodes_obj.iter() {
         let Ok(id) = nid.parse::<u64>() else { continue };
-        let Some(gid) = n.get("group").and_then(json::Value::as_i64) else { continue };
+        let Some(gid) = n.get("group").and_then(json::Value::as_i64) else {
+            continue;
+        };
         let g = groups.get(&gid.to_string());
         let (gx, gy) = (f(g.and_then(|g| g.get("x"))), f(g.and_then(|g| g.get("y"))));
         let orbit = n.get("orbit").and_then(json::Value::as_i64).unwrap_or(0) as usize;
-        let oidx = n.get("orbitIndex").and_then(json::Value::as_i64).unwrap_or(0) as f64;
+        let oidx = n
+            .get("orbitIndex")
+            .and_then(json::Value::as_i64)
+            .unwrap_or(0) as f64;
         let r = radii.get(orbit).copied().unwrap_or(0.0);
         let slots = per_orbit.get(orbit).copied().unwrap_or(1.0).max(1.0);
         // GGG's non-uniform 16/40-slot orbit angles — shared rule
@@ -5333,7 +5824,12 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         let stats: Vec<String> = n
             .get("stats")
             .and_then(json::Value::as_array)
-            .map(|a| a.iter().filter_map(json::Value::as_str).map(|t| t.replace('\n', "; ")).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(json::Value::as_str)
+                    .map(|t| t.replace('\n', "; "))
+                    .collect()
+            })
             .unwrap_or_default();
         let row = [
             id.to_string(),
@@ -5386,16 +5882,70 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     std::fs::write(tree_dir.join("edges.tsv"), &edges_out).map_err(|e| e.to_string())?;
 
-    // 5. meta.tsv: bounds, orbit geometry, groups, classes + asc map.
+    // 5. jewels.tsv: stable PoE1 radius geometry plus the official
+    // expansion-jewel topology embedded in this exact tree version.
+    // Radius labels/units are the post-3.16 PassiveJewelRadii rules;
+    // socket eligibility itself comes from GGG's `expansionJewel`
+    // records, never from coordinates or display names.
+    let mut jewels = String::from("kind\tname\ta\tb\tc\n");
+    for (name, outer, inner, radius) in [
+        ("Small", 1320, 960, 960),
+        ("Medium", 1680, 1320, 1440),
+        ("Large", 2040, 1680, 1800),
+        ("VeryLarge", 2400, 2040, 2400),
+        ("Massive", 2880, 2400, 2880),
+    ] {
+        jewels.push_str(&format!("ring\t{name}\t{outer}\t{inner}\t{radius}\n"));
+    }
+    let mut cluster_sockets: Vec<(u64, i64, String, bool)> = Vec::new();
+    for (nid, n) in nodes_obj.iter() {
+        let Some(expansion) = n.get("expansionJewel") else {
+            continue;
+        };
+        let Ok(id) = nid.parse::<u64>() else { continue };
+        let size = expansion
+            .get("size")
+            .and_then(json::Value::as_i64)
+            .unwrap_or(-1);
+        if size < 0 {
+            continue;
+        }
+        let parent = expansion
+            .get("parent")
+            .and_then(json::Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let outer = size == 2 && parent.is_empty();
+        cluster_sockets.push((id, size, parent, outer));
+    }
+    cluster_sockets.sort_by_key(|(id, _, _, _)| *id);
+    for (id, size, parent, outer) in cluster_sockets {
+        jewels.push_str(&format!(
+            "socket\t{id}\t{size}\t{parent}\t{}\n",
+            i32::from(outer),
+        ));
+    }
+    std::fs::write(tree_dir.join("jewels.tsv"), jewels).map_err(|e| e.to_string())?;
+
+    // 6. meta.tsv: bounds, orbit geometry, groups, classes + asc map.
     let mut meta = String::new();
     for k in ["min_x", "max_x", "min_y", "max_y"] {
         meta.push_str(&format!("{k}\t{}\n", f(tree.get(k))));
     }
-    let join_f = |v: &[f64]| v.iter().map(|x| format!("{x}")).collect::<Vec<_>>().join("|");
+    let join_f = |v: &[f64]| {
+        v.iter()
+            .map(|x| format!("{x}"))
+            .collect::<Vec<_>>()
+            .join("|")
+    };
     meta.push_str(&format!("orbit_radii\t{}\n", join_f(&radii)));
     meta.push_str(&format!("skills_per_orbit\t{}\n", join_f(&per_orbit)));
     for (gid, g) in groups.iter() {
-        meta.push_str(&format!("group\t{gid}\t{}\t{}\n", f(g.get("x")), f(g.get("y"))));
+        meta.push_str(&format!(
+            "group\t{gid}\t{}\t{}\n",
+            f(g.get("x")),
+            f(g.get("y"))
+        ));
     }
     for c in classes {
         let name = s(c.get("name"));
@@ -5405,7 +5955,11 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             .map(|a| a.iter().map(|x| s(x.get("name"))).collect())
             .unwrap_or_default();
         meta.push_str(&format!("class\t{name}\t{}\n", ascs.join("|")));
-        for a in c.get("ascendancies").and_then(json::Value::as_array).unwrap_or(&[]) {
+        for a in c
+            .get("ascendancies")
+            .and_then(json::Value::as_array)
+            .unwrap_or(&[])
+        {
             meta.push_str(&format!(
                 "asc_internal\t{}\t{}\t{name}\n",
                 s(a.get("name")),
@@ -5429,7 +5983,9 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             let mut opts: Vec<u64> = Vec::new();
             for key in ["out", "in"] {
                 for e in n.get(key).and_then(json::Value::as_array).unwrap_or(&[]) {
-                    let Some(oid) = e.as_str().and_then(|t| t.parse::<u64>().ok()) else { continue };
+                    let Some(oid) = e.as_str().and_then(|t| t.parse::<u64>().ok()) else {
+                        continue;
+                    };
                     if nodes_obj
                         .get(&oid.to_string())
                         .is_some_and(|o| mc_flag(o.get("isMultipleChoiceOption")))
@@ -5466,13 +6022,16 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             levels
                 .keys()
                 .max_by(|a, b| {
-                    a.parse::<f64>().unwrap_or(0.0).total_cmp(&b.parse::<f64>().unwrap_or(0.0))
+                    a.parse::<f64>()
+                        .unwrap_or(0.0)
+                        .total_cmp(&b.parse::<f64>().unwrap_or(0.0))
                 })
                 .map(|z| (levels.get(z), z.parse::<f64>().unwrap_or(1.0)))
         })
         .map(|(z, zoom)| {
             (
-                z.and_then(|z| z.get("coords")).and_then(json::Value::as_object),
+                z.and_then(|z| z.get("coords"))
+                    .and_then(json::Value::as_object),
                 if zoom > 0.0 { zoom } else { 1.0 },
             )
         })
@@ -5487,7 +6046,11 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         }
     }
     for c in classes {
-        for a in c.get("ascendancies").and_then(json::Value::as_array).unwrap_or(&[]) {
+        for a in c
+            .get("ascendancies")
+            .and_then(json::Value::as_array)
+            .unwrap_or(&[])
+        {
             let aname = s(a.get("name"));
             let mut image = format!("Classes{aname}");
             let (Some(gid), Some(coords)) = (asc_start_group.get(&aname), asc_sheet) else {
@@ -5547,10 +6110,16 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             "poe1 tree ({label}): {n_nodes} nodes, {} edges, {} classes → {}",
             edges.len(),
             class_names.len(),
-            tree_dir.strip_prefix(&ctx.root).unwrap_or(&tree_dir).display(),
+            tree_dir
+                .strip_prefix(&ctx.root)
+                .unwrap_or(&tree_dir)
+                .display(),
         ),
     );
-    ui::note(ctx.style, "next: buildwright poe1-sprites (atlas download + slice)");
+    ui::note(
+        ctx.style,
+        "next: buildwright poe1-sprites (atlas download + slice)",
+    );
     Ok(())
 }
 
@@ -5565,7 +6134,10 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let raw = std::fs::read_to_string(out_dir.join("tree.json"))
         .map_err(|e| format!("tree.json (run poe1-tree first): {e}"))?;
     let tree = json::parse(&raw).map_err(|e| e.to_string())?;
-    let sprites = tree.get("sprites").and_then(json::Value::as_object).ok_or("no sprites")?;
+    let sprites = tree
+        .get("sprites")
+        .and_then(json::Value::as_object)
+        .ok_or("no sprites")?;
     let assets = ctx.root.join("viewer/assets/sprites");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     let cache = cache_root().join("poe1_atlases");
@@ -5575,12 +6147,24 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // sheet (webp) carries the Classes<Name> panel backdrops referenced
     // by portrait rows; league-bloodline sheets come later.
     const SHEETS: &[&str] = &[
-        "normalActive", "notableActive", "keystoneActive", "mastery",
-        "masteryConnected", "masteryInactive", "frame", "jewel", "line",
-        "groupBackground", "ascendancy", "startNode",
+        "normalActive",
+        "notableActive",
+        "keystoneActive",
+        "mastery",
+        "masteryConnected",
+        "masteryInactive",
+        "frame",
+        "jewel",
+        "jewelRadius",
+        "line",
+        "groupBackground",
+        "ascendancy",
+        "startNode",
     ];
     let sanitize = |n: &str| -> String {
-        n.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect()
+        n.chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect()
     };
     // Download + normalize each unique atlas once, decode once.
     // (width, height, rgba)
@@ -5590,13 +6174,20 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let mut count = 0usize;
     for sheet in SHEETS {
         let Some(levels) = sprites.get(*sheet).and_then(json::Value::as_object) else {
-            ui::warn(ctx.style, &format!("sprite sheet {sheet} missing — skipped"));
+            ui::warn(
+                ctx.style,
+                &format!("sprite sheet {sheet} missing — skipped"),
+            );
             continue;
         };
         // Highest zoom level = sharpest atlas.
         let Some(zkey) = levels.keys().max_by(|a, b| {
-            a.parse::<f64>().unwrap_or(0.0).total_cmp(&b.parse::<f64>().unwrap_or(0.0))
-        }) else { continue };
+            a.parse::<f64>()
+                .unwrap_or(0.0)
+                .total_cmp(&b.parse::<f64>().unwrap_or(0.0))
+        }) else {
+            continue;
+        };
         // GGG's renderer draws every sheet image at world size =
         // sheet px / sheet zoom (skilltree.js drawTile: offsetZoom =
         // zoom/curImgZoom; drawImage dw = img.width*offsetZoom). We
@@ -5606,11 +6197,21 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         let sheet_zoom: f64 = zkey.parse().unwrap_or(1.0);
         let sheet_zoom = if sheet_zoom > 0.0 { sheet_zoom } else { 1.0 };
         let z = levels.get(zkey).unwrap_or(&json::Value::Null);
-        let url = z.get("filename").and_then(json::Value::as_str).unwrap_or("");
+        let url = z
+            .get("filename")
+            .and_then(json::Value::as_str)
+            .unwrap_or("");
         if url.is_empty() {
             continue;
         }
-        let fname = url.split('/').next_back().unwrap_or("atlas").split('?').next().unwrap_or("atlas").to_string();
+        let fname = url
+            .split('/')
+            .next_back()
+            .unwrap_or("atlas")
+            .split('?')
+            .next()
+            .unwrap_or("atlas")
+            .to_string();
         if !atlases.contains_key(&fname) {
             let local = cache.join(&fname);
             if !local.exists() {
@@ -5652,7 +6253,9 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         }
         let (aw, ah, apx) = atlases.get(&fname).cloned().ok_or("atlas missing")?;
         let (aw, ah) = (aw as usize, ah as usize);
-        let Some(coords) = z.get("coords").and_then(json::Value::as_object) else { continue };
+        let Some(coords) = z.get("coords").and_then(json::Value::as_object) else {
+            continue;
+        };
         for (key, c) in coords.iter() {
             let (x, y, w, h) = (
                 c.get("x").and_then(json::Value::as_i64).unwrap_or(0) as usize,
@@ -5683,7 +6286,10 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         }
     }
     std::fs::write(out_dir.join("tree/sprites.tsv"), &out).map_err(|e| e.to_string())?;
-    ui::ok(ctx.style, &format!("poe1 sprites: {count} sliced → viewer/assets/sprites (poe1_*)"));
+    ui::ok(
+        ctx.style,
+        &format!("poe1 sprites: {count} sliced → viewer/assets/sprites (poe1_*)"),
+    );
     Ok(())
 }
 
@@ -5699,8 +6305,18 @@ fn composite_gem_strip(w: u32, h: u32, rgba: &[u8]) -> (u32, u32, Vec<u8>) {
         for x in 0..h {
             let gi = (y * w + gem_x0 + x) * 4; // gem (dst)
             let si = (y * w + x) * 4; // symbol (src)
-            let (sr, sg, sb, sa) = (rgba[si] as f32, rgba[si + 1] as f32, rgba[si + 2] as f32, rgba[si + 3] as f32 / 255.0);
-            let (dr, dg, db, da) = (rgba[gi] as f32, rgba[gi + 1] as f32, rgba[gi + 2] as f32, rgba[gi + 3] as f32 / 255.0);
+            let (sr, sg, sb, sa) = (
+                rgba[si] as f32,
+                rgba[si + 1] as f32,
+                rgba[si + 2] as f32,
+                rgba[si + 3] as f32 / 255.0,
+            );
+            let (dr, dg, db, da) = (
+                rgba[gi] as f32,
+                rgba[gi + 1] as f32,
+                rgba[gi + 2] as f32,
+                rgba[gi + 3] as f32 / 255.0,
+            );
             let oa = sa + da * (1.0 - sa);
             let o = (y * h + x) * 4;
             if oa > 0.0 {
@@ -5758,7 +6374,8 @@ pub fn poe1_gem_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     ui::note(ctx.style, &format!("{} distinct gem icons", ddses.len()));
 
-    let client = CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
+    let client =
+        CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
     let index = load_index(&client)?;
     let out_dir = ctx.root.join("viewer/assets/poe1-agent/gem_icons");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
@@ -5800,16 +6417,23 @@ pub fn poe1_gem_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     ui::ok(
         ctx.style,
-        &format!("poe1 gem icons: {ok} extracted{} → /assets/poe1-agent/gem_icons",
-            if missing > 0 { format!(", {missing} missing") } else { String::new() }),
+        &format!(
+            "poe1 gem icons: {ok} extracted{} → /assets/poe1-agent/gem_icons",
+            if missing > 0 {
+                format!(", {missing} missing")
+            } else {
+                String::new()
+            }
+        ),
     );
     Ok(())
 }
 
 /// Extract PoE1 equipment + unique inventory art for the shared gear
 /// overlay. Base icons are limited by the same equipment taxonomy used
-/// by catalogues (so jewels and thousands of currencies/maps never enter
-/// the set); unique art is already de-duplicated by shape_unique_art.
+/// by catalogues (so jewels are included while currencies/maps never
+/// enter the set); unique art is already de-duplicated by
+/// shape_unique_art.
 pub fn poe1_item_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let patch = resolve_patch(ctx, args)?;
     if !patch.starts_with("poe1_") {
@@ -5817,11 +6441,21 @@ pub fn poe1_item_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     let items = ctx.root.join("data/parsed").join(&patch).join("items");
     let bases_path = items.join("bases.tsv");
-    let bases = std::fs::read_to_string(&bases_path)
-        .map_err(|e| format!("read {} (run `shape bases` first): {e}", bases_path.display()))?;
+    let bases = std::fs::read_to_string(&bases_path).map_err(|e| {
+        format!(
+            "read {} (run `shape bases` first): {e}",
+            bases_path.display()
+        )
+    })?;
     let header: Vec<&str> = bases.lines().next().unwrap_or("").split('\t').collect();
-    let class_col = header.iter().position(|h| *h == "item_class").ok_or("bases.tsv missing item_class")?;
-    let icon_col = header.iter().position(|h| *h == "icon_dds").ok_or("bases.tsv missing icon_dds")?;
+    let class_col = header
+        .iter()
+        .position(|h| *h == "item_class")
+        .ok_or("bases.tsv missing item_class")?;
+    let icon_col = header
+        .iter()
+        .position(|h| *h == "icon_dds")
+        .ok_or("bases.tsv missing icon_dds")?;
     let mut ddses: BTreeSet<String> = BTreeSet::new();
     for line in bases.lines().skip(1) {
         let cols: Vec<&str> = line.split('\t').collect();
@@ -5832,9 +6466,9 @@ pub fn poe1_item_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         }
     }
     // unique_art is the complete stash-tab art registry and includes
-    // jewels/currency. Intersect it with the already-resolved unique
-    // recipe so this explicitly jewel-free feature never ships their
-    // assets by accident.
+    // currencies/maps. Intersect it with the already-resolved unique
+    // recipe so only equippable catalogue entries (including jewels)
+    // reach the generated art directory.
     let uniques_path = items.join("uniques.tsv");
     let uniques = std::fs::read_to_string(&uniques_path)
         .map_err(|e| format!("read {} (run `uniques` first): {e}", uniques_path.display()))?;
@@ -5867,9 +6501,13 @@ pub fn poe1_item_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             }
         }
     }
-    ui::note(ctx.style, &format!("{} distinct equipment/unique icons", ddses.len()));
+    ui::note(
+        ctx.style,
+        &format!("{} distinct equipment/unique icons", ddses.len()),
+    );
 
-    let client = CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
+    let client =
+        CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
     let index = load_index(&client)?;
     let out_dir = ctx.root.join("viewer/assets/poe1-agent/item_icons");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
@@ -5920,8 +6558,16 @@ pub fn poe1_item_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         ctx.style,
         &format!(
             "poe1 item icons: {ok} extracted{}{} → /assets/poe1-agent/item_icons",
-            if missing > 0 { format!(", {missing} missing") } else { String::new() },
-            if pruned > 0 { format!(", {pruned} stale pruned") } else { String::new() },
+            if missing > 0 {
+                format!(", {missing} missing")
+            } else {
+                String::new()
+            },
+            if pruned > 0 {
+                format!(", {pruned} stale pruned")
+            } else {
+                String::new()
+            },
         ),
     );
     Ok(())
@@ -5947,14 +6593,19 @@ fn crop_square_downscale(w: u32, h: u32, rgba: &[u8], target: u32) -> (u32, Vec<
             for sy in sy0..sy1.max(sy0 + 1) {
                 for sx in sx0..sx1.max(sx0 + 1) {
                     let i = (sy * w + sx) * 4;
-                    r += rgba[i] as u32; g += rgba[i + 1] as u32;
-                    b += rgba[i + 2] as u32; a += rgba[i + 3] as u32; n += 1;
+                    r += rgba[i] as u32;
+                    g += rgba[i + 1] as u32;
+                    b += rgba[i + 2] as u32;
+                    a += rgba[i + 3] as u32;
+                    n += 1;
                 }
             }
             let n = n.max(1);
             let o = (ty * t + tx) * 4;
-            out[o] = (r / n) as u8; out[o + 1] = (g / n) as u8;
-            out[o + 2] = (b / n) as u8; out[o + 3] = (a / n) as u8;
+            out[o] = (r / n) as u8;
+            out[o + 1] = (g / n) as u8;
+            out[o + 2] = (b / n) as u8;
+            out[o + 3] = (a / n) as u8;
         }
     }
     (t as u32, out)
@@ -5976,23 +6627,37 @@ pub fn poe1_portraits(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // GGG's filenames carry historical typos (juggernaught, beserker)
     // and old ascendancy names (Warden's art is `raider`).
     const MAP: &[(&str, &str)] = &[
-        ("Marauder", "str"), ("Ranger", "dex"), ("Witch", "int"),
-        ("Duelist", "strdex"), ("Templar", "strint"), ("Shadow", "dexint"),
-        ("Juggernaut", "juggernaughtascendency"), ("Berserker", "beserkerascendency"),
-        ("Chieftain", "chieftainascendency"), ("Warden", "raiderascendency"),
-        ("Deadeye", "deadeyeascendency"), ("Pathfinder", "pathfinderascendency"),
-        ("Occultist", "occultistascendency"), ("Elementalist", "elementalistascendency"),
-        ("Necromancer", "necromancerascendency"), ("Slayer", "slayerascendency"),
-        ("Gladiator", "gladiatorascendency"), ("Champion", "championascendency"),
-        ("Inquisitor", "inquisitorascendency"), ("Hierophant", "hierophantascendency"),
-        ("Guardian", "guardianascendency"), ("Assassin", "assassinascendency"),
-        ("Trickster", "tricksterascendency"), ("Saboteur", "saboteurascendency"),
+        ("Marauder", "str"),
+        ("Ranger", "dex"),
+        ("Witch", "int"),
+        ("Duelist", "strdex"),
+        ("Templar", "strint"),
+        ("Shadow", "dexint"),
+        ("Juggernaut", "juggernaughtascendency"),
+        ("Berserker", "beserkerascendency"),
+        ("Chieftain", "chieftainascendency"),
+        ("Warden", "raiderascendency"),
+        ("Deadeye", "deadeyeascendency"),
+        ("Pathfinder", "pathfinderascendency"),
+        ("Occultist", "occultistascendency"),
+        ("Elementalist", "elementalistascendency"),
+        ("Necromancer", "necromancerascendency"),
+        ("Slayer", "slayerascendency"),
+        ("Gladiator", "gladiatorascendency"),
+        ("Champion", "championascendency"),
+        ("Inquisitor", "inquisitorascendency"),
+        ("Hierophant", "hierophantascendency"),
+        ("Guardian", "guardianascendency"),
+        ("Assassin", "assassinascendency"),
+        ("Trickster", "tricksterascendency"),
+        ("Saboteur", "saboteurascendency"),
     ];
     // No illustration → the Scion medallion (its own in-game centre art).
     const SCION_FALLBACK: &[&str] = &["Scion", "Ascendant", "Reliquarian"];
     const TARGET: u32 = 384;
 
-    let client = CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
+    let client =
+        CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
     let index = load_index(&client)?;
     let out_dir = ctx.root.join("viewer/assets/poe1-agent/portraits");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
@@ -6005,7 +6670,10 @@ pub fn poe1_portraits(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     };
     for (name, stem) in MAP {
         let Some(img) = extract(stem) else {
-            ui::warn(ctx.style, &format!("{name}: illustration {stem} missing — skipped"));
+            ui::warn(
+                ctx.style,
+                &format!("{name}: illustration {stem} missing — skipped"),
+            );
             continue;
         };
         let (side, px) = crop_square_downscale(img.width, img.height, &img.rgba, TARGET);
@@ -6025,6 +6693,9 @@ pub fn poe1_portraits(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             ok += 1;
         }
     }
-    ui::ok(ctx.style, &format!("poe1 portraits: {ok} → /assets/poe1-agent/portraits"));
+    ui::ok(
+        ctx.style,
+        &format!("poe1 portraits: {ok} → /assets/poe1-agent/portraits"),
+    );
     Ok(())
 }

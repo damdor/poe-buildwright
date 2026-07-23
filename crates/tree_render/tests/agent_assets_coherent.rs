@@ -12,14 +12,16 @@
 use std::path::PathBuf;
 
 fn repo_file(rel: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(rel)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(rel)
 }
 
 #[test]
 fn poe2_agent_jewels_keep_their_enrichment() {
     let path = repo_file("viewer/assets/agent/jewels.json");
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     assert!(
         text.contains("\"uniques\":{\""),
         "{} lost its gen_agent_meta enrichment (`uniques` section) — \
@@ -28,6 +30,10 @@ fn poe2_agent_jewels_keep_their_enrichment() {
     );
     // And the base sections tree_render owns are present too.
     for key in ["\"sockets\":", "\"rings\":", "\"bases\":"] {
-        assert!(text.contains(key), "{} missing base section {key}", path.display());
+        assert!(
+            text.contains(key),
+            "{} missing base section {key}",
+            path.display()
+        );
     }
 }

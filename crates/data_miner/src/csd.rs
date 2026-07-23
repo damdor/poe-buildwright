@@ -253,9 +253,10 @@ impl StatDescriptions {
             // Align each desc id to a present+unused stat, or None (absent).
             let mut slot: Vec<Option<usize>> = Vec::with_capacity(desc.ids.len());
             for id in &desc.ids {
-                let k = stats.iter().enumerate().position(|(k, (sid, _, _))| {
-                    sid == id && !used[k] && !slot.contains(&Some(k))
-                });
+                let k = stats
+                    .iter()
+                    .enumerate()
+                    .position(|(k, (sid, _, _))| sid == id && !used[k] && !slot.contains(&Some(k)));
                 slot.push(k);
             }
             let present: Vec<usize> = slot.iter().flatten().copied().collect();
@@ -276,9 +277,12 @@ impl StatDescriptions {
             let mids: Vec<i64> = los.iter().zip(&his).map(|(&l, &h)| (l + h) / 2).collect();
             let cand_vals: [&[i64]; 3] = [&los, &his, &mids];
             let Some(rule) = cand_vals.iter().find_map(|vals| {
-                desc.rules
-                    .iter()
-                    .find(|r| r.ranges.iter().zip(vals.iter()).all(|(rg, &v)| rg.matches(v)))
+                desc.rules.iter().find(|r| {
+                    r.ranges
+                        .iter()
+                        .zip(vals.iter())
+                        .all(|(rg, &v)| rg.matches(v))
+                })
             }) else {
                 continue;
             };
@@ -701,7 +705,10 @@ mod tests {
             3,
         )]);
         // 3 per minute → 0.05 per second (was passing through as 3 before).
-        assert_eq!(out, vec!["Regenerate 0.05 Life per second per Maximum Energy Shield"]);
+        assert_eq!(
+            out,
+            vec!["Regenerate 0.05 Life per second per Maximum Energy Shield"]
+        );
     }
 
     #[test]
