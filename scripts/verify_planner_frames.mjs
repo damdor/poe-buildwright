@@ -11,20 +11,29 @@ const files = process.argv.slice(2);
 if (files.length === 0) files.push("viewer/planner.html", "viewer/planner-poe1.html");
 
 const START = "<script>const TREE = ";
-const END = ";window.PoE2Game";
+const END_MARKERS = [
+  ";window.BuildwrightGame",
+  ";window.PoE2Game",
+];
 let failed = false;
 
 for (const file of files) {
   const html = readFileSync(file, "utf8");
   const start = html.indexOf(START);
-  const end = start < 0 ? -1 : html.indexOf(END, start + START.length);
+  const payloadStart = start + START.length;
+  const end = start < 0
+    ? -1
+    : END_MARKERS
+      .map((marker) => html.indexOf(marker, payloadStart))
+      .filter((index) => index >= 0)
+      .reduce((first, index) => first < 0 || index < first ? index : first, -1);
   if (start < 0 || end < 0) {
     console.error(`FAIL: ${file} has no embedded TREE payload`);
     failed = true;
     continue;
   }
 
-  const tree = JSON.parse(html.slice(start + START.length, end));
+  const tree = JSON.parse(html.slice(payloadStart, end));
   const nodes = Object.values(tree.nodes ?? {});
   for (const [label, group] of [
     ["main", nodes.filter((node) => !node.a)],
