@@ -15,6 +15,7 @@ import { requestRender } from "./render.ts";
 import { ensureClassArt, prefetchRemainingClasses, streamSprites } from "./lazy_art.ts";
 import { initDefaultClass } from "./sidebar.ts";
 import { syncFromWizardStore } from "./wizard_sync.ts";
+import { emitStateChange } from "./runtime_contract.ts";
 
 resize();
 initDefaultClass();
@@ -48,7 +49,7 @@ preload(tiers.blocking).then(() => {
   // be empty while the tree shows a full build. The handler in
   // level_slider.ts routes to currentCharacterLevel (working
   // capture) or active.levelRange[1] (frozen snapshot).
-  window.dispatchEvent(new CustomEvent("poe2-capture-change", { detail: { reason: "boot" } }));
+  emitStateChange("boot");
   // The wizard restore above may have switched to a class whose art
   // is deferred (only the default class ships with the boot tiers)
   // — fetch it now. refreshAscOptions also ensures on every change;

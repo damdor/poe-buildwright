@@ -901,7 +901,12 @@ pub fn shape_asc_overrides(
                 Some((id, v))
             })
             .collect();
-        sd.render(&pairs).join("; ")
+        sd.render(&pairs)
+            .iter()
+            .flat_map(|description| description.lines())
+            .filter(|line| !line.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("; ")
     };
     let asc_disp = |r: usize| -> (String, String) {
         let name = asc.string(r, a_name).unwrap_or_default();
@@ -1080,8 +1085,13 @@ pub fn shape_skill_levels(ts: &TableSet) -> Result<String, ShapeError> {
     let c_level = col("Level")?;
     let c_cooldown = col("Cooldown")?;
     let c_costs = col("CostAmounts")?;
-    let c_actor = col("ActorLevel")?;
-    let c_reserv = col("Reservation")?;
+    let c_actor = s.column("ActorLevel");
+    let c_level_req = s.column("PlayerLevelReq");
+    let c_reserv = s
+        .column("Reservation")
+        .or_else(|| s.column("ManaReservationFlat"));
+    let c_reserv_pct = s.column("ManaReservationPercent");
+    let c_row_cost_types = s.column("CostTypes");
 
     let ge_ids = ts.id_list("GrantedEffects"); // GrantedEffects row → Id
 
@@ -1140,9 +1150,14 @@ pub fn shape_skill_levels(ts: &TableSet) -> Result<String, ShapeError> {
             continue;
         }
         let level = gepl.i32(row, c_level).unwrap_or(0);
-        let mana = mana_idx
-            .get(&ge_row)
-            .map(|&i| array_i32(&gepl, row, c_costs).get(i).copied().unwrap_or(0))
+        let row_mana_index = c_row_cost_types.and_then(|column| {
+            array_foreign_rows(&gepl, row, column)
+                .iter()
+                .position(|&cost| cost_ids.get(cost as usize).map(String::as_str) == Some("Mana"))
+        });
+        let mana = row_mana_index
+            .or_else(|| mana_idx.get(&ge_row).copied())
+            .map(|i| array_i32(&gepl, row, c_costs).get(i).copied().unwrap_or(0))
             .map(|v| v.to_string())
             .unwrap_or_default();
         // Crit is stored ×100 (permyriad-ish); PoB shows the plain %.
@@ -1155,12 +1170,27 @@ pub fn shape_skill_levels(ts: &TableSet) -> Result<String, ShapeError> {
         // Actor level is only meaningful when it exceeds the gem level
         // (a higher character-level requirement); PoB leaves it blank
         // otherwise.
-        let actor = gepl.f32(row, c_actor).map(|v| v as i32).unwrap_or(0);
-        let reserv = gepl.i32(row, c_reserv).unwrap_or(0);
+        let actor = c_actor
+            .and_then(|column| gepl.f32(row, column).ok())
+            .map(|v| v as i32)
+            .unwrap_or(0);
+        let level_requirement = c_level_req
+            .and_then(|column| gepl.i32(row, column).ok())
+            .unwrap_or(0);
+        let reserv = c_reserv
+            .and_then(|column| gepl.i32(row, column).ok())
+            .unwrap_or(0);
+        let reserv_pct = c_reserv_pct
+            .and_then(|column| gepl.i32(row, column).ok())
+            .unwrap_or(0);
         let fields = [
             skill_id,
             level.to_string(),
-            String::new(), // level_requirement — not in these tables
+            if level_requirement > 0 {
+                level_requirement.to_string()
+            } else {
+                String::new()
+            },
             if actor > level {
                 actor.to_string()
             } else {
@@ -1172,7 +1202,11 @@ pub fn shape_skill_levels(ts: &TableSet) -> Result<String, ShapeError> {
             } else {
                 String::new()
             },
-            String::new(), // spirit_reservation_pct — not modelled yet
+            if reserv_pct != 0 {
+                reserv_pct.to_string()
+            } else {
+                String::new()
+            },
             crit_s,
             g(gepl
                 .i32(row, c_cooldown)
@@ -1321,8 +1355,20 @@ pub fn shape_gem_quality(ts: &TableSet) -> Result<String, ShapeError> {
         s.column(n)
             .ok_or(ShapeError::MissingColumn("GrantedEffectQualityStats", n))
     };
-    let c_ge = col("GrantedEffect")?;
-    let c_stats = col("Stats")?;
+    let c_ge = s
+        .column("GrantedEffect")
+        .or_else(|| s.column("GrantedEffectsKey"))
+        .ok_or(ShapeError::MissingColumn(
+            "GrantedEffectQualityStats",
+            "GrantedEffect|GrantedEffectsKey",
+        ))?;
+    let c_stats =
+        s.column("Stats")
+            .or_else(|| s.column("StatsKeys"))
+            .ok_or(ShapeError::MissingColumn(
+                "GrantedEffectQualityStats",
+                "Stats|StatsKeys",
+            ))?;
     let c_vals = col("StatsValuesPermille")?;
     let c_add = s.column("AddTypes");
 
@@ -1656,14 +1702,69 @@ fn mod_tiers(m: &Dat<'_>, c_modtype: usize, c_level: usize) -> HashMap<usize, i3
 pub const MODS_TABLES: &[&str] = &["Mods", "ModType", "ModFamily", "Stats", "Tags"];
 
 /// Stable PoE2 passive-tree geometry constants (orbit radii + slots per
-/// orbit). These are fundamental to the layout, not per-patch data; the
-/// `.psg` reader and this shaper both rely on them, and they're emitted
-/// into `meta.tsv` so downstream reads them from one place.
+/// orbit). These are fundamental to the layout, not per-patch data.
 pub const ORBIT_RADII: [f32; 10] = [
     0.0, 82.0, 162.0, 335.0, 493.0, 662.0, 846.0, 251.0, 1080.0, 1322.0,
 ];
 /// Slots on each orbit; PoE2 angles are uniform (`360°/slots`).
 pub const SKILLS_PER_ORBIT: [u16; 10] = [1, 12, 24, 24, 72, 72, 72, 24, 72, 144];
+
+/// PoE1 uses the same `.psg` group/orbit model, but its orbit geometry is
+/// deliberately different. Keep these values beside the PoE2 constants so
+/// every first-party tree source and parity test shares one definition.
+pub const POE1_ORBIT_RADII: [f32; 7] = [0.0, 82.0, 162.0, 335.0, 493.0, 662.0, 846.0];
+pub const POE1_SKILLS_PER_ORBIT: [u16; 7] = [1, 6, 16, 16, 40, 72, 72];
+
+fn tree_geometry(game: crate::fetch::Game) -> (&'static [f32], &'static [u16]) {
+    match game {
+        crate::fetch::Game::Poe1 => (&POE1_ORBIT_RADII, &POE1_SKILLS_PER_ORBIT),
+        crate::fetch::Game::Poe2 => (&ORBIT_RADII, &SKILLS_PER_ORBIT),
+    }
+}
+
+/// Source table for the PoE2 in-game Build Planner passive-id boundary.
+/// The renderer and native plan use `PassiveSkillGraphId`; official
+/// `.build` files use the textual `PassiveSkills.Id`.
+pub const PASSIVE_INTEROP_TABLES: &[&str] = &["PassiveSkills"];
+
+/// Emit the lossless graph-id ↔ official-build-id map used exclusively by
+/// the PoE2 `.build` adapter. Keeping it in a sidecar avoids contaminating
+/// renderer/pathfinding identifiers with an external format's namespace.
+pub fn shape_passive_interop(ts: &TableSet) -> Result<String, ShapeError> {
+    let passives = ts
+        .dat("PassiveSkills")
+        .ok_or(ShapeError::MissingTable("PassiveSkills"))?;
+    let schema = ts
+        .schema("PassiveSkills")
+        .ok_or(ShapeError::MissingTable("PassiveSkills"))?;
+    let id_col = schema
+        .column("Id")
+        .ok_or(ShapeError::MissingColumn("PassiveSkills", "Id"))?;
+    let graph_col = schema
+        .column("PassiveSkillGraphId")
+        .ok_or(ShapeError::MissingColumn(
+            "PassiveSkills",
+            "PassiveSkillGraphId",
+        ))?;
+
+    let mut by_graph: std::collections::BTreeMap<u16, String> = std::collections::BTreeMap::new();
+    for row in 0..passives.row_count() {
+        let Ok(graph_id) = passives.u16(row, graph_col) else {
+            continue;
+        };
+        let build_id = passives.string(row, id_col).unwrap_or_default();
+        if build_id.is_empty() {
+            continue;
+        }
+        by_graph.entry(graph_id).or_insert(build_id);
+    }
+
+    let mut out = String::from("graph_id\tbuild_id\n");
+    for (graph_id, build_id) in by_graph {
+        push_row(&mut out, &[graph_id.to_string(), build_id]);
+    }
+    Ok(out)
+}
 
 /// The three TSVs the tree renderer consumes.
 pub struct TreeTsv {
@@ -1674,13 +1775,19 @@ pub struct TreeTsv {
 
 /// Final render position of a node from its group centre + orbit slot.
 /// PoE orbits put slot 0 at 12 o'clock, going clockwise; SVG y is down.
-fn node_xy(g: &crate::psg::Group, orbit: u8, orbit_index: u16) -> (f32, f32) {
+fn node_xy(
+    g: &crate::psg::Group,
+    orbit: u8,
+    orbit_index: u16,
+    orbit_radii: &[f32],
+    skills_per_orbit: &[u16],
+) -> (f32, f32) {
     let (o, oi) = (orbit as usize, orbit_index as f32);
-    if o >= ORBIT_RADII.len() {
+    if o >= orbit_radii.len() || o >= skills_per_orbit.len() {
         return (g.x, g.y);
     }
-    let r = ORBIT_RADII[o];
-    let n = SKILLS_PER_ORBIT[o].max(1);
+    let r = orbit_radii[o];
+    let n = skills_per_orbit[o].max(1);
     // 16/40-slot orbits use GGG's hand-tuned angle tables (see
     // tree_tsv::orbit_angle — the rule that already bit PoE1). PoE2's
     // orbit counts are currently all uniform, so the table branch is
@@ -1710,6 +1817,20 @@ pub fn shape_tree(
     ts: &TableSet,
     sd: &crate::csd::StatDescriptions,
 ) -> Result<TreeTsv, ShapeError> {
+    shape_tree_for_game(graph, ts, sd, crate::fetch::Game::Poe2)
+}
+
+/// Game-aware first-party passive-tree shaper. PoE1 and PoE2 share the
+/// output contract and table joins, while their graph connection encoding,
+/// orbit geometry, and a handful of schema column names stay isolated at
+/// this boundary.
+pub fn shape_tree_for_game(
+    graph: &crate::psg::Graph,
+    ts: &TableSet,
+    sd: &crate::csd::StatDescriptions,
+    game: crate::fetch::Game,
+) -> Result<TreeTsv, ShapeError> {
+    let (orbit_radii, skills_per_orbit) = tree_geometry(game);
     let ps = ts
         .dat("PassiveSkills")
         .ok_or(ShapeError::MissingTable("PassiveSkills"))?;
@@ -1731,10 +1852,12 @@ pub fn shape_tree(
     let c_jewel = col("IsJewelSocket");
     let c_attr = col("IsAttribute");
     let c_justicon = col("IsJustIcon");
-    let c_asc = col("Ascendancy");
+    let c_asc = col("Ascendancy").or_else(|| col("AscendancyKey"));
+    let c_desc = col("DescendancyKey");
     let c_ascstart = col("IsAscendancyStartingNode");
     let c_mchoice = col("IsMultipleChoice");
     let c_mchoiceopt = col("IsMultipleChoiceOption");
+    let c_skill_points = col("SkillPointsGranted");
     // Stats[] (foreignrow → Stats) + parallel value columns, for the
     // rendered `stats` text.
     let c_stats = col("Stats");
@@ -1752,15 +1875,49 @@ pub fn shape_tree(
     .map(|n| col(n))
     .collect();
 
-    // Render a node's stat lines from its Stats[] ids + parallel values.
+    // PoE1 ascendancy nodes sometimes express their tooltip through an
+    // attached buff or granted active skill rather than PassiveSkills.Stats.
+    // Follow those first-party relations so a new ascendancy does not render
+    // as an empty node merely because the website export has not shipped.
+    let c_buffs = col("PassiveSkillBuffs");
+    let buff_templates = ts.dat("BuffTemplates");
+    let buff_definition_col = ts.schema("BuffTemplates").and_then(|schema| {
+        schema
+            .column("BuffDefinitionsKey")
+            .or_else(|| schema.column("BuffDefinition"))
+    });
+    let buff_stats_col = ts
+        .schema("BuffTemplates")
+        .and_then(|schema| schema.column("StatsKey").or_else(|| schema.column("Stats")));
+    let buff_values_col = ts
+        .schema("BuffTemplates")
+        .and_then(|schema| schema.column("Buff_StatValues"));
+    let buff_definitions = ts.dat("BuffDefinitions");
+    let buff_definition_stats_col = ts.schema("BuffDefinitions").and_then(|schema| {
+        schema
+            .column("StatsKeys")
+            .or_else(|| schema.column("Stats"))
+    });
+    let buff_descriptions = column_strings(ts, "BuffDefinitions", "Description");
+
+    let c_granted = col("GrantedEffectsPerLevel");
+    let granted_levels = ts.dat("GrantedEffectsPerLevel");
+    let granted_effect_col = ts
+        .schema("GrantedEffectsPerLevel")
+        .and_then(|schema| schema.column("GrantedEffect"));
+    let granted_effects = ts.dat("GrantedEffects");
+    let active_skill_col = ts
+        .schema("GrantedEffects")
+        .and_then(|schema| schema.column("ActiveSkill"));
+    let active_descriptions = column_strings(ts, "ActiveSkills", "Description");
+
+    // Render a node's complete display text from Stats[] plus the optional
+    // buff/granted-skill relations above.
     let render_stats = |row: usize| -> String {
         let Some(cs) = c_stats else {
             return String::new();
         };
         let rows = array_foreign_rows(&ps, row, cs);
-        if rows.is_empty() {
-            return String::new();
-        }
         let pairs: Vec<(String, i64)> = rows
             .iter()
             .enumerate()
@@ -1777,7 +1934,128 @@ pub fn shape_tree(
                 Some((id, v))
             })
             .collect();
-        sd.render(&pairs).join("; ")
+        let mut lines: Vec<String> = sd
+            .render(&pairs)
+            .iter()
+            .flat_map(|description| description.lines())
+            .filter(|line| !line.trim().is_empty())
+            .map(str::to_string)
+            .collect();
+        // A tiny set of generic ailment stats is intentionally absent from
+        // PoE1's stat-description text files even though the website
+        // renders it. Preserve their direct, stable game wording.
+        if lines.is_empty() {
+            for (id, value) in &pairs {
+                let text = match id.as_str() {
+                    "base_chance_to_freeze_%" => Some(format!("{value}% chance to Freeze")),
+                    "bleed_on_hit_with_attacks_%" => {
+                        Some(format!("Attacks have {value}% chance to cause Bleeding"))
+                    }
+                    _ => None,
+                };
+                if let Some(text) = text {
+                    lines.push(text);
+                }
+            }
+        }
+
+        if let (Some(column), Some(templates), Some(definition_column)) =
+            (c_buffs, buff_templates.as_ref(), buff_definition_col)
+        {
+            for template_row in array_foreign_rows(&ps, row, column) {
+                let definition_row = templates
+                    .foreign(template_row as usize, definition_column)
+                    .ok()
+                    .flatten();
+                if let Some(text) = definition_row
+                    .and_then(|definition_row| buff_descriptions.get(definition_row as usize))
+                    .filter(|text| !text.trim().is_empty())
+                {
+                    lines.extend(
+                        text.lines()
+                            .filter(|line| !line.trim().is_empty())
+                            .map(str::to_string),
+                    );
+                }
+                let values = buff_values_col
+                    .map(|values_column| array_i32(templates, template_row as usize, values_column))
+                    .unwrap_or_default();
+                let stat_rows =
+                    if let (Some(definitions), Some(stats_column), Some(definition_row)) = (
+                        buff_definitions.as_ref(),
+                        buff_definition_stats_col,
+                        definition_row,
+                    ) {
+                        array_foreign_rows(definitions, definition_row as usize, stats_column)
+                    } else if let Some(stats_column) = buff_stats_col {
+                        array_foreign_rows(templates, template_row as usize, stats_column)
+                    } else {
+                        Vec::new()
+                    };
+                if !stat_rows.is_empty() {
+                    let pairs: Vec<(String, i64)> = stat_rows
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, &stat_row)| {
+                            Some((
+                                stat_ids.get(stat_row as usize)?.clone(),
+                                i64::from(*values.get(index).unwrap_or(&0)),
+                            ))
+                        })
+                        .collect();
+                    lines.extend(
+                        sd.render(&pairs)
+                            .iter()
+                            .flat_map(|description| description.lines())
+                            .filter(|line| !line.trim().is_empty())
+                            .map(str::to_string),
+                    );
+                }
+            }
+        }
+
+        if let (Some(column), Some(levels), Some(effect_column), Some(effects), Some(skill_column)) = (
+            c_granted,
+            granted_levels.as_ref(),
+            granted_effect_col,
+            granted_effects.as_ref(),
+            active_skill_col,
+        ) && let Some(text) = ps
+            .foreign(row, column)
+            .ok()
+            .flatten()
+            .and_then(|level_row| {
+                levels
+                    .foreign(level_row as usize, effect_column)
+                    .ok()
+                    .flatten()
+            })
+            .and_then(|effect_row| {
+                effects
+                    .foreign(effect_row as usize, skill_column)
+                    .ok()
+                    .flatten()
+            })
+            .and_then(|skill_row| active_descriptions.get(skill_row as usize).cloned())
+            .filter(|text| !text.trim().is_empty())
+        {
+            lines.extend(
+                text.lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .map(str::to_string),
+            );
+        }
+
+        let points = c_skill_points
+            .and_then(|column| ps.i32(row, column).ok())
+            .unwrap_or(0);
+        match points {
+            0 => {}
+            1 => lines.push("Grants 1 Passive Skill Point".into()),
+            count => lines.push(format!("Grants {count} Passive Skill Points")),
+        }
+        lines.dedup();
+        lines.join("; ")
     };
 
     // PassiveSkillGraphId → PassiveSkills row.
@@ -1788,6 +2066,18 @@ pub fn shape_tree(
         }
     }
     let asc_ids = ts.id_list("Ascendancy"); // foreign → readable ascendancy id
+    let desc_ids = ts.id_list("Descendancy");
+    let ascendancy_of_row = |row: usize| -> String {
+        c_asc
+            .and_then(|c| ps.foreign(row, c).ok().flatten())
+            .and_then(|rid| asc_ids.get(rid as usize).cloned())
+            .or_else(|| {
+                c_desc
+                    .and_then(|c| ps.foreign(row, c).ok().flatten())
+                    .and_then(|rid| desc_ids.get(rid as usize).cloned())
+            })
+            .unwrap_or_default()
+    };
     // Class names per Characters row (a class-start node lists the classes
     // it serves via Characters[]; the hub serves a PoE1 + PoE2 pair).
     let char_names: Vec<String> = column_strings(ts, "Characters", "Name");
@@ -1837,19 +2127,18 @@ pub fn shape_tree(
     };
     // Kind, mirroring the renderer's classification order.
     // dat flags → the shared canonical ladder (tree_tsv::node_kind).
-    // No class_start flag exists in the dat source; the psg path never
-    // emitted it from here.
+    // No explicit class-start flag exists in either dat schema. GGG marks
+    // precisely those rows with a non-empty Characters[] relation.
     let kind_of = |row: usize| -> &'static str {
         crate::tree_tsv::node_kind(&crate::tree_tsv::KindFlags {
+            class_start: c_chars.is_some_and(|c| !array_foreign_rows(&ps, row, c).is_empty()),
             asc_start: boolc(row, c_ascstart),
             jewel: boolc(row, c_jewel),
             // A mastery *node* is icon-only. A node that merely *belongs*
             // to a mastery group (MasteryGroup set) is a normal cluster
             // node, not a mastery — so don't key on MasteryGroup here.
             mastery: boolc(row, c_justicon),
-            is_asc: c_asc
-                .and_then(|c| ps.foreign(row, c).ok().flatten())
-                .is_some(),
+            is_asc: !ascendancy_of_row(row).is_empty(),
             keystone: boolc(row, c_keystone),
             notable: boolc(row, c_notable),
             attribute: boolc(row, c_attr),
@@ -1883,13 +2172,13 @@ pub fn shape_tree(
                 }
             }
         }
+        s.extend(desc_ids.iter().filter(|id| !id.is_empty()).cloned());
         s
     };
     let asc_of = |n: &crate::psg::Node| -> String {
         by_gid
             .get(&n.id)
-            .and_then(|&row| c_asc.and_then(|c| ps.foreign(row, c).ok().flatten()))
-            .and_then(|rid| asc_ids.get(rid as usize).cloned())
+            .map(|&row| ascendancy_of_row(row))
             .unwrap_or_default()
     };
     let skip: std::collections::HashSet<u16> = graph
@@ -1901,6 +2190,12 @@ pub fn shape_tree(
         })
         .map(|n| n.id)
         .collect();
+    let asc_nodes: std::collections::HashSet<u16> = graph
+        .nodes
+        .iter()
+        .filter(|n| !asc_of(n).is_empty())
+        .map(|n| n.id)
+        .collect();
 
     let (mut min_x, mut min_y, mut max_x, mut max_y) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     for n in &graph.nodes {
@@ -1908,17 +2203,14 @@ pub fn shape_tree(
             continue;
         }
         let g = &graph.groups[n.group];
-        let (x, y) = node_xy(g, n.orbit, n.orbit_index);
+        let (x, y) = node_xy(g, n.orbit, n.orbit_index, orbit_radii, skills_per_orbit);
         min_x = min_x.min(x);
         min_y = min_y.min(y);
         max_x = max_x.max(x);
         max_y = max_y.max(y);
         let (kind, name, icon, ascend, stats, klass, active_effect) = match by_gid.get(&n.id) {
             Some(&row) => {
-                let asc = c_asc
-                    .and_then(|c| ps.foreign(row, c).ok().flatten())
-                    .and_then(|rid| asc_ids.get(rid as usize).cloned())
-                    .unwrap_or_default();
+                let asc = ascendancy_of_row(row);
                 // GGG stores .dds; the site's sprite manifest keys use
                 // .png (converted at asset-extraction time). Normalise so
                 // node icons resolve against the same keys.
@@ -1956,7 +2248,10 @@ pub fn shape_tree(
             ascend,
             name,
             stats,
-            n.group.to_string(),
+            match game {
+                crate::fetch::Game::Poe1 => (n.group + 1).to_string(),
+                crate::fetch::Game::Poe2 => n.group.to_string(),
+            },
             n.orbit.to_string(),
             n.orbit_index.to_string(),
             icon,
@@ -1979,6 +2274,14 @@ pub fn shape_tree(
         }
         for c in &n.connections {
             if skip.contains(&c.target) {
+                continue;
+            }
+            // The graph contains mechanics-only crossings between the main
+            // tree and ascendancy subtrees (notably Ascendant paths). GGG's
+            // web renderer and PoB both suppress them visually.
+            if game == crate::fetch::Game::Poe1
+                && (asc_nodes.contains(&n.id) != asc_nodes.contains(&c.target))
+            {
                 continue;
             }
             let key = (n.id.min(c.target), n.id.max(c.target));
@@ -2007,7 +2310,7 @@ pub fn shape_tree(
     }
     meta.push_str(
         &("orbit_radii\t".to_string()
-            + &ORBIT_RADII
+            + &orbit_radii
                 .iter()
                 .map(|r| format!("{}", *r as i64))
                 .collect::<Vec<_>>()
@@ -2016,7 +2319,7 @@ pub fn shape_tree(
     );
     meta.push_str(
         &("skills_per_orbit\t".to_string()
-            + &SKILLS_PER_ORBIT
+            + &skills_per_orbit
                 .iter()
                 .map(|n| n.to_string())
                 .collect::<Vec<_>>()
@@ -2024,11 +2327,17 @@ pub fn shape_tree(
             + "\n"),
     );
     for (i, g) in graph.groups.iter().enumerate() {
-        // group 0 is the synthetic preamble origin; skip it.
-        if i == 0 {
-            continue;
-        }
-        meta.push_str(&format!("group\t{i}\t{:.4}\t{:.4}\n", g.x, g.y));
+        // PoE1's public group ids are one-based. PoE2's output contract
+        // retains its existing zero-based graph ids and omits the central
+        // preamble group.
+        let group_id = match game {
+            crate::fetch::Game::Poe1 => i + 1,
+            crate::fetch::Game::Poe2 if i == 0 => {
+                continue;
+            }
+            crate::fetch::Game::Poe2 => i,
+        };
+        meta.push_str(&format!("group\t{group_id}\t{:.4}\t{:.4}\n", g.x, g.y));
     }
 
     // Classes + ascendancies: group the Ascendancy table by its class.
@@ -2093,6 +2402,24 @@ pub const TREE_TABLES: &[&str] = &[
     "PassiveSkillTreeMasteryArt",
 ];
 
+/// PoE1 exposes the same core tree metadata but does not have PoE2's
+/// separate `PassiveSkillTreeMasteryArt` table. Mastery icons still come
+/// from `PassiveSkills`; the optional radial active-effect field remains
+/// empty in the shared output.
+pub const TREE_TABLES_POE1: &[&str] = &[
+    "PassiveSkills",
+    "Ascendancy",
+    "Descendancy",
+    "Stats",
+    "Characters",
+    "PassiveSkillMasteryGroups",
+    "BuffTemplates",
+    "BuffDefinitions",
+    "GrantedEffectsPerLevel",
+    "GrantedEffects",
+    "ActiveSkills",
+];
+
 /// The `.csd` files `shape_tree` renders stat text from, in include
 /// order (the master first, then the passive override).
 pub const TREE_STAT_CSD: &[&str] = &[
@@ -2144,7 +2471,16 @@ pub fn shape_item_grants(ts: &TableSet) -> Result<String, ShapeError> {
     };
     let c_id = col("Id")?;
     let c_name = col("Name")?;
-    let c_impl = col("Implicit_Mods")?;
+    // The two games expose the same foreignrow array under different
+    // schema names. Keep the semantic join shared and select the typed
+    // column at this one adapter boundary.
+    let c_impl = bs
+        .column("Implicit_Mods")
+        .or_else(|| bs.column("Implicit_ModsKeys"))
+        .ok_or(ShapeError::MissingColumn(
+            "BaseItemTypes",
+            "Implicit_Mods|Implicit_ModsKeys",
+        ))?;
 
     // ItemSpirit: BaseItemType row → SpiritGranted.
     let mut spirit: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
@@ -2555,7 +2891,12 @@ fn append_cluster_jewels(
                 Some((id, value))
             })
             .collect();
-        sd.render(&pairs).join("; ")
+        sd.render(&pairs)
+            .iter()
+            .flat_map(|description| description.lines())
+            .filter(|line| !line.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("; ")
     };
     let passive_gid = |row: usize| passives.u16(row, p_gid).unwrap_or(0).to_string();
 

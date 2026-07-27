@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PathOfBuilding>
+  <Build targetVersion="0_1" className="Witch" ascendClassName="Infernalist" level="78"/>
+  <Config>
+    <ConfigSet id="1" title="Early endgame">
+      <Input name="fixtureCondition" boolean="true"/>
+    </ConfigSet>
+  </Config>
+  <Tree activeSpec="1">
+    <Spec title="Early endgame" treeVersion="0_4" classId="5" ascendClassId="3"
+      nodes="54447,52,94" masteryEffects="">
+      <Sockets>
+        <Socket nodeId="500" itemId="4"/>
+      </Sockets>
+      <Overrides/>
+    </Spec>
+  </Tree>
+  <Skills activeSkillSet="1">
+    <SkillSet id="1" title="Early endgame">
+      <Skill slot="Weapon 1" label="Fixture skill" enabled="true">
+        <Gem gemId="Metadata/Items/Gems/SkillGemFixtureTwo"
+          nameSpec="Fixture Two Skill" level="18" quality="10" enabled="true"/>
+      </Skill>
+      <Skill label="Fixture companion" enabled="true">
+        <Gem gemId="Metadata/Items/Gems/SkillGemFixtureCompanion"
+          nameSpec="Fixture Companion" skillMinionItemSet="9"
+          level="18" quality="0" enabled="true"/>
+      </Skill>
+    </SkillSet>
+  </Skills>
+  <Items activeItemSet="1">
+    <Item id="1">
+Rarity: RARE
+Fixture Wand
+Attuned Wand
+Item Level: 78
+Implicits: 0
++1 to Level of all Fixture Skills
+    </Item>
+    <Item id="2">
+Rarity: MAGIC
+Fixture Life Flask
+Ultimate Life Flask
+Quality: 20
+Implicits: 0
+50% increased amount recovered
+    </Item>
+    <Item id="3">
+Rarity: UNIQUE
+Fixture Charm
+Thawing Charm
+Implicits: 0
+Used when you become Frozen
+    </Item>
+    <Item id="4">
+Rarity: RARE
+Fixture Jewel
+Ruby
+Implicits: 0
+12% increased Fixture Damage
+    </Item>
+    <Item id="5">
+Rarity: RARE
+Unsupported Fixture Ring
+Ruby Ring
+Implicits: 0
++10% to Fire Resistance
+    </Item>
+    <ItemSet id="1" title="Early endgame" useSecondWeaponSet="false">
+      <Slot name="Weapon 1" itemId="1"/>
+      <Slot name="Flask 1" itemId="2"/>
+      <Slot name="Charm 1" itemId="3"/>
+      <Slot name="Ring 3" itemId="5"/>
+      <Slot name="Arm 1" itemId="5"/>
+      <SocketIdURL name="Jewel 500" nodeId="500" itemId="4"/>
+    </ItemSet>
+    <ItemSet id="9" title="Fixture companion" useSecondWeaponSet="false"/>
+  </Items>
+  <Notes>Authored PoB2 fixture.</Notes>
+</PathOfBuilding>

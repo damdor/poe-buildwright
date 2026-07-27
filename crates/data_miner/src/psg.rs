@@ -16,8 +16,7 @@
 //! in this file. Together they make the tree fully first-party, with no
 //! Path-of-Building dependency.
 //!
-//! ## Format (PoE2 0.5, reverse-engineered; validated to 4276 exact node
-//! positions against the parsed 0.5 baseline, 27/165144 bytes unparsed)
+//! ## Format (PoE1 + PoE2, reverse-engineered)
 //!
 //! ```text
 //! u16 version            (= 3)
@@ -35,9 +34,11 @@
 //!   orbit:u32        which concentric orbit (radius index 0..9)
 //!   orbit_index:u32  slot on that orbit
 //!   conn_count:u32
-//!   connections × ( target:u32, orbit:i32 )
-//!                    orbit is the arc curvature (signed); the sentinel
-//!                    [`STRAIGHT`] means a straight connector.
+//!   connections:
+//!     PoE1: target:u32
+//!     PoE2: target:u32, orbit:i32
+//!                    (`orbit` is signed arc curvature; [`STRAIGHT`]
+//!                    means a straight connector).
 //! ```
 //!
 //! A node carries no group field — membership is positional (the run it
@@ -49,6 +50,12 @@
 
 /// Connection `orbit` value meaning "straight line, no arc" (`i32::MAX`).
 pub const STRAIGHT: i32 = 0x7FFF_FFFF;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConnectionLayout {
+    TargetOnly,
+    TargetAndOrbit,
+}
 
 /// Node ids are 16-bit (`PassiveSkillGraphId`); a first word at or above
 /// this is therefore a group header's `f32`, not a node id.
@@ -111,8 +118,9 @@ pub struct Graph {
     pub version: u16,
     pub groups: Vec<Group>,
     pub nodes: Vec<Node>,
-    /// Nodes seen before the first group header (the class-start hub).
-    /// They carry `group == 0`, a synthetic group at the preamble origin.
+    /// Nodes assigned to group index 0. Modern graphs place that group's
+    /// header in the preamble; older/synthetic fixtures may omit it, in
+    /// which case the origin is the explicit fallback.
     pub preamble_nodes: usize,
     /// Bytes the walk couldn't classify as a node or header — a health
     /// signal. Expected tiny (preamble tail); a large value means the
@@ -141,7 +149,12 @@ fn f32_at(b: &[u8], o: usize) -> f32 {
 /// offset just past it, or `None` if the bytes there aren't a plausible
 /// node. `skills_per_orbit` bounds `orbit_index` so header/garbage bytes
 /// don't masquerade as nodes.
-fn read_node(b: &[u8], o: usize, spo: &[u16]) -> Option<(RawNode, usize)> {
+fn read_node(
+    b: &[u8],
+    o: usize,
+    spo: &[u16],
+    connection_layout: ConnectionLayout,
+) -> Option<(RawNode, usize)> {
     if o + 16 > b.len() {
         return None;
     }
@@ -160,11 +173,18 @@ fn read_node(b: &[u8], o: usize, spo: &[u16]) -> Option<(RawNode, usize)> {
     let mut p = o + 16;
     let mut conns = Vec::with_capacity(cc as usize);
     for _ in 0..cc {
-        if p + 8 > b.len() {
+        let width = match connection_layout {
+            ConnectionLayout::TargetOnly => 4,
+            ConnectionLayout::TargetAndOrbit => 8,
+        };
+        if p + width > b.len() {
             return None;
         }
         let target = u32_at(b, p);
-        let corbit = i32_at(b, p + 4);
+        let corbit = match connection_layout {
+            ConnectionLayout::TargetOnly => 0,
+            ConnectionLayout::TargetAndOrbit => i32_at(b, p + 4),
+        };
         if target == 0 || target >= NODE_ID_LIMIT || !valid_conn_orbit(corbit) {
             return None;
         }
@@ -172,7 +192,7 @@ fn read_node(b: &[u8], o: usize, spo: &[u16]) -> Option<(RawNode, usize)> {
             target: target as u16,
             orbit: corbit,
         });
-        p += 8;
+        p += width;
     }
     Some((
         RawNode {
@@ -220,16 +240,43 @@ impl Graph {
     /// per-orbit slot count (a stable tree constant) used to validate
     /// `orbit_index` while walking — pass the known PoE2 values.
     pub fn parse(data: &[u8], skills_per_orbit: &[u16]) -> Result<Self, PsgError> {
+        Self::parse_with_layout(data, skills_per_orbit, ConnectionLayout::TargetAndOrbit)
+    }
+
+    /// Parse PoE1's graph variant. Its node and group records are shared
+    /// with PoE2, but connections carry only the target id; arc geometry
+    /// is derived from the connected nodes' group/orbit placement.
+    pub fn parse_poe1(data: &[u8], skills_per_orbit: &[u16]) -> Result<Self, PsgError> {
+        Self::parse_with_layout(data, skills_per_orbit, ConnectionLayout::TargetOnly)
+    }
+
+    fn parse_with_layout(
+        data: &[u8],
+        skills_per_orbit: &[u16],
+        connection_layout: ConnectionLayout,
+    ) -> Result<Self, PsgError> {
         if data.len() < 4 {
             return Err(PsgError::TooSmall);
         }
         let version = u16_at(data, 0);
 
-        // Skip the preamble: scan to the first offset that reads as a
-        // valid node. Everything before is the central/class-start block.
+        // Scan the preamble to the first node. The production files place
+        // the first real group header immediately before that node (after
+        // version/orbit/count metadata), so retain the last valid header we
+        // encounter instead of replacing group 1 with a synthetic origin.
+        // Tiny test fixtures may omit it; those still get the origin
+        // fallback.
         let mut o = 4;
-        while o + 16 <= data.len() && read_node(data, o, skills_per_orbit).is_none() {
-            o += 1;
+        let mut preamble_group = None;
+        while o + 16 <= data.len()
+            && read_node(data, o, skills_per_orbit, connection_layout).is_none()
+        {
+            if let Some((group, end)) = read_header(data, o) {
+                preamble_group = Some(group);
+                o = end;
+            } else {
+                o += 1;
+            }
         }
         if o + 16 > data.len() {
             return Err(PsgError::NoNodes);
@@ -237,9 +284,10 @@ impl Graph {
 
         let mut groups: Vec<Group> = Vec::new();
         let mut nodes: Vec<Node> = Vec::new();
-        // Synthetic group 0 for pre-header (class-start) nodes: the
-        // preamble origin. Positioned by the metadata join downstream.
-        groups.push(Group { x: 0.0, y: 0.0 });
+        // Internal group index 0 corresponds to the first graph group.
+        // Output adapters decide whether the game's public group ids are
+        // zero- or one-based.
+        groups.push(preamble_group.unwrap_or(Group { x: 0.0, y: 0.0 }));
         let mut current = 0usize;
         let mut preamble_nodes = 0usize;
         let mut unparsed = 0usize;
@@ -248,7 +296,7 @@ impl Graph {
             // Discriminator: node id is u16-range; a header's first word
             // is an f32 coordinate (bit pattern ≥ 0x10000).
             if u32_at(data, o) < NODE_ID_LIMIT {
-                if let Some((rn, end)) = read_node(data, o, skills_per_orbit) {
+                if let Some((rn, end)) = read_node(data, o, skills_per_orbit, connection_layout) {
                     if current == 0 {
                         preamble_nodes += 1;
                     }
@@ -294,6 +342,7 @@ mod tests {
     /// The stable PoE2 per-orbit slot counts (validated against the tree
     /// constants). Kept here so tests don't depend on external data.
     const SPO: &[u16] = &[1, 12, 24, 24, 72, 72, 72, 24, 72, 144];
+    const SPO_POE1: &[u16] = &[1, 6, 16, 16, 40, 72, 72];
 
     /// Assemble one node record's bytes.
     fn node_bytes(id: u32, orbit: u32, oi: u32, conns: &[(u32, i32)]) -> Vec<u8> {
@@ -360,6 +409,30 @@ mod tests {
         assert!(g.unparsed_bytes <= 16, "unparsed={}", g.unparsed_bytes);
     }
 
+    #[test]
+    fn retains_first_group_header_from_preamble() {
+        let mut d = Vec::new();
+        d.extend_from_slice(&3u16.to_le_bytes());
+        d.extend_from_slice(&0u16.to_le_bytes());
+        d.extend_from_slice(&header_bytes(123.0, -456.0));
+        d.extend_from_slice(&node_bytes(100, 0, 0, &[]));
+        d.extend_from_slice(&header_bytes(10.0, 20.0));
+        d.extend_from_slice(&node_bytes(200, 0, 0, &[]));
+        d.extend_from_slice(&[0u8; 16]);
+
+        let graph = Graph::parse(&d, SPO).expect("parse");
+        assert_eq!(
+            graph.groups[0],
+            Group {
+                x: 123.0,
+                y: -456.0
+            }
+        );
+        assert_eq!(graph.groups[1], Group { x: 10.0, y: 20.0 });
+        assert_eq!(graph.nodes[0].group, 0);
+        assert_eq!(graph.nodes[1].group, 1);
+    }
+
     /// Known-answer test against the live `.psg`. Gated on PSG_TESTFILE
     /// (a decompressed `metadata/passiveskillgraph.psg`) — we don't
     /// vendor copyrighted game data. Fetch with
@@ -395,6 +468,44 @@ mod tests {
             g.nodes.len(),
             g.unparsed_bytes,
             dangling
+        );
+        assert!(dangling < 50, "too many dangling connections: {dangling}");
+    }
+
+    /// PoE1 uses the same group/node record family with its own seven
+    /// orbit constants and target-only connection entries. The graph
+    /// itself is never vendored; point this at an extraction from
+    /// `bw get ... --game poe1`.
+    #[test]
+    fn real_poe1_passiveskillgraph() {
+        let Ok(path) = std::env::var("PSG_POE1_TESTFILE") else {
+            eprintln!("skipped: set PSG_POE1_TESTFILE to a decompressed PoE1 .psg");
+            return;
+        };
+        let bytes = std::fs::read(path).unwrap();
+        let graph = Graph::parse_poe1(&bytes, SPO_POE1).expect("parse real PoE1 psg");
+        let ids: std::collections::HashSet<u16> = graph.nodes.iter().map(|node| node.id).collect();
+        let dangling = graph
+            .nodes
+            .iter()
+            .flat_map(|node| &node.connections)
+            .filter(|connection| !ids.contains(&connection.target))
+            .count();
+        eprintln!(
+            "poe1 psg: version={} groups={} nodes={} preamble={} unparsed={} dangling={}",
+            graph.version,
+            graph.groups.len(),
+            graph.nodes.len(),
+            graph.preamble_nodes,
+            graph.unparsed_bytes,
+            dangling,
+        );
+        assert!(graph.groups.len() > 700, "groups={}", graph.groups.len());
+        assert!(graph.nodes.len() > 2500, "nodes={}", graph.nodes.len());
+        assert!(
+            graph.unparsed_bytes < 256,
+            "unparsed={} — schema may have drifted",
+            graph.unparsed_bytes,
         );
         assert!(dangling < 50, "too many dangling connections: {dangling}");
     }

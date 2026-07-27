@@ -36,7 +36,8 @@ export type GGGFieldType =
   | 'id'          // GGG table id: export emits strings; import tolerates numbers
   | 'uint'        // non-negative integer
   | 'interval'    // GGG's "(array of uint, or uint)"; export pins [lo, hi]
-  | 'weapon_set'  // literal 1 | 2
+  | 'weapon_set'  // official literal 0 | 1 | 2
+  | 'weapon_set_nonzero' // legacy Buildwright export: literal 1 | 2
   | { arrayOf: string; bareIds?: 'string' | 'string-or-number' };
 
 export interface GGGFieldSpec {
@@ -91,7 +92,7 @@ const V1: GGGBuildSchema = {
     BuildPassive: {
       fields: {
         id:              { type: 'id', required: 'always' },
-        weapon_set:      { type: 'weapon_set' },
+        weapon_set:      { type: 'weapon_set_nonzero' },
         level_interval:  { type: 'interval' },
         additional_text: { type: 'string' },
       },
@@ -101,7 +102,7 @@ const V1: GGGBuildSchema = {
         id:              { type: 'string', required: 'always' },
         level:           { type: 'uint', ours: true },
         quality:         { type: 'uint', ours: true },
-        weapon_set:      { type: 'weapon_set', ours: true },
+        weapon_set:      { type: 'weapon_set_nonzero', ours: true },
         level_interval:  { type: 'interval' },
         additional_text: { type: 'string' },
         support_skills:  { type: { arrayOf: 'BuildSupport', bareIds: 'string' } },
@@ -131,6 +132,76 @@ const V1: GGGBuildSchema = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Adapter revision 2 — exact official Version 1 schema, audited 2026-07-23
+// ---------------------------------------------------------------------------
+//
+// GGG still calls the public format "Version 1 (Experimental)". This is
+// our second frozen audit of that version: strict export removes every
+// Buildwright extension while lenient import retains the old aliases.
+const V2: GGGBuildSchema = {
+  rev: 2,
+  verifiedAgainst:
+    'pathofexile.com/developer/docs/game "Version 1 (Experimental)", ' +
+    'audited 2026-07-23',
+  root: {
+    fields: {
+      name:            { type: 'string', required: 'export' },
+      author:          { type: 'string' },
+      link:            { type: 'string' },
+      description:     { type: 'string' },
+      ascendancy:      { type: 'string' },
+      patch:           { type: 'string', importAlias: true },
+      passives:        { type: { arrayOf: 'BuildPassive', bareIds: 'string-or-number' } },
+      skills:          { type: { arrayOf: 'BuildSkill', bareIds: 'string' } },
+      inventory_slots: { type: { arrayOf: 'InventorySlot' } },
+      items:           { type: { arrayOf: 'InventorySlot' }, importAlias: true },
+    },
+  },
+  objects: {
+    BuildPassive: {
+      fields: {
+        id:              { type: 'id', required: 'always' },
+        weapon_set:      { type: 'weapon_set' },
+        level_interval:  { type: 'interval' },
+        additional_text: { type: 'string' },
+      },
+    },
+    BuildSkill: {
+      fields: {
+        id:              { type: 'string', required: 'always' },
+        level:           { type: 'uint', importAlias: true },
+        quality:         { type: 'uint', importAlias: true },
+        weapon_set:      { type: 'weapon_set_nonzero', importAlias: true },
+        level_interval:  { type: 'interval' },
+        additional_text: { type: 'string' },
+        support_skills:  { type: { arrayOf: 'BuildSupport', bareIds: 'string' } },
+      },
+    },
+    BuildSupport: {
+      fields: {
+        id:              { type: 'string', required: 'always' },
+        level:           { type: 'uint', importAlias: true },
+        quality:         { type: 'uint', importAlias: true },
+        level_interval:  { type: 'interval' },
+        additional_text: { type: 'string' },
+      },
+    },
+    InventorySlot: {
+      fields: {
+        inventory_id:    { type: 'string', required: 'always' },
+        slot_x:          { type: 'uint' },
+        slot_y:          { type: 'uint' },
+        x:               { type: 'uint', importAlias: true },
+        y:               { type: 'uint', importAlias: true },
+        unique_name:     { type: 'string' },
+        level_interval:  { type: 'interval' },
+        additional_text: { type: 'string' },
+      },
+    },
+  },
+};
+
 function deepFreeze<T>(obj: T): T {
   if (obj && typeof obj === 'object') {
     for (const v of Object.values(obj as Record<string, unknown>)) deepFreeze(v);
@@ -141,10 +212,10 @@ function deepFreeze<T>(obj: T): T {
 
 /** All known schema revisions, frozen. Append-only. */
 export const GGG_BUILD_SCHEMAS: Readonly<Record<number, GGGBuildSchema>> =
-  deepFreeze({ 1: V1 });
+  deepFreeze({ 1: V1, 2: V2 });
 
 /** The revision the exporter targets today. */
-export const GGG_BUILD_SCHEMA_CURRENT = 1;
+export const GGG_BUILD_SCHEMA_CURRENT = 2;
 
 // ---------------------------------------------------------------------------
 // Walker
@@ -241,6 +312,9 @@ function checkField(
     return path + ' must be [low, high], [low], or a number';
   }
   if (t === 'weapon_set') {
+    return v === 0 || v === 1 || v === 2 ? null : path + ' must be 0, 1, or 2';
+  }
+  if (t === 'weapon_set_nonzero') {
     return v === 1 || v === 2 ? null : path + ' must be 1 or 2';
   }
   // Array of schema objects, optionally with bare-id entries.

@@ -15,7 +15,7 @@
 // Earlier versions of this module also rendered numbered tree badges
 // and a pulse halo for slider→tree linking. Both were removed at the
 // user's request — the only differentiator for a noted node is now
-// the tooltip's note section. The note map (window.PoE2Notes) still
+// the tooltip's note section. The note map (window.BuildwrightNotes) still
 // gets published by the slider so the tooltip can look up notes by
 // node id without re-walking captures.
 
@@ -23,6 +23,7 @@
 import { state } from "./state.ts";
 import { ascOffsetX, ascOffsetY } from "./asc_present.ts";
 import { persistToWizardStore } from "./wizard_sync.ts";
+import { PLANNER_EVENTS } from "./runtime_contract.ts";
 import type { Plan } from "../../../../types/shared.d.ts";
 
 const noteOverlayEl = document.getElementById('note-overlay') as HTMLElement | null;
@@ -40,7 +41,7 @@ if (noteOverlayEl) {
   const badgeEls = new Map<string, HTMLElement>();
   function syncBadgeElements(): void {
     const notes: Map<string, { num: number }> =
-      (window.PoE2Notes as Map<string, { num: number }>) || new Map();
+      (window.BuildwrightNotes as Map<string, { num: number }>) || new Map();
     const seen = new Set<string>();
     for (const [sid, info] of notes) {
       seen.add(sid);
@@ -67,7 +68,7 @@ if (noteOverlayEl) {
       if (n.a && n.a !== state.asc) { el.style.display = 'none'; continue; }
       // Timeline-aware: only show the badge when the node is allocated
       // RIGHT NOW (in the active capture, or at the slider's current
-      // level during replay). The PoE2Notes map carries entries from
+      // level during replay). The BuildwrightNotes map carries entries from
       // every capture; a respec'd node would otherwise keep a stale
       // badge on the tree even at levels/captures where it's gone.
       if (!state.selected.has(sid)) { el.style.display = 'none'; continue; }
@@ -83,7 +84,7 @@ if (noteOverlayEl) {
     syncBadgePositions();
     requestAnimationFrame(tickBadges);
   })();
-  window.addEventListener('poe2-notes-updated', syncBadgeElements);
+  window.addEventListener(PLANNER_EVENTS.notesUpdated, syncBadgeElements);
   syncBadgeElements();
 }
 
@@ -139,8 +140,8 @@ if (notePopText) {
   notePopText.addEventListener('input', () => {
     if (!notePopNodeId) return;
     if (state.replayActive) {
-      if (window.PoE2Plan && window.PoE2Plan.flash) {
-        window.PoE2Plan.flash('Exit replay mode to edit notes', true);
+      if (window.BuildwrightPlan && window.BuildwrightPlan.flash) {
+        window.BuildwrightPlan.flash('Exit replay mode to edit notes', true);
       }
       const prev = state.allocationMeta.get(notePopNodeId) || {};
       notePopText!.value = prev.notes || '';
@@ -178,8 +179,8 @@ if (notePopTrash) {
     // commit path no longer implicitly clears notes on other captures
     // (that was deleting data on re-allocation). The active capture
     // gets cleared too by the upcoming persistToWizardStore commit.
-    if (window.PoE2Plan && typeof window.PoE2Plan.clearNoteEverywhere === 'function') {
-      window.PoE2Plan.clearNoteEverywhere(notePopNodeId);
+    if (window.BuildwrightPlan && typeof window.BuildwrightPlan.clearNoteEverywhere === 'function') {
+      window.BuildwrightPlan.clearNoteEverywhere(notePopNodeId);
     }
     if (notePopText) notePopText.value = '';
     state.selDirty = true;
@@ -212,13 +213,13 @@ document.addEventListener('keydown', (e) => {
     // used to give an explicit way out of replay; with that gone,
     // this auto-switch is the only path to "annotate while viewing
     // an old snapshot via slider scrub."
-    if (state.replayActive && window.PoE2SliderDebug && window.PoE2SliderExit) {
+    if (state.replayActive && window.BuildwrightReplayDebug && window.BuildwrightReplayExit) {
       const lsInput = document.getElementById('ls-input') as HTMLInputElement | null;
       const L = lsInput ? +lsInput.value : null;
-      const s = L != null ? window.PoE2SliderDebug.stateAt(L) : null;
-      window.PoE2SliderExit();  // skipRestore — we're about to setActive
-      if (s && window.PoE2Plan && window.PoE2Plan.captures) {
-        window.PoE2Plan.captures.setActive(s.capIdx);
+      const s = L != null ? window.BuildwrightReplayDebug.stateAt(L) : null;
+      window.BuildwrightReplayExit();  // skipRestore — we're about to setActive
+      if (s && window.BuildwrightPlan && window.BuildwrightPlan.captures) {
+        window.BuildwrightPlan.captures.setActive(s.capIdx);
       }
       // capture-change re-hydrates state.selected next frame; wait
       // for that before opening the popover so the allocated-check
@@ -226,15 +227,15 @@ document.addEventListener('keydown', (e) => {
       requestAnimationFrame(() => {
         if (state.selected.has(hovered)) {
           openNotePopover(hovered);
-        } else if (window.PoE2Plan && window.PoE2Plan.flash) {
-          window.PoE2Plan.flash('Allocate the node first to attach a note', true);
+        } else if (window.BuildwrightPlan && window.BuildwrightPlan.flash) {
+          window.BuildwrightPlan.flash('Allocate the node first to attach a note', true);
         }
       });
       return;
     }
     if (!state.selected.has(hovered)) {
-      if (window.PoE2Plan && window.PoE2Plan.flash) {
-        window.PoE2Plan.flash('Allocate the node first to attach a note', true);
+      if (window.BuildwrightPlan && window.BuildwrightPlan.flash) {
+        window.BuildwrightPlan.flash('Allocate the node first to attach a note', true);
       }
       return;
     }

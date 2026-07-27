@@ -80,6 +80,10 @@ pub(crate) struct Canvas {
     /// internalId (e.g. "Druid1") is what the new in-game Build Planner
     /// `.build` format wants in its top-level `ascendancy` field.
     pub(crate) asc_internal: HashMap<String, (String, String)>,
+    /// PoE2 native graph id → official Build Planner `PassiveSkills.Id`.
+    /// Empty for PoE1 and older local datasets; strict export then reports
+    /// the missing translation instead of emitting the wrong identifier.
+    pub(crate) passive_build_ids: HashMap<u32, String>,
     /// "Pick one" notables: parent node id → option node ids, from the
     /// shapers' `multichoice` meta rows (derived from GGG's
     /// isMultipleChoice/-Option flags — never hardcoded per

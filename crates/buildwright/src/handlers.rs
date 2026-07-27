@@ -37,6 +37,25 @@ fn take_patch(args: &[String]) -> (Option<String>, Vec<String>) {
     (patch, rest)
 }
 
+fn take_game(args: &[String]) -> Result<(data_miner::fetch::Game, Vec<String>), String> {
+    let mut rest = Vec::new();
+    let mut game = data_miner::fetch::Game::Poe2;
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        let id = if arg == "--game" {
+            Some(it.next().ok_or("--game needs poe1 or poe2")?.as_str())
+        } else {
+            arg.strip_prefix("--game=")
+        };
+        if let Some(id) = id {
+            game = GameProfile::from_id(id)?.game;
+        } else {
+            rest.push(arg.clone());
+        }
+    }
+    Ok((game, rest))
+}
+
 fn has_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
@@ -72,18 +91,62 @@ fn sibling_or_cargo(bin: &str, crate_name: &str) -> (String, Vec<String>) {
     )
 }
 
+/// Build and resolve a workspace binary from the current checkout.
+///
+/// Operational commands that produce committed/generated output must not
+/// prefer an arbitrary pre-existing sibling executable: that made `render`
+/// silently use stale Rust while the TypeScript and data had moved on.
+fn current_release_binary(ctx: &Ctx, bin: &str, crate_name: &str) -> Result<String, String> {
+    let argv = vec![
+        "build".into(),
+        "--release".into(),
+        "-p".into(),
+        crate_name.into(),
+        "--bin".into(),
+        bin.into(),
+    ];
+    sh(ctx, &format!("build current {bin}"), "cargo", &argv)?;
+    let path = ctx
+        .root
+        .join("target/release")
+        .join(format!("{bin}{}", std::env::consts::EXE_SUFFIX));
+    if !path.is_file() {
+        return Err(format!(
+            "cargo succeeded but {} was not produced",
+            path.display()
+        ));
+    }
+    Ok(path.to_string_lossy().into_owned())
+}
+
 // ---------------------------------------------------------------------
 // native: sources
 // ---------------------------------------------------------------------
 
-pub fn patch(_ctx: &Ctx, _args: &[String]) -> Result<(), String> {
-    let info = fetch::patch_info().map_err(|e| e.to_string())?;
+fn game_name(game: data_miner::fetch::Game) -> &'static str {
+    match game {
+        data_miner::fetch::Game::Poe1 => "poe1",
+        data_miner::fetch::Game::Poe2 => "poe2",
+    }
+}
+
+pub fn patch(_ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    let (game, rest) = take_game(args)?;
+    if !rest.is_empty() {
+        return Err("usage: buildwright patch [--game poe1|poe2]".into());
+    }
+    let info = fetch::patch_info_for(game).map_err(|e| e.to_string())?;
+    println!("game          : {}", game_name(game));
     println!("patch version : {}", info.version);
     println!("cdn base url  : {}", info.cdn_base);
     Ok(())
 }
 
-pub fn status(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
+pub fn status(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    let (game, rest) = take_game(args)?;
+    if !rest.is_empty() {
+        return Err("usage: buildwright status [--game poe1|poe2]".into());
+    }
     let style = ctx.style;
     let parsed = ctx.root.join("data/parsed");
     let current = std::fs::read_link(parsed.join("CURRENT"))
@@ -91,13 +154,21 @@ pub fn status(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
         .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));
 
     // Live CDN patch — best effort; don't fail status when offline.
-    let live = fetch::patch_info().ok();
+    let live = fetch::patch_info_for(game).ok();
     match &live {
         Some(i) => ui::ok(
             style,
-            &format!("live CDN patch: {} ({})", i.version, i.cdn_base),
+            &format!(
+                "{} live CDN patch: {} ({})",
+                game_name(game),
+                i.version,
+                i.cdn_base
+            ),
         ),
-        None => ui::warn(style, "live CDN patch: unreachable (offline?)"),
+        None => ui::warn(
+            style,
+            &format!("{} live CDN patch: unreachable (offline?)", game_name(game)),
+        ),
     }
     println!();
 
@@ -106,6 +177,13 @@ pub fn status(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
         .filter_map(|e| e.ok())
         .filter(|e| e.path().is_dir() && e.file_name() != "CURRENT")
         .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| {
+            let is_poe1 = name.starts_with("poe1_");
+            match game {
+                data_miner::fetch::Game::Poe1 => is_poe1,
+                data_miner::fetch::Game::Poe2 => !is_poe1,
+            }
+        })
         .collect();
     patches.sort();
 
@@ -185,8 +263,14 @@ pub fn sources(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
 // ---------------------------------------------------------------------
 
 pub fn fetch(_ctx: &Ctx, args: &[String]) -> Result<(), String> {
-    let rel = args.first().ok_or("usage: buildwright fetch <path>")?;
-    let client = CdnClient::connect().map_err(|e| e.to_string())?;
+    let (game, rest) = take_game(args)?;
+    let rel = rest
+        .first()
+        .ok_or("usage: buildwright fetch <path> [--game poe1|poe2]")?;
+    if rest.len() != 1 {
+        return Err("usage: buildwright fetch <path> [--game poe1|poe2]".into());
+    }
+    let client = CdnClient::connect_for(game).map_err(|e| e.to_string())?;
     let local = client.fetch(rel).map_err(|e| e.to_string())?;
     println!("{}", local.display());
     Ok(())
@@ -202,8 +286,12 @@ fn load_index(client: &CdnClient) -> Result<Index, String> {
     Index::parse(&payload).map_err(|e| e.to_string())
 }
 
-pub fn index(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
-    let client = CdnClient::connect().map_err(|e| e.to_string())?;
+pub fn index(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    let (game, rest) = take_game(args)?;
+    if !rest.is_empty() {
+        return Err("usage: buildwright index [--game poe1|poe2]".into());
+    }
+    let client = CdnClient::connect_for(game).map_err(|e| e.to_string())?;
     eprintln!("patch version : {}", client.info.version);
     let index = load_index(&client)?;
     println!("bundles       : {}", index.bundles.len());
@@ -232,11 +320,15 @@ pub fn index(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
 }
 
 pub fn find(_ctx: &Ctx, args: &[String]) -> Result<(), String> {
-    let needle = args
+    let (game, rest) = take_game(args)?;
+    let needle = rest
         .first()
-        .ok_or("usage: buildwright find <substring>")?
+        .ok_or("usage: buildwright find <substring> [--game poe1|poe2]")?
         .to_ascii_lowercase();
-    let client = CdnClient::connect().map_err(|e| e.to_string())?;
+    if rest.len() != 1 {
+        return Err("usage: buildwright find <substring> [--game poe1|poe2]".into());
+    }
+    let client = CdnClient::connect_for(game).map_err(|e| e.to_string())?;
     let index = load_index(&client)?;
     let mut hits = 0usize;
     for (path, file_idx) in index.resolve_paths().map_err(|e| e.to_string())? {
@@ -256,11 +348,15 @@ pub fn find(_ctx: &Ctx, args: &[String]) -> Result<(), String> {
 }
 
 pub fn get(_ctx: &Ctx, args: &[String]) -> Result<(), String> {
-    let vpath = args
+    let (game, rest) = take_game(args)?;
+    let vpath = rest
         .first()
-        .ok_or("usage: buildwright get <vpath> [out_file]")?;
-    let out = args.get(1);
-    let client = CdnClient::connect().map_err(|e| e.to_string())?;
+        .ok_or("usage: buildwright get <vpath> [out_file] [--game poe1|poe2]")?;
+    if rest.len() > 2 {
+        return Err("usage: buildwright get <vpath> [out_file] [--game poe1|poe2]".into());
+    }
+    let out = rest.get(1);
+    let client = CdnClient::connect_for(game).map_err(|e| e.to_string())?;
     let index = load_index(&client)?;
     let bytes = extract_by_path(&client, &index, vpath)?;
     match out {
@@ -440,6 +536,11 @@ const DEFAULT_TABLES: &[&str] = &[
     "GrantedEffectsPerLevel",
     "ActiveSkills",
     "SkillGems",
+    // Official Build Planner inventory targets are `Inventories.Id`
+    // values. Keeping the table in every patch cache lets catalogue
+    // generation verify the browser profile instead of relying on names
+    // copied once into source code.
+    "Inventories",
     // Item-granted skills + the spirit economy (docs/next-data-targets.md).
     "ItemSpirit",
     "ItemInherentSkills",
@@ -485,12 +586,14 @@ pub fn mine(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     // Schema + live index.
     let schema_path = dat_schema_path(ctx)?;
-    let set = SchemaSet::from_json_for(
-        &std::fs::read_to_string(&schema_path).map_err(|e| e.to_string())?,
-        profile.game,
-    )
-    .map_err(|e| e.to_string())?;
+    let schema_bytes = std::fs::read(&schema_path).map_err(|e| e.to_string())?;
+    let schema_text =
+        std::str::from_utf8(&schema_bytes).map_err(|e| format!("dat-schema is not UTF-8: {e}"))?;
+    let set = SchemaSet::from_json_for(schema_text, profile.game).map_err(|e| e.to_string())?;
     let client = CdnClient::connect_for(profile.game).map_err(|e| e.to_string())?;
+    if profile.game == data_miner::fetch::Game::Poe1 {
+        require_poe1_cdn_patch(ctx, &patch, &client)?;
+    }
     let index = load_index(&client)?;
 
     // Resolve every .datc64 path once → base filename → ranked
@@ -590,6 +693,44 @@ pub fn mine(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // Provenance marker on the native patch dir.
     if let Some(root) = out_dir.parent() {
         let _ = std::fs::write(root.join(".source"), "first-party\n");
+        let mut schema = json::Map::new();
+        schema.insert(
+            "url".into(),
+            json::Value::Str(
+                "https://github.com/poe-tool-dev/dat-schema/releases/latest/download/schema.min.json"
+                    .into(),
+            ),
+        );
+        schema.insert(
+            "schema_version".into(),
+            json::Value::Integer(set.version as i64),
+        );
+        schema.insert(
+            "sha256".into(),
+            json::Value::Str(hash::sha256_hex(&schema_bytes)),
+        );
+        schema.insert(
+            "bytes".into(),
+            json::Value::Integer(schema_bytes.len() as i64),
+        );
+
+        let mut source = json::Map::new();
+        source.insert("schema_version".into(), json::Value::Integer(1));
+        source.insert("game".into(), json::Value::Str(profile.id.into()));
+        source.insert(
+            "cdn_version".into(),
+            json::Value::Str(client.info.version.clone()),
+        );
+        source.insert(
+            "cdn_base".into(),
+            json::Value::Str(client.info.cdn_base.clone()),
+        );
+        source.insert("dat_schema".into(), json::Value::Object(schema));
+        std::fs::write(
+            root.join("mine.source.json"),
+            json::emit_pretty(&json::Value::Object(source)) + "\n",
+        )
+        .map_err(|e| e.to_string())?;
     }
     let shown = out_dir.strip_prefix(&ctx.root).unwrap_or(&out_dir);
     ui::ok(
@@ -695,11 +836,25 @@ fn extract_parseable(
 const TREE_EXPORT_REPO: &str = "grindinggear/poe2-skilltree-export";
 const TREE_EXPORT_COMMIT: &str = "1e9eb2d8c1946398c3aaaacfbaead5c75c0d1fa6";
 
-/// Tree dispatcher. `--source datajson` (default) parses GGG's official
-/// export (exact, current); `--source psg` uses the bundle-derived `.psg`
-/// reader (game-accurate fallback, current the instant a patch drops).
+fn parsed_tree_dir(ctx: &Ctx, patch: &str) -> PathBuf {
+    let profile = GameProfile::from_patch(patch);
+    let parsed_patch = if profile.game == data_miner::fetch::Game::Poe1 {
+        patch.to_string()
+    } else if patch.ends_with("_native") {
+        patch.to_string()
+    } else {
+        format!("{patch}_native")
+    };
+    ctx.root.join("data/parsed").join(parsed_patch).join("tree")
+}
+
+/// Tree dispatcher. `--source auto` (default) uses the current official
+/// export only when it is byte-for-byte compatible with the live CDN graph;
+/// otherwise it selects the live `.psg`. Explicit `export` and `psg` modes
+/// remain available for diagnostics and parity investigations.
 fn shape_tree_cmd(ctx: &Ctx, patch: &str, args: &[String]) -> Result<(), String> {
-    let mut source = "datajson".to_string();
+    let game = GameProfile::from_patch(patch).game;
+    let mut source = "auto".to_string();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         if a == "--source" {
@@ -707,28 +862,54 @@ fn shape_tree_cmd(ctx: &Ctx, patch: &str, args: &[String]) -> Result<(), String>
         }
     }
     match source.as_str() {
-        "datajson" | "ggg" | "export" => shape_tree_datajson(ctx, patch),
+        "auto" if game == data_miner::fetch::Game::Poe2 => shape_tree_auto_poe2(ctx, patch),
+        "auto" => shape_tree_psg(ctx, patch),
+        "datajson" | "ggg" | "export" if game == data_miner::fetch::Game::Poe2 => {
+            shape_tree_datajson(ctx, patch)
+        }
+        "datajson" | "ggg" | "export" => Err(
+            "PoE1 has no poe2-skilltree-export source; use `--source psg` or `poe1-tree`".into(),
+        ),
         "psg" | "bundle" => shape_tree_psg(ctx, patch),
         other => Err(format!(
-            "unknown tree source '{other}' (use: datajson | psg)"
+            "unknown tree source '{other}' (use: auto | export | psg)"
         )),
     }
 }
 
 /// First-party tree from the CDN bundle's `.psg` graph (fallback source).
 fn shape_tree_psg(ctx: &Ctx, patch: &str) -> Result<(), String> {
+    let dir = parsed_tree_dir(ctx, patch);
+    shape_tree_psg_into(ctx, patch, &dir)
+}
+
+fn shape_tree_psg_into(ctx: &Ctx, patch: &str, dir: &Path) -> Result<(), String> {
+    let profile = GameProfile::from_patch(patch);
     let schema_path = dat_schema_path(ctx)?;
-    let set =
-        SchemaSet::from_json(&std::fs::read_to_string(&schema_path).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
-    let client = CdnClient::connect().map_err(|e| e.to_string())?;
+    let set = SchemaSet::from_json_for(
+        &std::fs::read_to_string(&schema_path).map_err(|e| e.to_string())?,
+        profile.game,
+    )
+    .map_err(|e| e.to_string())?;
+    let client = CdnClient::connect_for(profile.game).map_err(|e| e.to_string())?;
+    if profile.game == data_miner::fetch::Game::Poe1 {
+        require_poe1_cdn_patch(ctx, patch, &client)?;
+    }
     let index = load_index(&client)?;
     let paths = resolve_table_paths(&index)?;
 
     // The graph file itself (not a table — fetched by its metadata path).
     let psg_bytes = extract_by_path(&client, &index, "metadata/passiveskillgraph.psg")?;
-    let graph = data_miner::psg::Graph::parse(&psg_bytes, &data_miner::shape::SKILLS_PER_ORBIT)
-        .map_err(|e| e.to_string())?;
+    let graph = match profile.game {
+        data_miner::fetch::Game::Poe1 => data_miner::psg::Graph::parse_poe1(
+            &psg_bytes,
+            &data_miner::shape::POE1_SKILLS_PER_ORBIT,
+        ),
+        data_miner::fetch::Game::Poe2 => {
+            data_miner::psg::Graph::parse(&psg_bytes, &data_miner::shape::SKILLS_PER_ORBIT)
+        }
+    }
+    .map_err(|e| e.to_string())?;
     ui::note(
         ctx.style,
         &format!(
@@ -743,7 +924,12 @@ fn shape_tree_psg(ctx: &Ctx, patch: &str) -> Result<(), String> {
     // Metadata tables (PassiveSkills keyed by graph id; Ascendancy for
     // readable ascendancy ids).
     let mut ts = data_miner::shape::TableSet::new();
-    for name in data_miner::shape::TREE_TABLES {
+    let tables = if profile.game == data_miner::fetch::Game::Poe1 {
+        data_miner::shape::TREE_TABLES_POE1
+    } else {
+        data_miner::shape::TREE_TABLES
+    };
+    for name in tables {
         let Some(schema) = set.table(name) else {
             ui::warn(ctx.style, &format!("{name}: not in dat-schema — skipped"));
             continue;
@@ -758,20 +944,23 @@ fn shape_tree_psg(ctx: &Ctx, patch: &str) -> Result<(), String> {
 
     // Stat-description files (master + passive override) → rendered text.
     let mut sd = data_miner::csd::StatDescriptions::new();
-    for path in data_miner::shape::TREE_STAT_CSD {
-        match extract_by_path(&client, &index, path) {
-            Ok(bytes) => sd.parse(&data_miner::csd::StatDescriptions::decode_utf16(&bytes)),
-            Err(e) => ui::warn(ctx.style, &format!("{path}: {e} — stat text degraded")),
+    let mut seen = std::collections::HashSet::new();
+    let mut stat_sources = BTreeMap::new();
+    for path in [
+        item_stat_descriptions_path(profile.game),
+        skill_stat_descriptions_path(profile.game),
+        passive_stat_descriptions_path(profile.game),
+    ] {
+        if let Err(e) =
+            load_csd_chain_recording(&client, &index, path, &mut seen, &mut sd, &mut stat_sources)
+        {
+            ui::warn(ctx.style, &format!("{path}: {e} — stat text degraded"));
         }
     }
 
-    let tree = data_miner::shape::shape_tree(&graph, &ts, &sd).map_err(|e| e.to_string())?;
-    let dir = ctx
-        .root
-        .join("data/parsed")
-        .join(format!("{patch}_native"))
-        .join("tree");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let tree = data_miner::shape::shape_tree_for_game(&graph, &ts, &sd, profile.game)
+        .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     for (name, body) in [
         ("nodes.tsv", &tree.nodes),
         ("edges.tsv", &tree.edges),
@@ -780,6 +969,48 @@ fn shape_tree_psg(ctx: &Ctx, patch: &str) -> Result<(), String> {
         let p = dir.join(name);
         std::fs::write(&p, body).map_err(|e| format!("write {}: {e}", p.display()))?;
     }
+    let mut provenance = json::Map::new();
+    provenance.insert("dataset".into(), json::Value::Str("tree".into()));
+    provenance.insert("game".into(), json::Value::Str(profile.id.to_string()));
+    provenance.insert("source".into(), json::Value::Str("ggg-patch-cdn".into()));
+    provenance.insert(
+        "cdn_version".into(),
+        json::Value::Str(client.info.version.clone()),
+    );
+    provenance.insert(
+        "cdn_base".into(),
+        json::Value::Str(client.info.cdn_base.clone()),
+    );
+    provenance.insert(
+        "graph_path".into(),
+        json::Value::Str("metadata/passiveskillgraph.psg".into()),
+    );
+    provenance.insert(
+        "graph_sha256".into(),
+        json::Value::Str(hash::sha256_hex(&psg_bytes)),
+    );
+    provenance.insert(
+        "graph_version".into(),
+        json::Value::Integer(graph.version as i64),
+    );
+    provenance.insert(
+        "unparsed_bytes".into(),
+        json::Value::Integer(graph.unparsed_bytes as i64),
+    );
+    provenance.insert(
+        "stat_descriptions".into(),
+        json::Value::Object(
+            stat_sources
+                .into_iter()
+                .map(|(path, digest)| (path, json::Value::Str(digest)))
+                .collect(),
+        ),
+    );
+    std::fs::write(
+        dir.join("tree.source.json"),
+        json::emit_pretty(&json::Value::Object(provenance)) + "\n",
+    )
+    .map_err(|e| e.to_string())?;
     let nnodes = tree.nodes.lines().count().saturating_sub(1);
     let nedges = tree.edges.lines().count().saturating_sub(1);
     ui::ok(
@@ -886,6 +1117,11 @@ fn emit_asc_overrides(ctx: &Ctx, dir: &Path) -> Result<(), String> {
 }
 
 fn shape_tree_datajson(ctx: &Ctx, patch: &str) -> Result<(), String> {
+    let dir = parsed_tree_dir(ctx, patch);
+    shape_tree_datajson_into(ctx, patch, &dir)
+}
+
+fn shape_tree_datajson_into(ctx: &Ctx, _patch: &str, dir: &Path) -> Result<(), String> {
     let url = format!(
         "https://raw.githubusercontent.com/{TREE_EXPORT_REPO}/{TREE_EXPORT_COMMIT}/data.json"
     );
@@ -904,12 +1140,7 @@ fn shape_tree_datajson(ctx: &Ctx, patch: &str) -> Result<(), String> {
 
     let tree = data_miner::tree_json::shape_tree_json(&data, &asc_art)?;
 
-    let dir = ctx
-        .root
-        .join("data/parsed")
-        .join(format!("{patch}_native"))
-        .join("tree");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     for (name, out) in [
         ("nodes.tsv", &tree.nodes),
         ("edges.tsv", &tree.edges),
@@ -939,6 +1170,10 @@ fn shape_tree_datajson(ctx: &Ctx, patch: &str) -> Result<(), String> {
     );
     prov.insert("commit".into(), json::Value::Str(TREE_EXPORT_COMMIT.into()));
     prov.insert("file".into(), json::Value::Str("data.json".into()));
+    prov.insert(
+        "file_sha256".into(),
+        json::Value::Str(hash::sha256_hex(body.as_bytes())),
+    );
     std::fs::write(
         dir.join("tree.source.json"),
         json::emit_pretty(&json::Value::Object(prov)) + "\n",
@@ -955,6 +1190,101 @@ fn shape_tree_datajson(ctx: &Ctx, patch: &str) -> Result<(), String> {
             dir.display()
         ),
     );
+    Ok(())
+}
+
+fn same_tree_contract(a: &Path, b: &Path) -> Result<bool, String> {
+    for name in ["nodes.tsv", "edges.tsv", "meta.tsv"] {
+        let left = std::fs::read(a.join(name))
+            .map_err(|e| format!("read {}: {e}", a.join(name).display()))?;
+        let right = std::fs::read(b.join(name))
+            .map_err(|e| format!("read {}: {e}", b.join(name).display()))?;
+        if left != right {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn copy_tree_candidate(from: &Path, to: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
+    for stale in [
+        "nodes.tsv",
+        "edges.tsv",
+        "meta.tsv",
+        "tree.source.json",
+        "asc_overrides.tsv",
+    ] {
+        let path = to.join(stale);
+        if path.is_file() {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("remove stale {}: {e}", path.display()))?;
+        }
+    }
+    for entry in std::fs::read_dir(from).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.path().is_file() {
+            std::fs::copy(entry.path(), to.join(entry.file_name()))
+                .map_err(|e| format!("copy {}: {e}", entry.path().display()))?;
+        }
+    }
+    Ok(())
+}
+
+fn shape_tree_auto_poe2(ctx: &Ctx, patch: &str) -> Result<(), String> {
+    let temp = ctx
+        .root
+        .join("data/parsed")
+        .join(format!(".tree-auto-{}", std::process::id()));
+    let export = temp.join("export");
+    let psg = temp.join("psg");
+    if temp.exists() {
+        std::fs::remove_dir_all(&temp).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir_all(&temp).map_err(|e| e.to_string())?;
+
+    let export_result = shape_tree_datajson_into(ctx, patch, &export);
+    let psg_result = shape_tree_psg_into(ctx, patch, &psg);
+    let target = parsed_tree_dir(ctx, patch);
+    let selected = match (export_result, psg_result) {
+        (Ok(()), Ok(())) if same_tree_contract(&export, &psg)? => {
+            ui::note(
+                ctx.style,
+                "auto source: official export matches the live CDN graph; using the export",
+            );
+            &export
+        }
+        (Ok(()), Ok(())) => {
+            ui::warn(
+                ctx.style,
+                "auto source: official export differs from the live CDN graph; using live CDN PSG",
+            );
+            &psg
+        }
+        (Err(export_error), Ok(())) => {
+            ui::warn(
+                ctx.style,
+                &format!(
+                    "auto source: official export unavailable ({export_error}); using live CDN PSG"
+                ),
+            );
+            &psg
+        }
+        (Ok(()), Err(psg_error)) => {
+            let _ = std::fs::remove_dir_all(&temp);
+            return Err(format!(
+                "cannot validate the official export against the live CDN: {psg_error}"
+            ));
+        }
+        (Err(export_error), Err(psg_error)) => {
+            let _ = std::fs::remove_dir_all(&temp);
+            return Err(format!(
+                "both PoE2 tree sources failed (export: {export_error}; CDN: {psg_error})"
+            ));
+        }
+    };
+    copy_tree_candidate(selected, &target)?;
+    std::fs::remove_dir_all(&temp).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1013,6 +1343,10 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         // UniqueStashLayout table names every unique and keys its
         // inventory art. Complements `buildwright uniques`.
         "unique_art" => (data_miner::shape::UNIQUE_ART_TABLES, "items/unique_art.tsv"),
+        "passive_interop" => (
+            data_miner::shape::PASSIVE_INTEROP_TABLES,
+            "tree/passive_interop.tsv",
+        ),
         // Deliberately not table-shapeable — GGG ships no source for these
         // (verified against dat-schema). Fail loudly with the real reason
         // rather than emit a misleading partial file.
@@ -1049,6 +1383,9 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     let client = CdnClient::connect_for(game).map_err(|e| e.to_string())?;
+    if game == data_miner::fetch::Game::Poe1 {
+        require_poe1_cdn_patch(ctx, &patch, &client)?;
+    }
     let index = load_index(&client)?;
     let paths = resolve_table_paths(&index)?;
 
@@ -1108,6 +1445,9 @@ pub fn shape(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         "soul_cores" => data_miner::shape::shape_soul_cores(&ts).map_err(|e| e.to_string())?,
         "gem_quality" => data_miner::shape::shape_gem_quality(&ts).map_err(|e| e.to_string())?,
         "unique_art" => data_miner::shape::shape_unique_art(&ts).map_err(|e| e.to_string())?,
+        "passive_interop" => {
+            data_miner::shape::shape_passive_interop(&ts).map_err(|e| e.to_string())?
+        }
         _ => unreachable!(),
     };
 
@@ -1205,6 +1545,52 @@ fn dat_schema_path(ctx: &Ctx) -> Result<PathBuf, String> {
         return Err("failed to download dat-schema".to_string());
     }
     std::fs::rename(&part, &path).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+fn refresh_dat_schema(ctx: &Ctx) -> Result<PathBuf, String> {
+    const URL: &str =
+        "https://github.com/poe-tool-dev/dat-schema/releases/latest/download/schema.min.json";
+    let dir = cache_root().join("dat-schema");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join("schema.min.json");
+    let candidate = dir.join(format!("schema.download-{}.json", std::process::id()));
+    ui::note(
+        ctx.style,
+        "refreshing dat-schema before the live-patch import…",
+    );
+    let status = std::process::Command::new("curl")
+        .args(["--fail", "--silent", "--show-error", "--location", "-o"])
+        .arg(&candidate)
+        .arg(URL)
+        .status()
+        .map_err(|e| format!("curl dat-schema: {e}"))?;
+    if !status.success() {
+        let _ = std::fs::remove_file(&candidate);
+        return Err("failed to refresh dat-schema".into());
+    }
+    let bytes = std::fs::read(&candidate).map_err(|e| e.to_string())?;
+    let text = std::str::from_utf8(&bytes).map_err(|e| e.to_string())?;
+    // Validate both schema universes before replacing the last known-good
+    // cache. A partial/corrupt release must never poison subsequent runs.
+    SchemaSet::from_json_for(text, data_miner::fetch::Game::Poe1)
+        .map_err(|e| format!("refreshed PoE1 dat-schema is invalid: {e}"))?;
+    SchemaSet::from_json_for(text, data_miner::fetch::Game::Poe2)
+        .map_err(|e| format!("refreshed PoE2 dat-schema is invalid: {e}"))?;
+    let old_hash = std::fs::read(&path).ok().map(|old| hash::sha256_hex(&old));
+    let new_hash = hash::sha256_hex(&bytes);
+    std::fs::rename(&candidate, &path).map_err(|e| e.to_string())?;
+    if old_hash.as_deref() == Some(&new_hash) {
+        ui::ok(
+            ctx.style,
+            &format!("dat-schema unchanged ({new_hash:.12}…)"),
+        );
+    } else {
+        ui::ok(
+            ctx.style,
+            &format!("dat-schema refreshed ({new_hash:.12}…)"),
+        );
+    }
     Ok(path)
 }
 
@@ -1520,6 +1906,496 @@ fn png_dimensions(path: &Path) -> Option<(u32, u32)> {
     Some((w, h))
 }
 
+fn compatible_poe1_web_tree(root: &Path, target_label: &str) -> Option<PathBuf> {
+    let target = poe1_release_line(target_label)?;
+    let parsed = root.join("data/parsed");
+    let mut candidates: Vec<(String, PathBuf)> = std::fs::read_dir(parsed)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.starts_with("poe1_") || poe1_release_line(&name) != Some(target) {
+                return None;
+            }
+            let dir = entry.path();
+            let tree = dir.join("tree");
+            if !dir.join("tree.json").is_file()
+                || !tree.join("nodes.tsv").is_file()
+                || !tree.join("edges.tsv").is_file()
+            {
+                return None;
+            }
+            Some((name, tree))
+        })
+        .collect();
+    candidates.sort_by(|a, b| a.0.cmp(&b.0));
+    candidates.pop().map(|(_, tree)| tree)
+}
+
+fn parity_nodes(path: &Path) -> Result<BTreeMap<u32, Vec<String>>, String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut nodes = BTreeMap::new();
+    for (line_no, line) in text.lines().enumerate().skip(1) {
+        let cols: Vec<String> = line.split('\t').map(str::to_string).collect();
+        if cols.len() < 17 {
+            return Err(format!(
+                "{}:{}: expected 17 node columns, got {}",
+                path.display(),
+                line_no + 1,
+                cols.len()
+            ));
+        }
+        let id = cols[0]
+            .parse()
+            .map_err(|_| format!("{}:{}: invalid node id", path.display(), line_no + 1))?;
+        nodes.insert(id, cols);
+    }
+    Ok(nodes)
+}
+
+fn parity_edges(path: &Path) -> Result<BTreeSet<(u32, u32)>, String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut edges = BTreeSet::new();
+    for (line_no, line) in text.lines().enumerate().skip(1) {
+        let cols: Vec<&str> = line.split('\t').collect();
+        let a: u32 = cols
+            .first()
+            .and_then(|v| v.parse().ok())
+            .ok_or_else(|| format!("{}:{}: invalid edge source", path.display(), line_no + 1))?;
+        let b: u32 = cols
+            .get(1)
+            .and_then(|v| v.parse().ok())
+            .ok_or_else(|| format!("{}:{}: invalid edge target", path.display(), line_no + 1))?;
+        edges.insert((a.min(b), a.max(b)));
+    }
+    Ok(edges)
+}
+
+/// Gate the reverse-engineered CDN adapter against GGG's website export
+/// whenever both describe the same release. Stat clause ordering is source
+/// presentation and may differ, but the graph, node identity, placement,
+/// classification, class/ascendancy ownership, name and icon must agree.
+fn validate_poe1_tree_parity(reference: &Path, candidate: &Path) -> Result<(), String> {
+    let reference_nodes = parity_nodes(&reference.join("nodes.tsv"))?;
+    let candidate_nodes = parity_nodes(&candidate.join("nodes.tsv"))?;
+    if reference_nodes.keys().ne(candidate_nodes.keys()) {
+        return Err(format!(
+            "PoE1 CDN parity failed: node-id set differs from {}",
+            reference.display()
+        ));
+    }
+    const EXACT_COLUMNS: &[(usize, &str)] = &[
+        (3, "kind"),
+        (4, "class"),
+        (5, "ascendancy"),
+        (6, "name"),
+        (8, "group"),
+        (9, "orbit"),
+        (10, "orbit_index"),
+        (11, "icon"),
+    ];
+    for (id, expected) in &reference_nodes {
+        let actual = &candidate_nodes[id];
+        for &(column, label) in EXACT_COLUMNS {
+            if expected[column] != actual[column] {
+                return Err(format!(
+                    "PoE1 CDN parity failed at node {id} {label}: website {:?}, CDN {:?}",
+                    expected[column], actual[column]
+                ));
+            }
+        }
+        for (column, label) in [(1usize, "x"), (2usize, "y")] {
+            let expected_pos: f64 = expected[column]
+                .parse()
+                .map_err(|_| format!("reference node {id} has invalid {label}"))?;
+            let actual_pos: f64 = actual[column]
+                .parse()
+                .map_err(|_| format!("candidate node {id} has invalid {label}"))?;
+            if (expected_pos - actual_pos).abs() > 0.1 {
+                return Err(format!(
+                    "PoE1 CDN parity failed at node {id} {label}: website {expected_pos}, CDN {actual_pos}"
+                ));
+            }
+        }
+        if !expected[7].is_empty() && actual[7].is_empty() {
+            return Err(format!(
+                "PoE1 CDN parity failed at node {id}: website has stat text but CDN rendering is empty"
+            ));
+        }
+    }
+
+    let reference_edges = parity_edges(&reference.join("edges.tsv"))?;
+    let candidate_edges = parity_edges(&candidate.join("edges.tsv"))?;
+    if reference_edges != candidate_edges {
+        let missing = reference_edges.difference(&candidate_edges).count();
+        let extra = candidate_edges.difference(&reference_edges).count();
+        return Err(format!(
+            "PoE1 CDN parity failed: topology differs from {} ({missing} missing, {extra} extra edges)",
+            reference.display()
+        ));
+    }
+    Ok(())
+}
+
+/// PoE1's node/icon data is available from the patch CDN before the
+/// website export, but a small amount of renderer chrome (class medallions,
+/// group backgrounds and buttons) exists only in the website atlases.
+/// Reuse the newest locally generated official atlas manifest as immutable
+/// chrome, then let the live CDN rows appended by `sprites` replace every
+/// key it can provide. The selected files remain hash-covered by manifest
+/// v3; no GGG binary is committed.
+fn latest_poe1_web_sprite_manifest(root: &Path, current_patch: &str) -> Option<PathBuf> {
+    let parsed = root.join("data/parsed");
+    let mut candidates: Vec<((u32, u32, u32), String, PathBuf)> = std::fs::read_dir(parsed)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name == current_patch || !name.starts_with("poe1_") {
+                return None;
+            }
+            let dir = entry.path();
+            let sprites = dir.join("tree/sprites.tsv");
+            if !dir.join("tree.json").is_file() || !sprites.is_file() {
+                return None;
+            }
+            Some((poe1_release_line(&name)?, name, sprites))
+        })
+        .collect();
+    candidates.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+    candidates.pop().map(|(_, _, path)| path)
+}
+
+#[derive(Debug, Clone)]
+struct PortraitSourceSpec {
+    role: &'static str,
+    name: String,
+    source_game: data_miner::fetch::Game,
+    source_vpath: Option<String>,
+    framing: &'static str,
+    fallback: Option<&'static str>,
+}
+
+#[derive(Debug)]
+struct PortraitAuditEntry {
+    role: &'static str,
+    name: String,
+    source_game: &'static str,
+    source_patch: String,
+    source_vpath: String,
+    source_sha256: String,
+    output_url: String,
+    output_sha256: String,
+    width: u32,
+    height: u32,
+    framing: &'static str,
+    fallback: String,
+}
+
+fn portrait_roster(meta: &str) -> Vec<(String, String, String, String)> {
+    let mut out = Vec::new(); // role, display, internal, parent
+    for line in meta.lines() {
+        let cols: Vec<&str> = line.split('\t').collect();
+        match cols.first().copied() {
+            Some("class") if cols.len() >= 2 && !cols[1].is_empty() => {
+                out.push((
+                    "class".into(),
+                    cols[1].into(),
+                    String::new(),
+                    cols[1].into(),
+                ));
+            }
+            Some("asc_internal") if cols.len() >= 4 && !cols[1].is_empty() => {
+                out.push((
+                    "ascendancy".into(),
+                    cols[1].into(),
+                    cols[2].into(),
+                    cols[3].into(),
+                ));
+            }
+            _ => {}
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn poe2_face_vpath(attrs: &str, ascendancy_internal: Option<&str>) -> String {
+    let base = format!(
+        "art/textures/interface/2d/2dart/uiimages/common/icon{}",
+        attrs.to_ascii_lowercase()
+    );
+    match ascendancy_internal {
+        Some(internal) => format!("{base}_{}.dds", internal.to_ascii_lowercase()),
+        None => format!("{base}.dds"),
+    }
+}
+
+/// PoE1's in-game party portraits are part of GGG's shared UI library.
+/// The current PoE1 bundle no longer carries those textures, while the
+/// PoE2 bundle still carries the complete legacy class/ascendancy family.
+/// PoE1 uses display names in this legacy filename family, unlike PoE2's
+/// current internal ascendancy ids.
+fn poe1_party_face_vpath(attrs: &str, ascendancy_name: Option<&str>) -> String {
+    let base = format!(
+        "art/textures/interface/2d/2dart/uiimages/common/icon{}",
+        attrs.to_ascii_lowercase()
+    );
+    match ascendancy_name {
+        Some(name) => {
+            let suffix = name
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .flat_map(char::to_lowercase)
+                .collect::<String>();
+            format!("{base}_{suffix}.dds")
+        }
+        None => format!("{base}.dds"),
+    }
+}
+
+fn portrait_source_game_id(game: data_miner::fetch::Game) -> &'static str {
+    match game {
+        data_miner::fetch::Game::Poe1 => "poe1",
+        data_miner::fetch::Game::Poe2 => "poe2",
+    }
+}
+
+fn portrait_source_specs(
+    ctx: &Ctx,
+    client: &CdnClient,
+    index: &Index,
+    profile: GameProfile,
+    meta: &str,
+    shared_face_index: Option<&Index>,
+) -> Result<Vec<PortraitSourceSpec>, String> {
+    let schema_path = dat_schema_path(ctx)?;
+    let set = SchemaSet::from_json_for(
+        &std::fs::read_to_string(schema_path).map_err(|e| e.to_string())?,
+        profile.game,
+    )
+    .map_err(|e| e.to_string())?;
+    let paths = resolve_table_paths(index)?;
+
+    let load_rows = |table: &str, columns: &[&str]| -> Result<Vec<Vec<String>>, String> {
+        let schema = set
+            .table(table)
+            .ok_or_else(|| format!("{table}: missing from dat-schema"))?;
+        let base = format!("{}.datc64", table.to_ascii_lowercase());
+        let candidates = paths.get(&base).map(Vec::as_slice).unwrap_or(&[]);
+        let (bytes, fitted) = extract_parseable(client, index, table, candidates, schema)?;
+        let dat = Dat::parse(&bytes, &fitted).map_err(|e| e.to_string())?;
+        let indexes: Vec<usize> = columns
+            .iter()
+            .map(|column| {
+                fitted
+                    .column(column)
+                    .ok_or_else(|| format!("{table}: no {column} column"))
+            })
+            .collect::<Result<_, _>>()?;
+        let mut rows = Vec::new();
+        for row in 0..dat.row_count() {
+            let mut values = Vec::new();
+            for &column in &indexes {
+                values.push(dat.string(row, column).unwrap_or_default());
+            }
+            rows.push(values);
+        }
+        Ok(rows)
+    };
+
+    let mut characters: BTreeMap<String, String> = BTreeMap::new();
+    for row in load_rows("Characters", &["Name", "AttrsAsId"])? {
+        if row.len() == 2 && !row[0].is_empty() {
+            characters.insert(row[0].clone(), row[1].clone());
+        }
+    }
+    let mut ascendancies: BTreeMap<String, String> = BTreeMap::new();
+    for row in load_rows("Ascendancy", &["Id", "Name"])? {
+        if row.len() == 2 && !row[0].is_empty() {
+            ascendancies.insert(row[0].clone(), row[1].clone());
+        }
+    }
+
+    let roster = portrait_roster(meta);
+    if roster.is_empty() {
+        return Err("tree metadata contains no portrait roster".into());
+    }
+    let mut specs = Vec::new();
+    for (role, name, internal, parent) in roster {
+        if role == "class" {
+            let attrs = characters
+                .get(&name)
+                .ok_or_else(|| format!("Characters has no active class {name:?}"))?;
+            if profile.game == data_miner::fetch::Game::Poe2 {
+                if attrs.is_empty() {
+                    return Err(format!("Characters.AttrsAsId is empty for {name}"));
+                }
+                specs.push(PortraitSourceSpec {
+                    role: "class",
+                    name,
+                    source_game: data_miner::fetch::Game::Poe2,
+                    source_vpath: Some(poe2_face_vpath(attrs, None)),
+                    framing: "ggg-face-icon",
+                    fallback: None,
+                });
+            } else {
+                let shared = shared_face_index
+                    .ok_or("PoE1 party portraits require GGG's shared UI index")?;
+                let path = poe1_party_face_vpath(attrs, None);
+                if shared.lookup(&path).is_none() {
+                    return Err(format!(
+                        "required PoE1 class party portrait {name} ({path}) is missing"
+                    ));
+                }
+                specs.push(PortraitSourceSpec {
+                    role: "class",
+                    name,
+                    source_game: data_miner::fetch::Game::Poe2,
+                    source_vpath: Some(path),
+                    framing: "ggg-party-face-icon",
+                    fallback: None,
+                });
+            }
+            continue;
+        }
+
+        let attrs = characters
+            .get(&parent)
+            .ok_or_else(|| format!("Characters has no parent class {parent:?} for {name}"))?;
+        let table_name = ascendancies
+            .get(&internal)
+            .ok_or_else(|| format!("Ascendancy has no active id {internal:?} ({name})"))?;
+        if table_name != &name {
+            return Err(format!(
+                "ascendancy identity mismatch: metadata {internal}={name:?}, table={table_name:?}"
+            ));
+        }
+        if profile.game == data_miner::fetch::Game::Poe2 {
+            specs.push(PortraitSourceSpec {
+                role: "ascendancy",
+                name,
+                source_game: data_miner::fetch::Game::Poe2,
+                source_vpath: Some(poe2_face_vpath(attrs, Some(&internal))),
+                framing: "ggg-face-icon",
+                fallback: None,
+            });
+        } else {
+            let shared =
+                shared_face_index.ok_or("PoE1 party portraits require GGG's shared UI index")?;
+            let exact = poe1_party_face_vpath(attrs, Some(&name));
+            let base = poe1_party_face_vpath(attrs, None);
+            let (path, fallback) = if shared.lookup(&exact).is_some() {
+                (exact, None)
+            } else if shared.lookup(&base).is_some() {
+                // New/special PoE1 ascendancies do not always receive a
+                // separate party portrait. They display their parent
+                // character's face in-game; Luminary therefore uses Scion.
+                (base, Some("parent-class-party-portrait"))
+            } else {
+                return Err(format!(
+                    "required PoE1 party portrait {name} is missing ({exact}; fallback {base})"
+                ));
+            };
+            specs.push(PortraitSourceSpec {
+                role: "ascendancy",
+                name,
+                source_game: data_miner::fetch::Game::Poe2,
+                source_vpath: Some(path),
+                framing: "ggg-party-face-icon",
+                fallback,
+            });
+        }
+    }
+    Ok(specs)
+}
+
+fn write_portrait_catalogue(
+    ctx: &Ctx,
+    patch: &str,
+    expected: &[PortraitSourceSpec],
+    mut entries: Vec<PortraitAuditEntry>,
+) -> Result<(), String> {
+    entries.sort_by(|a, b| a.role.cmp(b.role).then(a.name.cmp(&b.name)));
+    let wanted: BTreeSet<(&str, &str)> = expected
+        .iter()
+        .map(|entry| (entry.role, entry.name.as_str()))
+        .collect();
+    let emitted: BTreeSet<(&str, &str)> = entries
+        .iter()
+        .map(|entry| (entry.role, entry.name.as_str()))
+        .collect();
+    if wanted != emitted {
+        let missing = wanted
+            .difference(&emitted)
+            .map(|(role, name)| format!("{role}:{name}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!("portrait coverage is incomplete: {missing}"));
+    }
+
+    let mut out = String::from(
+        "role\tname\tsource_game\tsource_patch\tsource_vpath\tsource_sha256\toutput_url\toutput_sha256\twidth\theight\tframing\tfallback\n",
+    );
+    for entry in entries {
+        let width = entry.width.to_string();
+        let height = entry.height.to_string();
+        let row = [
+            entry.role,
+            &entry.name,
+            entry.source_game,
+            &entry.source_patch,
+            &entry.source_vpath,
+            &entry.source_sha256,
+            &entry.output_url,
+            &entry.output_sha256,
+            &width,
+            &height,
+            entry.framing,
+            &entry.fallback,
+        ];
+        if row.iter().any(|value| value.contains(['\t', '\n', '\r'])) {
+            return Err(format!(
+                "unsafe portrait catalogue value for {}",
+                entry.name
+            ));
+        }
+        out.push_str(&row.join("\t"));
+        out.push('\n');
+    }
+    let dir = ctx.root.join("data/parsed").join(patch).join("portraits");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("catalogue.tsv"), out).map_err(|e| e.to_string())
+}
+
+/// Replace only the portrait kinds refreshed by the sprite pass.
+///
+/// PoE1's website tree contributes `portrait card` rows for the seven base
+/// classes, while the live-CDN sprite pass refreshes `portrait asc` panel
+/// rows. Dropping every portrait row here used to erase those class-card
+/// entries before `tree_render` could publish them in `build_meta.json`.
+fn merge_portrait_rows(existing: &str, refreshed: &str) -> String {
+    let refreshed_kinds: BTreeSet<&str> = refreshed
+        .lines()
+        .filter_map(|line| line.strip_prefix("portrait\t"))
+        .filter_map(|rest| rest.split('\t').next())
+        .collect();
+    let mut merged: String = existing
+        .lines()
+        .filter(|line| {
+            line.strip_prefix("portrait\t")
+                .and_then(|rest| rest.split('\t').next())
+                .is_none_or(|kind| !refreshed_kinds.contains(kind))
+        })
+        .map(|line| format!("{line}\n"))
+        .collect();
+    merged.push_str(refreshed);
+    merged
+}
+
 /// Decode every tree-node icon `.dds` from the CDN to a PNG under
 /// `viewer/assets/sprites/`, and write `tree/sprites.tsv` (icon → png +
 /// dims). First-party replacement for the PoB-derived sprite sheets.
@@ -1527,6 +2403,7 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // Reads the patch dir directly (consistent with masteries/uniques/
     // manifest) — pass the `_native` patch, not the base.
     let patch = resolve_patch(ctx, args)?;
+    let profile = GameProfile::from_patch(&patch);
     let dir = ctx.root.join("data/parsed").join(&patch);
     let nodes_path = dir.join("tree/nodes.tsv");
     let nodes_text = std::fs::read_to_string(&nodes_path).map_err(|e| {
@@ -1580,35 +2457,10 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     // Base-item inventory art (items/bases.tsv icon_dds) — EQUIPMENT
     // classes only; the full table is every item type in the game and
-    // most of it never reaches a gear slot.
+    // most of it never reaches a gear slot. Use the same shared taxonomy
+    // as catalogue generation; a duplicate list here previously omitted
+    // valid classes such as Claw and produced catalogue URLs with no PNG.
     if let Ok(b) = std::fs::read_to_string(dir.join("items/bases.tsv")) {
-        const EQUIP_CLASSES: &[&str] = &[
-            "Body Armour",
-            "Helmet",
-            "Gloves",
-            "Boots",
-            "Amulet",
-            "Talisman",
-            "Ring",
-            "Belt",
-            "One Hand Mace",
-            "Two Hand Mace",
-            "Sceptre",
-            "Spear",
-            "Bow",
-            "Crossbow",
-            "Wand",
-            "Staff",
-            "Warstaff",
-            "Shield",
-            "Buckler",
-            "Focus",
-            "Quiver",
-            "LifeFlask",
-            "ManaFlask",
-            "UtilityFlask",
-            "Jewel",
-        ];
         let hdr: Vec<&str> = b.lines().next().unwrap_or("").split('\t').collect();
         let ic = hdr.iter().position(|h| *h == "icon_dds");
         let cc = hdr.iter().position(|h| *h == "item_class");
@@ -1617,7 +2469,7 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 let cols: Vec<&str> = line.split('\t').collect();
                 if let (Some(v), Some(class)) = (cols.get(ic), cols.get(cc))
                     && !v.is_empty()
-                    && EQUIP_CLASSES.contains(class)
+                    && equipment_slot(class, profile.game).is_some()
                 {
                     icons.insert(v.to_string());
                 }
@@ -1637,18 +2489,27 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     ui::note(ctx.style, &format!("{} distinct sprites", icons.len()));
 
-    let client = CdnClient::connect().map_err(|e| e.to_string())?;
+    let client = CdnClient::connect_for(profile.game).map_err(|e| e.to_string())?;
+    if profile.game == data_miner::fetch::Game::Poe1 {
+        require_poe1_cdn_patch(ctx, &patch, &client)?;
+    }
     let index = load_index(&client)?;
     let assets = ctx.root.join("viewer/assets/sprites");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
 
-    // Ascendancy display names (for per-ascendancy frame keys) from the
-    // meta rows we shaped.
+    // Per-ascendancy frame keys must follow the exact value carried by each
+    // node. PoE1's website export uses display names (`Pathfinder`), while
+    // PoE2's PSG uses internal IDs (`Ranger3`). Deriving these from nodes
+    // keeps the shared renderer independent of that source-level choice.
     let meta_text = std::fs::read_to_string(dir.join("tree/meta.tsv")).unwrap_or_default();
-    let asc_names: Vec<String> = meta_text
+    let asc_names: Vec<String> = nodes_text
         .lines()
-        .filter_map(|l| l.strip_prefix("asc_internal\t"))
-        .filter_map(|r| r.split('\t').next().map(str::to_string))
+        .skip(1)
+        .filter_map(|line| line.split('\t').nth(5))
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect();
 
     // Jobs: (sprite key, candidate `.dds` paths). Node icons/patterns are
@@ -1669,7 +2530,36 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
 
     let mut cache: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    let mut out = String::from(data_miner::tree_tsv::SPRITES_HEADER);
+    let mut out = if profile.game == data_miner::fetch::Game::Poe1 {
+        let current_web_atlas = dir.join("tree/sprites.tsv");
+        let web_atlas = if dir.join("tree.json").is_file() && current_web_atlas.is_file() {
+            Some(current_web_atlas)
+        } else {
+            latest_poe1_web_sprite_manifest(&ctx.root, &patch)
+        };
+        web_atlas
+            .and_then(|path| {
+                let body = std::fs::read_to_string(&path).ok()?;
+                ui::note(
+                    ctx.style,
+                    &format!(
+                        "PoE1 website-atlas chrome: {} (live CDN rows override it)",
+                        path.display()
+                    ),
+                );
+                Some(body.trim_end().to_string() + "\n")
+            })
+            .unwrap_or_else(|| String::from(data_miner::tree_tsv::SPRITES_HEADER))
+    } else {
+        String::from(data_miner::tree_tsv::SPRITES_HEADER)
+    };
+    let output_name = |name: &str| -> String {
+        if profile.game == data_miner::fetch::Game::Poe1 {
+            format!("poe1_{name}")
+        } else {
+            name.to_string()
+        }
+    };
     let (mut ok, mut missing) = (0usize, 0usize);
     for (key, candidates) in &jobs {
         let bytes = match candidates
@@ -1692,7 +2582,7 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         };
         let img = full_flask_icon(key, img);
         let png = data_miner::png::encode_rgba(img.width, img.height, &img.rgba);
-        let png_name = format!("{}.png", sprite_safe_name(key));
+        let png_name = output_name(&format!("{}.png", sprite_safe_name(key)));
         std::fs::write(assets.join(&png_name), &png)
             .map_err(|e| format!("write {png_name}: {e}"))?;
         out.push_str(&format!(
@@ -1747,10 +2637,11 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             };
             let png = data_miner::png::encode_rgba(img.width, img.height, &img.rgba);
             for prefix in prefixes {
-                let name = format!("{prefix}_orbit_{state}{idx}.png");
-                std::fs::write(assets.join(&name), &png)
-                    .map_err(|e| format!("write {name}: {e}"))?;
-                out.push_str(&format!("{name}\t{name}\t{}\t{}\n", img.width, img.height));
+                let key = format!("{prefix}_orbit_{state}{idx}.png");
+                let file = output_name(&key);
+                std::fs::write(assets.join(&file), &png)
+                    .map_err(|e| format!("write {file}: {e}"))?;
+                out.push_str(&format!("{key}\t{file}\t{}\t{}\n", img.width, img.height));
                 ok += 1;
             }
         }
@@ -1845,10 +2736,11 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             {
                 Some(img) => {
                     let png = data_miner::png::encode_rgba(img.width, img.height, &img.rgba);
-                    std::fs::write(assets.join(&out_name), &png)
-                        .map_err(|e| format!("write {out_name}: {e}"))?;
+                    let file = output_name(&out_name);
+                    std::fs::write(assets.join(&file), &png)
+                        .map_err(|e| format!("write {file}: {e}"))?;
                     out.push_str(&format!(
-                        "{out_name}	{out_name}	{}	{}
+                        "{out_name}	{file}	{}	{}
 ",
                         img.width, img.height
                     ));
@@ -1865,16 +2757,20 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // class portrait — the same field family as the ascendancy backdrops,
     // NOT the small start-node backdrop). The class name maps directly to
     // the file. Emits the sprite + a `portrait` meta row.
-    let classes: &[&str] = &[
-        "Warrior",
-        "Witch",
-        "Sorceress",
-        "Ranger",
-        "Huntress",
-        "Mercenary",
-        "Monk",
-        "Druid",
-    ];
+    let classes: &[&str] = if profile.game == data_miner::fetch::Game::Poe1 {
+        &[]
+    } else {
+        &[
+            "Warrior",
+            "Witch",
+            "Sorceress",
+            "Ranger",
+            "Huntress",
+            "Mercenary",
+            "Monk",
+            "Druid",
+        ]
+    };
     let mut portrait_rows = String::new();
     for class in classes {
         let path = format!(
@@ -1893,7 +2789,7 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         };
         let png = data_miner::png::encode_rgba(img.width, img.height, &img.rgba);
         let key = format!("Classes{class}");
-        let png_name = format!("{key}.png");
+        let png_name = output_name(&format!("{key}.png"));
         std::fs::write(assets.join(&png_name), &png)
             .map_err(|e| format!("write {png_name}: {e}"))?;
         out.push_str(&format!(
@@ -1913,85 +2809,62 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
 
     // --- Character FACE portraits ------------------------------------
-    // The round face icons the game shows socially (party members,
-    // character select, website avatars): uiimages/common/icon<attr
-    // stem>[_<class><n>].dds. The unsuffixed file is the base class;
-    // _<class>1/2/3 follow the Ascendancy table order (the same order
-    // build_meta emits), and Witch's "3b" is the Abyssal Lich variant —
-    // visually validated (3b decodes to the undead face). Keys are
-    // Face<Name> with spaces/apostrophes stripped.
-    const FACE_SETS: &[(&str, &str, &[&str])] = &[
-        (
-            "Warrior",
-            "strfourb",
-            &["Titan", "Warbringer", "Smith of Kitava"],
-        ),
-        ("Witch", "intfour", &["Infernalist", "Blood Mage", "Lich"]),
-        (
-            "Sorceress",
-            "intfourb",
-            &["Stormweaver", "Chronomancer", "Disciple of Varashta"],
-        ),
-        ("Ranger", "dexfour", &["Deadeye", "Pathfinder"]),
-        (
-            "Huntress",
-            "dexfourb",
-            &["Amazon", "Spirit Walker", "Ritualist"],
-        ),
-        (
-            "Mercenary",
-            "strdexfourb",
-            &["Tactician", "Witchhunter", "Gemling Legionnaire"],
-        ),
-        (
-            "Monk",
-            "dexintfourb",
-            &["Martial Artist", "Invoker", "Acolyte of Chayula"],
-        ),
-        ("Druid", "strintfourb", &["Oracle", "Shaman"]),
-    ];
-    let mut face_jobs: Vec<(String, String)> = Vec::new(); // (display name, vpath)
-    for (class, stem, ascs) in FACE_SETS {
-        let base = "art/textures/interface/2d/2dart/uiimages/common";
-        face_jobs.push((class.to_string(), format!("{base}/icon{stem}.dds")));
-        for (i, asc) in ascs.iter().enumerate() {
-            let class_l = class.to_ascii_lowercase();
-            face_jobs.push((
-                asc.to_string(),
-                format!("{base}/icon{stem}_{class_l}{}.dds", i + 1),
-            ));
-        }
-    }
-    face_jobs.push((
-        "Abyssal Lich".to_string(),
-        "art/textures/interface/2d/2dart/uiimages/common/iconintfour_witch3b.dds".to_string(),
-    ));
-    for (name, path) in &face_jobs {
-        let Some(img) = extract_cached(&client, &index, path, &mut cache)
-            .ok()
-            .and_then(|b| data_miner::dds::decode(&b).ok())
-        else {
-            ui::warn(
-                ctx.style,
-                &format!("face portrait {name} ({path}): missing"),
-            );
-            continue;
-        };
+    // Derive every path from GGG's Characters.AttrsAsId and the exact
+    // Ascendancy.Id recorded in this tree. Never compact active choices
+    // by array position: Ranger2 is an unused row, so doing that silently
+    // gave Pathfinder Ranger2's unrelated portrait instead of Ranger3.
+    let portrait_specs = if profile.game == data_miner::fetch::Game::Poe2 {
+        portrait_source_specs(ctx, &client, &index, profile, &meta_text, None)?
+    } else {
+        Vec::new()
+    };
+    let mut portrait_entries = Vec::new();
+    for spec in &portrait_specs {
+        let path = spec
+            .source_vpath
+            .as_deref()
+            .ok_or_else(|| format!("PoE2 portrait {} has no source", spec.name))?;
+        let bytes = extract_cached(&client, &index, path, &mut cache).map_err(|e| {
+            format!(
+                "required {} portrait {} ({path}) is missing: {e}",
+                spec.role, spec.name
+            )
+        })?;
+        let img = data_miner::dds::decode(&bytes)
+            .map_err(|e| format!("decode required portrait {}: {e}", spec.name))?;
         let png = data_miner::png::encode_rgba(img.width, img.height, &img.rgba);
         let key = format!(
             "Face{}",
-            name.chars()
+            spec.name
+                .chars()
                 .filter(|c| c.is_ascii_alphanumeric())
                 .collect::<String>()
         );
-        let png_name = format!("{key}.png");
+        let png_name = output_name(&format!("{key}.png"));
         std::fs::write(assets.join(&png_name), &png)
             .map_err(|e| format!("write {png_name}: {e}"))?;
         out.push_str(&format!(
             "{key}\t{png_name}\t{}\t{}\n",
             img.width, img.height
         ));
+        portrait_entries.push(PortraitAuditEntry {
+            role: spec.role,
+            name: spec.name.clone(),
+            source_game: portrait_source_game_id(spec.source_game),
+            source_patch: client.info.version.clone(),
+            source_vpath: path.into(),
+            source_sha256: hash::sha256_hex(&bytes),
+            output_url: format!("/assets/sprites/{png_name}"),
+            output_sha256: hash::sha256_hex(&png),
+            width: img.width,
+            height: img.height,
+            framing: spec.framing,
+            fallback: spec.fallback.unwrap_or("").into(),
+        });
         ok += 1;
+    }
+    if profile.game == data_miner::fetch::Game::Poe2 {
+        write_portrait_catalogue(ctx, &patch, &portrait_specs, portrait_entries)?;
     }
 
     // --- Ascendancy backdrops (portraits) ----------------------------
@@ -2014,9 +2887,10 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             start_pos.insert(c[5].to_string(), (x, y));
         }
     }
-    // internal id → display name (Witch3 → Lich) for the variant fallback;
-    // node ascendancy columns carry the DISPLAY NAME, so the centroid map
-    // (keyed off that column) is keyed by name too.
+    // internal id → display name (Witch3 → Lich) for the PoE1 variant
+    // fallback. PoE1 node rows carry display names; PoE2 node rows carry
+    // internal IDs, so the anchor lookup below deliberately selects the
+    // representation used by that game's source.
     let id2name: BTreeMap<&str, &str> = meta_text
         .lines()
         .filter_map(|l| l.strip_prefix("asc_internal\t"))
@@ -2031,10 +2905,14 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         };
         // asc_internal <disp> <internal_id> <class> <image_path>
         let f: Vec<&str> = rest.split('\t').collect();
-        if f.len() < 4 || f[3].is_empty() {
+        if f.len() < 3
+            || (profile.game == data_miner::fetch::Game::Poe2
+                && f.get(3).is_none_or(|path| path.is_empty()))
+        {
             continue;
         }
-        let (disp, id, img) = (f[0], f[1], f[3]);
+        let (disp, id, class) = (f[0], f[1], f[2]);
+        let img = f.get(3).copied().unwrap_or("");
         // Variant ascendancies (Witch3b = Abyssal Lich) carry no nodes of
         // their own — they overlay the base ascendancy's cluster (Witch3 =
         // Lich), so fall back to the base ascendancy.
@@ -2046,22 +2924,110 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         // at start + offset exactly (portrait − start == the offset).
         let ox: f64 = f.get(4).and_then(|s| s.parse().ok()).unwrap_or(0.0);
         let oy: f64 = f.get(5).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-        let Some(&(ax, ay)) = start_pos.get(disp).or_else(|| start_pos.get(base_name)) else {
+        let anchor = if profile.game == data_miner::fetch::Game::Poe2 {
+            id
+        } else {
+            disp
+        };
+        let base_anchor = if profile.game == data_miner::fetch::Game::Poe2 {
+            base_id
+        } else {
+            base_name
+        };
+        let Some(&(ax, ay)) = start_pos.get(anchor).or_else(|| start_pos.get(base_anchor)) else {
             ui::warn(ctx.style, &format!("asc backdrop {disp}: no start node"));
             continue;
         };
         let (cx, cy) = (ax + ox, ay + oy);
-        let path = img.to_ascii_lowercase();
-        let Some(image) = extract_cached(&client, &index, &path, &mut cache)
-            .ok()
-            .and_then(|b| data_miner::dds::decode(&b).ok())
-        else {
-            ui::warn(ctx.style, &format!("asc backdrop {disp} ({path}): missing"));
+        let candidates = if profile.game == data_miner::fetch::Game::Poe1 {
+            let attr = match class {
+                "Marauder" => "str",
+                "Ranger" => "dex",
+                "Witch" => "int",
+                "Duelist" => "strdex",
+                "Templar" => "strint",
+                "Shadow" => "dexint",
+                "Scion" => "strdexint",
+                _ => "",
+            };
+            let root = "art/textures/interface/2d/2dart/uiimages/ingame/classes";
+            let mut paths = Vec::new();
+            if !attr.is_empty() {
+                paths.push(format!(
+                    "{root}/{attr}/{}/passiveskillscreenbackground.dds",
+                    id.to_ascii_lowercase()
+                ));
+            }
+            paths
+        } else {
+            vec![img.to_ascii_lowercase()]
+        };
+        let live_image = candidates.iter().find_map(|path| {
+            extract_cached(&client, &index, path, &mut cache)
+                .ok()
+                .and_then(|bytes| data_miner::dds::decode(&bytes).ok())
+                .map(|image| (path.clone(), image))
+        });
+
+        // Some PoE1 special ascendancies are present in the official
+        // website atlas but do not have a dedicated standalone panel in
+        // the patch CDN. Preserve that exact atlas art when available.
+        // Warden deliberately retains the historical `ClassesRaider` key
+        // used by GGG's website export.
+        if live_image.is_none() && profile.game == data_miner::fetch::Game::Poe1 {
+            let web_key = if disp == "Warden" {
+                "ClassesRaider".to_string()
+            } else {
+                format!(
+                    "Classes{}",
+                    disp.chars()
+                        .filter(|c| c.is_ascii_alphanumeric())
+                        .collect::<String>()
+                )
+            };
+            let inherited = out.lines().find_map(|line| {
+                let cols: Vec<&str> = line.split('\t').collect();
+                if cols.first().copied() != Some(web_key.as_str()) || cols.len() < 4 {
+                    return None;
+                }
+                Some((cols[2].parse::<u32>().ok()?, cols[3].parse::<u32>().ok()?))
+            });
+            if let Some((width, height)) = inherited {
+                portrait_rows.push_str(&format!(
+                    "portrait\tasc\t{disp}\t{web_key}\t{}\t{}\t{width}\t{height}\n",
+                    cx as i64, cy as i64
+                ));
+                ui::note(
+                    ctx.style,
+                    &format!("asc backdrop {disp}: inherited website atlas key {web_key}"),
+                );
+                continue;
+            }
+        }
+
+        // A newly introduced special ascendancy can precede both its
+        // standalone panel and a website atlas update. The CDN's generic
+        // custom panel is the final explicit fallback.
+        let live_image = live_image.or_else(|| {
+            if profile.game != data_miner::fetch::Game::Poe1 {
+                return None;
+            }
+            let path = "art/textures/interface/2d/2dart/uiimages/ingame/classes/customascendancy/passiveskillscreenbackground.dds";
+            extract_cached(&client, &index, &path, &mut cache)
+                .ok()
+                .and_then(|bytes| data_miner::dds::decode(&bytes).ok())
+                .map(|image| (path.to_string(), image))
+        });
+        let Some((path, image)) = live_image else {
+            ui::warn(
+                ctx.style,
+                &format!("asc backdrop {disp} ({}): missing", candidates.join(" | ")),
+            );
             continue;
         };
         let png = data_miner::png::encode_rgba(image.width, image.height, &image.rgba);
         let key = format!("AscBg{id}");
-        let png_name = format!("{key}.png");
+        let png_name = output_name(&format!("{key}.png"));
         std::fs::write(assets.join(&png_name), &png)
             .map_err(|e| format!("write {png_name}: {e}"))?;
         out.push_str(&format!(
@@ -2072,20 +3038,24 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             "portrait\tasc\t{disp}\t{key}\t{}\t{}\t{}\t{}\n",
             cx as i64, cy as i64, image.width, image.height
         ));
+        ui::note(
+            ctx.style,
+            &format!(
+                "asc backdrop {disp}: {path} ({}×{})",
+                image.width, image.height
+            ),
+        );
         ok += 1;
     }
 
-    // Fold the portrait rows into meta.tsv (idempotent: drop any existing
-    // first). meta is hashed after this by `manifest`.
+    // Fold the refreshed portrait kinds into meta.tsv. Preserve rows owned
+    // by another source: in particular, PoE1's website export owns the
+    // base-class `card` rows while this pass owns the live-CDN `asc` rows.
+    // Meta is hashed after this by `manifest`.
     if !portrait_rows.is_empty() {
         let meta_path = dir.join("tree/meta.tsv");
         let existing = std::fs::read_to_string(&meta_path).unwrap_or_default();
-        let mut meta: String = existing
-            .lines()
-            .filter(|l| !l.starts_with("portrait\t"))
-            .map(|l| format!("{l}\n"))
-            .collect();
-        meta.push_str(&portrait_rows);
+        let meta = merge_portrait_rows(&existing, &portrait_rows);
         std::fs::write(&meta_path, meta)
             .map_err(|e| format!("write {}: {e}", meta_path.display()))?;
     }
@@ -2117,9 +3087,10 @@ pub fn sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         if out.lines().any(|l| l.starts_with(&format!("{key}\t"))) {
             continue;
         }
-        let png = assets.join(format!("{key}.png"));
+        let file = output_name(&format!("{key}.png"));
+        let png = assets.join(&file);
         if let Some((w, h)) = png_dimensions(&png) {
-            out.push_str(&format!("{key}\t{key}.png\t{w}\t{h}\n"));
+            out.push_str(&format!("{key}\t{file}\t{w}\t{h}\n"));
             bridged += 1;
         }
     }
@@ -2233,11 +3204,38 @@ fn load_csd_chain(
     seen: &mut std::collections::HashSet<String>,
     sd: &mut data_miner::csd::StatDescriptions,
 ) -> Result<(), String> {
+    let mut sources = None;
+    load_csd_chain_inner(client, index, vpath, seen, sd, &mut sources)
+}
+
+fn load_csd_chain_recording(
+    client: &CdnClient,
+    index: &Index,
+    vpath: &str,
+    seen: &mut std::collections::HashSet<String>,
+    sd: &mut data_miner::csd::StatDescriptions,
+    sources: &mut BTreeMap<String, String>,
+) -> Result<(), String> {
+    let mut sources = Some(sources);
+    load_csd_chain_inner(client, index, vpath, seen, sd, &mut sources)
+}
+
+fn load_csd_chain_inner(
+    client: &CdnClient,
+    index: &Index,
+    vpath: &str,
+    seen: &mut std::collections::HashSet<String>,
+    sd: &mut data_miner::csd::StatDescriptions,
+    sources: &mut Option<&mut BTreeMap<String, String>>,
+) -> Result<(), String> {
     let key = vpath.to_ascii_lowercase();
     if !seen.insert(key) {
         return Ok(());
     }
     let bytes = extract_by_path(client, index, vpath).map_err(|e| format!("{vpath}: {e}"))?;
+    if let Some(recorded) = sources.as_mut() {
+        recorded.insert(vpath.replace('\\', "/"), hash::sha256_hex(&bytes));
+    }
     let text = data_miner::csd::StatDescriptions::decode_utf16(&bytes);
     for line in text.lines().take(64) {
         let l = line.trim_start_matches('\u{feff}').trim();
@@ -2246,7 +3244,7 @@ fn load_csd_chain(
                 .trim_end_matches('"')
                 .replace('\\', "/")
                 .to_ascii_lowercase();
-            load_csd_chain(client, index, &inc, seen, sd)?;
+            load_csd_chain_inner(client, index, &inc, seen, sd, sources)?;
         }
     }
     sd.parse(&text);
@@ -2354,6 +3352,9 @@ pub fn skill_stats(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     let client = CdnClient::connect_for(profile.game).map_err(|e| e.to_string())?;
+    if profile.game == data_miner::fetch::Game::Poe1 {
+        require_poe1_cdn_patch(ctx, &patch, &client)?;
+    }
     let index = load_index(&client)?;
     let paths = resolve_table_paths(&index)?;
     let mut ts = data_miner::shape::TableSet::new();
@@ -2728,6 +3729,9 @@ pub fn uniques(ctx: &Ctx, args: &[String]) -> Result<(), String> {
 
     // 2. First-party stat descriptions (item stats → display text).
     let client = CdnClient::connect_for(game).map_err(|e| e.to_string())?;
+    if game == data_miner::fetch::Game::Poe1 {
+        require_poe1_cdn_patch(ctx, &patch, &client)?;
+    }
     let index = load_index(&client)?;
     let mut sd = data_miner::csd::StatDescriptions::new();
     let csd = item_stat_descriptions_path(game);
@@ -2998,6 +4002,331 @@ fn hash_file(path: &Path) -> Result<(String, u64, Option<u64>), String> {
     Ok((hash::sha256_hex(&data), data.len() as u64, rows))
 }
 
+fn add_runtime_artifact(
+    repo_root: &Path,
+    path: PathBuf,
+    out: &mut BTreeMap<String, PathBuf>,
+) -> Result<(), String> {
+    if !path.is_file() {
+        return Err(format!(
+            "runtime artifact {} is missing — rebuild the game outputs before manifesting",
+            path.strip_prefix(repo_root).unwrap_or(&path).display(),
+        ));
+    }
+    let rel = path
+        .strip_prefix(repo_root)
+        .map_err(|_| format!("artifact {} is outside the repository", path.display()))?;
+    if !rel.starts_with("viewer") {
+        return Err(format!(
+            "runtime artifact {} is outside viewer/",
+            rel.display()
+        ));
+    }
+    out.insert(rel.to_string_lossy().replace('\\', "/"), path);
+    Ok(())
+}
+
+fn walk_runtime_artifacts(
+    repo_root: &Path,
+    dir: &Path,
+    out: &mut BTreeMap<String, PathBuf>,
+) -> Result<(), String> {
+    let entries =
+        std::fs::read_dir(dir).map_err(|e| format!("read runtime dir {}: {e}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') || name.starts_with('_') {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            walk_runtime_artifacts(repo_root, &path, out)?;
+        } else if path.is_file() {
+            add_runtime_artifact(repo_root, path, out)?;
+        }
+    }
+    Ok(())
+}
+
+fn collect_asset_urls(value: &json::Value, out: &mut BTreeSet<String>) {
+    match value {
+        json::Value::Str(value) => {
+            if let Some(path) = value.strip_prefix("/assets/") {
+                let path = path.split(['?', '#']).next().unwrap_or(path);
+                if !path.is_empty()
+                    && !Path::new(path).components().any(|c| {
+                        matches!(
+                            c,
+                            std::path::Component::ParentDir
+                                | std::path::Component::RootDir
+                                | std::path::Component::Prefix(_)
+                        )
+                    })
+                {
+                    out.insert(format!("viewer/assets/{path}"));
+                }
+            }
+        }
+        json::Value::Array(values) => {
+            for value in values {
+                collect_asset_urls(value, out);
+            }
+        }
+        json::Value::Object(values) => {
+            for value in values.values() {
+                collect_asset_urls(value, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The browser payload owned by one parsed patch. GGG binaries remain
+/// ignored/uncommitted; the manifest records their deployed derivatives
+/// by repository-relative path and hash.
+fn runtime_artifacts(
+    ctx: &Ctx,
+    patch: &str,
+    parsed_dir: &Path,
+) -> Result<Vec<(String, PathBuf)>, String> {
+    let profile = GameProfile::from_patch(patch);
+    let mut artifacts: BTreeMap<String, PathBuf> = BTreeMap::new();
+
+    // Agent/grounding outputs are game-owned directories. PoE1 also
+    // keeps all catalogue JSON and generated gem/item/portrait PNGs in
+    // this isolated namespace.
+    let grounding = profile.grounding_dir(&ctx.root);
+    if !grounding.is_dir() {
+        return Err(format!(
+            "{} is missing — run catalogues/render first",
+            grounding.display()
+        ));
+    }
+    walk_runtime_artifacts(&ctx.root, &grounding, &mut artifacts)?;
+
+    // PoE2's catalogues are historical top-level files; PoE1's versions
+    // are already covered by its isolated directory above.
+    if profile.game == data_miner::fetch::Game::Poe2 {
+        for name in [
+            "build_meta.json",
+            "skill_catalogue.json",
+            "item_catalogue.json",
+            "skill_stats.json",
+        ] {
+            add_runtime_artifact(
+                &ctx.root,
+                ctx.root.join("viewer/assets").join(name),
+                &mut artifacts,
+            )?;
+        }
+    }
+
+    let planner = if profile.game == data_miner::fetch::Game::Poe1 {
+        "viewer/planner-poe1.html"
+    } else {
+        "viewer/planner.html"
+    };
+    add_runtime_artifact(&ctx.root, ctx.root.join(planner), &mut artifacts)?;
+    // Shared browser shell used by both game planners. These are deployed
+    // runtime files too; hashing only game JSON/art left code and CSS
+    // outside the release rollup even though a changed bundle can alter
+    // every import and rendering rule.
+    for rel in [
+        "viewer/index.html",
+        "viewer/share.html",
+        "viewer/assets/index_page.js",
+        "viewer/assets/planner.css",
+        "viewer/assets/planner.js",
+        "viewer/assets/share_codec.js",
+        "viewer/assets/share_page.js",
+        "viewer/assets/wizard_chrome.css",
+        "viewer/assets/wizard_chrome.js",
+    ] {
+        add_runtime_artifact(&ctx.root, ctx.root.join(rel), &mut artifacts)?;
+    }
+
+    // Every sliced tree sprite named by this patch's sprites.tsv.
+    let sprites_path = parsed_dir.join("tree/sprites.tsv");
+    let sprites = std::fs::read_to_string(&sprites_path)
+        .map_err(|e| format!("read {}: {e}", sprites_path.display()))?;
+    let mut lines = sprites.lines();
+    let header: Vec<&str> = lines.next().unwrap_or("").split('\t').collect();
+    let png_col = header
+        .iter()
+        .position(|name| *name == "png")
+        .ok_or("tree/sprites.tsv has no png column")?;
+    for png in lines.filter_map(|line| line.split('\t').nth(png_col)) {
+        if png.is_empty() || Path::new(png).components().count() != 1 {
+            return Err(format!(
+                "unsafe sprite filename in tree/sprites.tsv: {png:?}"
+            ));
+        }
+        add_runtime_artifact(
+            &ctx.root,
+            ctx.root.join("viewer/assets/sprites").join(png),
+            &mut artifacts,
+        )?;
+    }
+
+    // Follow local /assets/... URLs in every selected JSON file. This
+    // captures PoE2 gem/item/portrait art in the shared sprites directory
+    // without incorrectly claiming PoE1's neighbouring assets.
+    let json_files: Vec<PathBuf> = artifacts
+        .values()
+        .filter(|path| path.extension().and_then(|x| x.to_str()) == Some("json"))
+        .cloned()
+        .collect();
+    let mut urls = BTreeSet::new();
+    for path in json_files {
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("read runtime JSON {}: {e}", path.display()))?;
+        let value = json::parse(&text)
+            .map_err(|e| format!("parse runtime JSON {}: {e}", path.display()))?;
+        collect_asset_urls(&value, &mut urls);
+    }
+    for rel in urls {
+        add_runtime_artifact(&ctx.root, ctx.root.join(rel), &mut artifacts)?;
+    }
+
+    Ok(artifacts.into_iter().collect())
+}
+
+fn manifest_rollup(datasets: &json::Value, artifacts: Option<&json::Value>) -> String {
+    let mut integrity = json::Map::new();
+    integrity.insert("datasets".into(), datasets.clone());
+    if let Some(artifacts) = artifacts {
+        integrity.insert("artifacts".into(), artifacts.clone());
+    }
+    hash::sha256_hex(json::emit(&json::Value::Object(integrity)).as_bytes())
+}
+
+fn optional_json_file(path: &Path) -> Result<Option<json::Value>, String> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("read provenance {}: {e}", path.display()))?;
+    json::parse(&raw)
+        .map(Some)
+        .map_err(|e| format!("parse provenance {}: {e}", path.display()))
+}
+
+/// Materialize the complete upstream recipe before the integrity walk.
+///
+/// `manifest.json` proves that generated files did not change. This lock
+/// additionally proves *which exact upstreams* produced them: game/CDN,
+/// graph/export, dat-schema, stat text sidecars and the narrowly pinned PoB
+/// unique seam. It is itself a hashed dataset, so provenance cannot drift
+/// independently from the patch rollup.
+fn write_source_lock(ctx: &Ctx, patch: &str, dir: &Path, source: &str) -> Result<String, String> {
+    let profile = GameProfile::from_patch(patch);
+    let mut inputs = json::Map::new();
+
+    if let Some(value) = optional_json_file(&dir.join("mine.source.json"))? {
+        inputs.insert("mine".into(), value);
+    }
+    let tree_source = dir.join("tree/tree.source.json");
+    if let Some(value) = optional_json_file(&tree_source)? {
+        inputs.insert("tree".into(), value);
+    } else {
+        return Err(format!(
+            "{} is missing — every release tree must record its exact GGG source",
+            tree_source.display()
+        ));
+    }
+    if let Some(value) = optional_json_file(&dir.join("items/uniques.pob.json"))? {
+        inputs.insert("unique_recipes".into(), value);
+    }
+    let portrait_catalogue = dir.join("portraits/catalogue.tsv");
+    if portrait_catalogue.is_file() {
+        let bytes = std::fs::read(&portrait_catalogue).map_err(|e| e.to_string())?;
+        let (header, rows) = read_tsv(&portrait_catalogue)?;
+        let game_i = header
+            .iter()
+            .position(|value| value == "source_game")
+            .ok_or("portrait catalogue has no source_game column")?;
+        let patch_i = header
+            .iter()
+            .position(|value| value == "source_patch")
+            .ok_or("portrait catalogue has no source_patch column")?;
+        let sources: BTreeSet<(String, String)> = rows
+            .iter()
+            .filter_map(|row| Some((row.get(game_i)?.clone(), row.get(patch_i)?.clone())))
+            .collect();
+        let mut portrait_input = json::Map::new();
+        portrait_input.insert(
+            "catalogue_sha256".into(),
+            json::Value::Str(hash::sha256_hex(&bytes)),
+        );
+        portrait_input.insert(
+            "sources".into(),
+            json::Value::Array(
+                sources
+                    .into_iter()
+                    .map(|(game, patch)| {
+                        let mut source = json::Map::new();
+                        source.insert("game".into(), json::Value::Str(game));
+                        source.insert("patch".into(), json::Value::Str(patch));
+                        json::Value::Object(source)
+                    })
+                    .collect(),
+            ),
+        );
+        inputs.insert("portrait_art".into(), json::Value::Object(portrait_input));
+    }
+
+    // Older locally shaped trees may predate `mine.source.json`. Keep their
+    // manifests reproducible by hashing the exact cached schema now, while
+    // new update runs also retain the exact CDN identity in mine.source.
+    if !inputs.contains_key("mine") {
+        let schema_path = dat_schema_path(ctx)?;
+        let bytes = std::fs::read(&schema_path).map_err(|e| e.to_string())?;
+        let parsed = SchemaSet::from_json_for(
+            std::str::from_utf8(&bytes).map_err(|e| e.to_string())?,
+            profile.game,
+        )
+        .map_err(|e| e.to_string())?;
+        let mut schema = json::Map::new();
+        schema.insert(
+            "schema_version".into(),
+            json::Value::Integer(parsed.version as i64),
+        );
+        schema.insert("sha256".into(), json::Value::Str(hash::sha256_hex(&bytes)));
+        schema.insert("bytes".into(), json::Value::Integer(bytes.len() as i64));
+        let mut legacy = json::Map::new();
+        legacy.insert(
+            "note".into(),
+            json::Value::Str("pre-lock dataset; exact CDN identity unavailable".into()),
+        );
+        legacy.insert("dat_schema".into(), json::Value::Object(schema));
+        inputs.insert("mine".into(), json::Value::Object(legacy));
+    }
+
+    let mut generator = json::Map::new();
+    generator.insert("name".into(), json::Value::Str("buildwright".into()));
+    generator.insert(
+        "version".into(),
+        json::Value::Str(env!("CARGO_PKG_VERSION").into()),
+    );
+    generator.insert(
+        "source_contract".into(),
+        json::Value::Str("source-lock-v1".into()),
+    );
+
+    let mut lock = json::Map::new();
+    lock.insert("schema_version".into(), json::Value::Integer(1));
+    lock.insert("game".into(), json::Value::Str(profile.id.into()));
+    lock.insert("dataset_patch".into(), json::Value::Str(patch.into()));
+    lock.insert("source".into(), json::Value::Str(source.into()));
+    lock.insert("generator".into(), json::Value::Object(generator));
+    lock.insert("inputs".into(), json::Value::Object(inputs));
+    let text = json::emit_pretty(&json::Value::Object(lock)) + "\n";
+    let digest = hash::sha256_hex(text.as_bytes());
+    std::fs::write(dir.join("source.lock.json"), text).map_err(|e| e.to_string())?;
+    Ok(digest)
+}
+
 pub fn manifest(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let patch = resolve_patch(ctx, args)?;
     let (source_override, _) = {
@@ -3015,6 +4344,16 @@ pub fn manifest(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     if !dir.is_dir() {
         return Err(format!("no data/parsed/{patch}"));
     }
+
+    let source = source_override
+        .or_else(|| {
+            std::fs::read_to_string(dir.join(".source"))
+                .ok()
+                .map(|s| s.trim().to_string())
+        })
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string());
+    let source_lock_sha256 = write_source_lock(ctx, &patch, &dir, &source)?;
 
     let mut files = Vec::new();
     walk_hashable(&dir, "", &mut files);
@@ -3034,22 +4373,23 @@ pub fn manifest(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         datasets.insert(rel.clone(), json::Value::Object(e));
     }
 
-    // Rollup: sha256 over the canonical (compact, key-sorted) datasets
-    // JSON — one stable integrity value for the whole patch.
-    let datasets_val = json::Value::Object(datasets);
-    let rollup = hash::sha256_hex(json::emit(&datasets_val).as_bytes());
+    let runtime_files = runtime_artifacts(ctx, &patch, &dir)?;
+    let mut artifacts = json::Map::new();
+    for (rel, path) in &runtime_files {
+        let (sha, bytes, _) = hash_file(path)?;
+        let mut entry = json::Map::new();
+        entry.insert("sha256".into(), json::Value::Str(sha));
+        entry.insert("bytes".into(), json::Value::Integer(bytes as i64));
+        artifacts.insert(rel.clone(), json::Value::Object(entry));
+    }
 
-    let source = source_override
-        .or_else(|| {
-            std::fs::read_to_string(dir.join(".source"))
-                .ok()
-                .map(|s| s.trim().to_string())
-        })
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "pob2-stable".to_string());
+    // Rollup covers parsed data AND every deployed runtime derivative.
+    let datasets_val = json::Value::Object(datasets);
+    let artifacts_val = json::Value::Object(artifacts);
+    let rollup = manifest_rollup(&datasets_val, Some(&artifacts_val));
 
     let mut root = json::Map::new();
-    root.insert("schema_version".into(), json::Value::Integer(2));
+    root.insert("schema_version".into(), json::Value::Integer(4));
     root.insert("patch".into(), json::Value::Str(patch.replace('_', ".")));
     root.insert("source".into(), json::Value::Str(source));
     root.insert(
@@ -3057,6 +4397,11 @@ pub fn manifest(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         json::Value::Str("buildwright".into()),
     );
     root.insert("datasets".into(), datasets_val);
+    root.insert("artifacts".into(), artifacts_val);
+    root.insert(
+        "source_lock_sha256".into(),
+        json::Value::Str(source_lock_sha256),
+    );
     root.insert("rollup".into(), json::Value::Str(rollup.clone()));
 
     let text = json::emit_pretty(&json::Value::Object(root)) + "\n";
@@ -3065,9 +4410,10 @@ pub fn manifest(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     ui::ok(
         ctx.style,
         &format!(
-            "{} — {} files, rollup {}…",
+            "{} — {} data files + {} runtime artifacts, rollup {}…",
             patch,
             files.len(),
+            runtime_files.len(),
             &rollup[..12]
         ),
     );
@@ -3119,14 +4465,141 @@ pub fn verify(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         ui::ok(s, &format!("integrity: {checked} files match the manifest"));
     }
 
+    // 1b. Runtime artifacts: art, game-owned browser payload, and the
+    // rendered planner. Schema v3 also requires the manifest's artifact
+    // set to be exact, so a newly generated but unhashed file fails.
+    let schema_version = man
+        .get("schema_version")
+        .and_then(json::Value::as_i64)
+        .unwrap_or(1);
+    if schema_version >= 4 {
+        let mut current_files = Vec::new();
+        walk_hashable(&dir, "", &mut current_files);
+        let current: BTreeSet<String> = current_files.into_iter().map(|(rel, _)| rel).collect();
+        let recorded: BTreeSet<String> = datasets.keys().cloned().collect();
+        for rel in current.difference(&recorded).take(10) {
+            println!("  {} {rel} {}", s.red("✗"), s.red("dataset is not hashed"));
+            failures += 1;
+        }
+        for rel in recorded.difference(&current).take(10) {
+            println!(
+                "  {} {rel} {}",
+                s.red("✗"),
+                s.red("stale dataset manifest entry")
+            );
+            failures += 1;
+        }
+        if current == recorded {
+            ui::ok(s, "dataset set is exact");
+        }
+
+        let lock_path = dir.join("source.lock.json");
+        let expected = man
+            .get("source_lock_sha256")
+            .and_then(json::Value::as_str)
+            .unwrap_or("");
+        match hash_file(&lock_path) {
+            Ok((actual, _, _)) if !expected.is_empty() && actual == expected => {
+                let lock = optional_json_file(&lock_path)?
+                    .ok_or("schema v4 manifest has no source.lock.json")?;
+                let lock_game = lock.get("game").and_then(json::Value::as_str);
+                if lock_game == Some(GameProfile::from_patch(&patch).id) {
+                    ui::ok(s, "source lock matches the selected game and manifest");
+                } else {
+                    println!(
+                        "  {} {}",
+                        s.red("✗"),
+                        s.red("source lock belongs to a different game")
+                    );
+                    failures += 1;
+                }
+            }
+            _ => {
+                println!(
+                    "  {} {}",
+                    s.red("✗"),
+                    s.red("source lock hash mismatch or missing")
+                );
+                failures += 1;
+            }
+        }
+    }
+    let artifacts = man.get("artifacts").and_then(json::Value::as_object);
+    if schema_version >= 3 {
+        let artifacts = artifacts.ok_or("schema v3 manifest has no artifacts object")?;
+        let mut artifact_checked = 0usize;
+        for (rel, entry) in artifacts {
+            let rel_path = Path::new(rel);
+            let safe = rel_path.starts_with("viewer")
+                && !rel_path.components().any(|c| {
+                    matches!(
+                        c,
+                        std::path::Component::ParentDir
+                            | std::path::Component::RootDir
+                            | std::path::Component::Prefix(_)
+                    )
+                });
+            if !safe {
+                println!("  {} {rel} {}", s.red("✗"), s.red("unsafe artifact path"));
+                failures += 1;
+                continue;
+            }
+            let want = entry.get("sha256").and_then(|v| v.as_str()).unwrap_or("");
+            match hash_file(&ctx.root.join(rel)) {
+                Ok((got, _, _)) if got == want => artifact_checked += 1,
+                Ok((_, _, _)) => {
+                    println!("  {} {rel} {}", s.red("✗"), s.red("artifact hash mismatch"));
+                    failures += 1;
+                }
+                Err(_) => {
+                    println!("  {} {rel} {}", s.red("✗"), s.red("artifact missing"));
+                    failures += 1;
+                }
+            }
+        }
+        let current: BTreeSet<String> = runtime_artifacts(ctx, &patch, &dir)?
+            .into_iter()
+            .map(|(rel, _)| rel)
+            .collect();
+        let recorded: BTreeSet<String> = artifacts.keys().cloned().collect();
+        for rel in current.difference(&recorded).take(10) {
+            println!("  {} {rel} {}", s.red("✗"), s.red("artifact is not hashed"));
+            failures += 1;
+        }
+        for rel in recorded.difference(&current).take(10) {
+            println!(
+                "  {} {rel} {}",
+                s.red("✗"),
+                s.red("stale artifact manifest entry")
+            );
+            failures += 1;
+        }
+        if current == recorded {
+            ui::ok(
+                s,
+                &format!("artifacts: {artifact_checked} files match the manifest"),
+            );
+        }
+    } else {
+        ui::warn(
+            s,
+            "legacy manifest: runtime art is not hashed (regenerate with `bw manifest`)",
+        );
+    }
+
     // 2. Rollup consistency.
     if let (Some(want), Some(datasets)) = (
         man.get("rollup").and_then(|v| v.as_str()),
         man.get("datasets"),
     ) {
-        let got = hash::sha256_hex(json::emit(datasets).as_bytes());
+        let got = if schema_version >= 3 {
+            manifest_rollup(datasets, man.get("artifacts"))
+        } else {
+            // Backwards-compatible check for schema v1/v2 manifests.
+            hash::sha256_hex(json::emit(datasets).as_bytes())
+        };
         if got == want {
-            ui::ok(s, "rollup matches datasets");
+            ui::ok(s, "rollup matches data + runtime artifacts");
         } else {
             println!(
                 "  {} {}",
@@ -3167,6 +4640,115 @@ pub fn verify(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     .join(", "),
             );
             failures += 1;
+        }
+    }
+
+    // 3a. Portrait coverage and source/output provenance. Every active
+    // class and ascendancy in this exact tree must have one audited image;
+    // no silent array compaction, guessed filename, or broken fallback.
+    let portrait_catalogue = dir.join("portraits/catalogue.tsv");
+    if schema_version >= 4 {
+        if !portrait_catalogue.is_file() {
+            println!(
+                "  {} {}",
+                s.red("✗"),
+                s.red("portrait source catalogue is missing")
+            );
+            failures += 1;
+        } else {
+            let (header, rows) = read_tsv(&portrait_catalogue)?;
+            let column = |name: &str| header.iter().position(|value| value == name);
+            let required = [
+                "role",
+                "name",
+                "source_game",
+                "source_patch",
+                "source_sha256",
+                "output_url",
+                "output_sha256",
+                "framing",
+            ];
+            if required.iter().any(|name| column(name).is_none()) {
+                println!(
+                    "  {} {}",
+                    s.red("✗"),
+                    s.red("portrait catalogue has an invalid schema")
+                );
+                failures += 1;
+            } else {
+                let role_i = column("role").unwrap();
+                let name_i = column("name").unwrap();
+                let source_game_i = column("source_game").unwrap();
+                let source_patch_i = column("source_patch").unwrap();
+                let source_hash_i = column("source_sha256").unwrap();
+                let output_i = column("output_url").unwrap();
+                let output_hash_i = column("output_sha256").unwrap();
+                let framing_i = column("framing").unwrap();
+                let emitted: BTreeSet<(String, String)> = rows
+                    .iter()
+                    .filter_map(|row| Some((row.get(role_i)?.clone(), row.get(name_i)?.clone())))
+                    .collect();
+                let meta = std::fs::read_to_string(dir.join("tree/meta.tsv"))
+                    .map_err(|e| e.to_string())?;
+                let expected: BTreeSet<(String, String)> = portrait_roster(&meta)
+                    .into_iter()
+                    .map(|(role, name, _, _)| (role, name))
+                    .collect();
+                if emitted != expected {
+                    println!(
+                        "  {} {}",
+                        s.red("✗"),
+                        s.red("portrait catalogue does not match the active class roster")
+                    );
+                    failures += 1;
+                }
+                for row in &rows {
+                    let source_game = row.get(source_game_i).map(String::as_str).unwrap_or("");
+                    let source_patch = row.get(source_patch_i).map(String::as_str).unwrap_or("");
+                    let source_hash = row.get(source_hash_i).map(String::as_str).unwrap_or("");
+                    let output_hash = row.get(output_hash_i).map(String::as_str).unwrap_or("");
+                    let framing = row.get(framing_i).map(String::as_str).unwrap_or("");
+                    let output = row.get(output_i).map(String::as_str).unwrap_or("");
+                    let Some(rel) = output.strip_prefix("/assets/") else {
+                        failures += 1;
+                        continue;
+                    };
+                    let safe = !Path::new(rel).components().any(|component| {
+                        matches!(
+                            component,
+                            std::path::Component::ParentDir
+                                | std::path::Component::RootDir
+                                | std::path::Component::Prefix(_)
+                        )
+                    });
+                    if !matches!(source_game, "poe1" | "poe2")
+                        || source_patch.is_empty()
+                        || source_hash.len() != 64
+                        || output_hash.len() != 64
+                        || framing.is_empty()
+                        || !safe
+                    {
+                        failures += 1;
+                        continue;
+                    }
+                    let path = ctx.root.join("viewer/assets").join(rel);
+                    if hash_file(&path)
+                        .map(|(digest, _, _)| digest != output_hash)
+                        .unwrap_or(true)
+                    {
+                        failures += 1;
+                    }
+                }
+                if emitted == expected {
+                    ui::ok(
+                        s,
+                        &format!(
+                            "portraits: all {} active classes/ascendancies are source-locked",
+                            expected.len()
+                        ),
+                    );
+                }
+            }
         }
     }
 
@@ -3494,6 +5076,69 @@ pub fn diff(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             (None, None) => {}
         }
     }
+    diff_manifest_artifacts(s, &old_dir, &new_dir)?;
+    Ok(())
+}
+
+fn diff_manifest_artifacts(
+    s: crate::ui::Style,
+    old_dir: &Path,
+    new_dir: &Path,
+) -> Result<(), String> {
+    let load = |dir: &Path| -> Result<BTreeMap<String, String>, String> {
+        let path = dir.join("manifest.json");
+        if !path.is_file() {
+            return Ok(BTreeMap::new());
+        }
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let manifest = json::parse(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
+        Ok(manifest
+            .get("artifacts")
+            .and_then(json::Value::as_object)
+            .into_iter()
+            .flat_map(|entries| entries.iter())
+            .filter_map(|(path, entry)| {
+                entry
+                    .get("sha256")
+                    .and_then(json::Value::as_str)
+                    .map(|hash| (path.clone(), hash.to_string()))
+            })
+            .collect())
+    };
+    let old = load(old_dir)?;
+    let new = load(new_dir)?;
+    if old.is_empty() && new.is_empty() {
+        return Ok(());
+    }
+    let old_keys: BTreeSet<&String> = old.keys().collect();
+    let new_keys: BTreeSet<&String> = new.keys().collect();
+    let added: Vec<&String> = new_keys.difference(&old_keys).copied().collect();
+    let removed: Vec<&String> = old_keys.difference(&new_keys).copied().collect();
+    let changed: Vec<&String> = old_keys
+        .intersection(&new_keys)
+        .filter(|path| old.get(**path) != new.get(**path))
+        .copied()
+        .collect();
+    if added.is_empty() && removed.is_empty() && changed.is_empty() {
+        return Ok(());
+    }
+    println!(
+        "\n  {}  {}  {}  {}",
+        s.bold("runtime artifacts"),
+        s.green(&format!("＋{}", added.len())),
+        s.red(&format!("－{}", removed.len())),
+        s.yellow(&format!("~{}", changed.len())),
+    );
+    for path in added.iter().take(5) {
+        println!("    {} {path}", s.green("＋"));
+    }
+    for path in removed.iter().take(5) {
+        println!("    {} {path}", s.red("－"));
+    }
+    for path in changed.iter().take(5) {
+        println!("    {} {path}", s.yellow("~"));
+    }
     Ok(())
 }
 
@@ -3819,6 +5464,27 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let game = profile.game;
     let patch_label = profile.patch_label(&patch);
     let idx = |h: &[String], name: &str| h.iter().position(|c| c == name);
+    // Catalogue generation is mostly local, but friendly item stat text
+    // comes from the live CDN when available. A network outage may omit
+    // that optional enrichment; a reachable *different release* is a
+    // hard error before any output is written.
+    let poe1_catalogue_client = if is_poe1 {
+        match CdnClient::connect_for(game) {
+            Ok(client) => {
+                require_poe1_cdn_patch(ctx, &patch, &client)?;
+                Some(client)
+            }
+            Err(error) => {
+                ui::warn(
+                    ctx.style,
+                    &format!("PoE1 stat descriptions unavailable: {error}"),
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // ---- Skill catalogue (gems ⋈ granted skill) ----
     let (gh, grows) = read_tsv(&parsed.join("skills/gems.tsv"))?;
@@ -4277,6 +5943,14 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     None => json::Value::Null,
                 },
             );
+            // `unique_name` in GGG's official .build format is not a
+            // free-form label: it must be an exact Words.Text entry.
+            // Preserve that verified boundary separately from the PoB
+            // display name. Fuzzy matching remains art-only and can never
+            // silently become an official identifier.
+            if unique_art.contains_key(&name) {
+                m.insert("official_name".into(), json::Value::Str(name.clone()));
+            }
             m.insert(
                 "req_level".into(),
                 brow.zip(bh_req)
@@ -4343,6 +6017,30 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 .collect(),
             ),
         );
+        if !is_poe1 {
+            let (ih, irows) = read_tsv(&parsed.join("dat/Inventories.tsv")).map_err(|error| {
+                format!(
+                    "{error}; PoE2 official .build verification requires \
+                     `buildwright mine --patch {patch} --tables Inventories`"
+                )
+            })?;
+            let inventory_id = idx(&ih, "Id").ok_or("Inventories.tsv missing Id")?;
+            let mut inventory_ids: Vec<String> = irows
+                .iter()
+                .filter_map(|row| row.get(inventory_id))
+                .filter(|id| !id.is_empty())
+                .cloned()
+                .collect();
+            inventory_ids.sort();
+            inventory_ids.dedup();
+            let mut official_build = json::Map::new();
+            official_build.insert("source".into(), json::Value::Str("ggg".into()));
+            official_build.insert(
+                "inventory_ids".into(),
+                json::Value::Array(inventory_ids.into_iter().map(json::Value::Str).collect()),
+            );
+            item.insert("official_build".into(), json::Value::Object(official_build));
+        }
         item.insert("count".into(), json::Value::Integer(items.len() as i64));
         item.insert("uniques".into(), json::Value::Array(items));
         std::fs::write(
@@ -4355,12 +6053,11 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // Shared stat-description source for base implicits + affix-family
     // display text. Failure leaves IDs/ranges intact and only omits the
     // friendly text, matching the existing offline posture.
-    let item_sd = (|| -> Option<data_miner::csd::StatDescriptions> {
-        let client = CdnClient::connect_for(game).ok()?;
+    let load_item_sd = |client: &CdnClient| -> Option<data_miner::csd::StatDescriptions> {
         let index = load_index(&client).ok()?;
         let mut sd = data_miner::csd::StatDescriptions::new();
         load_csd_chain(
-            &client,
+            client,
             &index,
             item_stat_descriptions_path(game),
             &mut std::collections::HashSet::new(),
@@ -4368,7 +6065,16 @@ pub fn catalogues(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         )
         .ok()?;
         Some(sd)
-    })();
+    };
+    let item_sd = if let Some(client) = poe1_catalogue_client.as_ref() {
+        load_item_sd(client)
+    } else if !is_poe1 {
+        CdnClient::connect_for(game)
+            .ok()
+            .and_then(|client| load_item_sd(&client))
+    } else {
+        None
+    };
     let all_mod_stats = std::fs::read_to_string(parsed.join("items/mods.tsv"))
         .map(|text| load_mod_stats(&text))
         .unwrap_or_default();
@@ -4902,7 +6608,12 @@ pub fn render(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     if profile.id == "poe2" && tree_dir.as_deref().is_some_and(|p| p.contains("poe1_")) {
         return Err("--game poe2 cannot render a poe1_* tree directory".into());
     }
-    let (program, mut argv) = sibling_or_cargo("tree_render", "tree_render");
+    // A rendered planner is not runnable unless its browser bundle matches
+    // the current TypeScript graph. Keep this inside the Rust front door so
+    // callers and deployments cannot accidentally publish a stale bundle.
+    js(ctx, &[])?;
+    let program = current_release_binary(ctx, "tree_render", "tree_render")?;
+    let mut argv = Vec::new();
     // Default output if the caller didn't pass one.
     if arg_value(args, "--output").is_none() {
         argv.push("--output".into());
@@ -5179,17 +6890,43 @@ pub fn fixture(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
 }
 
 pub fn js(ctx: &Ctx, args: &[String]) -> Result<(), String> {
-    let mut argv = vec!["scripts/build_js.sh".to_string()];
+    const BUNDLES: &[(&str, &str)] = &[
+        ("planner", "crates/tree_render/assets/planner/_main.ts"),
+        ("wizard_chrome", "viewer/assets/wizard_chrome.ts"),
+        ("share_codec", "viewer/assets/share_codec.ts"),
+        ("index_page", "viewer/assets/index_page.ts"),
+        ("share_page", "viewer/assets/share_page.ts"),
+    ];
+    let esbuild = ctx.root.join("tools/bin/esbuild");
+    if !esbuild.is_file() {
+        return Err(format!(
+            "{} is missing; run tools/setup.sh first",
+            esbuild.display()
+        ));
+    }
+    let mut argv: Vec<String> = BUNDLES
+        .iter()
+        .map(|(name, entry)| format!("{name}={entry}"))
+        .collect();
+    argv.extend([
+        "--outdir=viewer/assets".into(),
+        "--bundle".into(),
+        "--format=iife".into(),
+        "--target=es2022".into(),
+        "--sourcemap=linked".into(),
+        "--log-level=info".into(),
+    ]);
     if has_flag(args, "--watch") {
         argv.push("--watch".into());
     }
-    sh(ctx, "build JS bundles", "bash", &argv)
+    sh(ctx, "build JS bundles", &esbuild.to_string_lossy(), &argv)
 }
 
 /// The type-check entry points esbuild bundles (planner + 5 wizard
 /// pages). Deno reads deno.json (strict) from the repo root.
 const TS_ENTRIES: &[&str] = &[
     "crates/tree_render/assets/planner/_main.ts",
+    "crates/tree_render/assets/planner/interop_cli.ts",
     "viewer/assets/wizard_chrome.ts",
     "viewer/assets/share_codec.ts",
     "viewer/assets/index_page.ts",
@@ -5199,6 +6936,7 @@ const TS_ENTRIES: &[&str] = &[
     "viewer/functions/agent/validate.ts",
     "viewer/functions/agent/build.ts",
     "viewer/functions/live/[token].ts",
+    "viewer/functions/pob/raw.ts",
 ];
 
 /// Prefer the pinned deno that tools/setup.sh installs; fall back to
@@ -5231,8 +6969,126 @@ pub fn test_js(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
         "test".to_string(),
         "crates/tree_render/assets/planner/".to_string(),
         "viewer/assets/".to_string(),
+        "viewer/functions/pob/".to_string(),
     ];
     sh(ctx, "test-js (deno)", &program, &argv)
+}
+
+fn interop_manifest_for_game(ctx: &Ctx, game: &str) -> Result<PathBuf, String> {
+    let meta_path = match game {
+        "poe1" => ctx.root.join("viewer/assets/poe1-agent/build_meta.json"),
+        "poe2" => ctx.root.join("viewer/assets/build_meta.json"),
+        _ => return Err(format!("unsupported interop game {game:?}")),
+    };
+    let meta_raw = std::fs::read_to_string(&meta_path)
+        .map_err(|e| format!("read {}: {e}", meta_path.display()))?;
+    let meta = json::parse(&meta_raw).map_err(|e| e.to_string())?;
+    let patch = meta
+        .get("patch")
+        .and_then(json::Value::as_str)
+        .ok_or_else(|| format!("{} has no patch", meta_path.display()))?;
+
+    let parsed = ctx.root.join("data/parsed");
+    let mut matches = Vec::new();
+    for entry in std::fs::read_dir(&parsed).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let manifest = entry.path().join("manifest.json");
+        if !manifest.is_file() {
+            continue;
+        }
+        let Ok(raw) = std::fs::read_to_string(&manifest) else {
+            continue;
+        };
+        let Ok(value) = json::parse(&raw) else {
+            continue;
+        };
+        if value.get("patch").and_then(json::Value::as_str) == Some(patch) {
+            matches.push(manifest);
+        }
+    }
+    matches.sort();
+    matches.pop().ok_or_else(|| {
+        format!(
+            "no integrity manifest matches {game} runtime patch {patch}; run manifest + verify first"
+        )
+    })
+}
+
+fn interop_cli(ctx: &Ctx, command: &str, args: &[String]) -> Result<(), String> {
+    let program = deno_program(ctx);
+    let absolute = |raw: &str| {
+        let path = Path::new(raw);
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            ctx.root.join(path)
+        }
+    };
+    let mut read_paths = vec![ctx.root.join("viewer")];
+    for flag in ["--source", "--review"] {
+        if let Some(path) = arg_value(args, flag) {
+            read_paths.push(absolute(&path));
+        }
+    }
+    let mut write_paths = Vec::new();
+    for flag in ["--output", "--report"] {
+        if let Some(path) = arg_value(args, flag) {
+            write_paths.push(absolute(&path));
+        }
+    }
+    let mut internal_args = Vec::new();
+    if command.ends_with("-import") {
+        let game = arg_value(args, "--game").ok_or("--game is required")?;
+        let manifest = interop_manifest_for_game(ctx, &game)?;
+        read_paths.push(manifest.clone());
+        internal_args.push("--data-manifest".to_string());
+        internal_args.push(manifest.to_string_lossy().into_owned());
+
+        // Every import produces a receipt even when --report is omitted.
+        if arg_value(args, "--report").is_none()
+            && let Some(output) = arg_value(args, "--output")
+        {
+            write_paths.push(absolute(&format!("{output}.receipt.json")));
+        }
+    }
+    let read_scope = read_paths
+        .iter()
+        .map(|path| path.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut argv = vec!["run".into(), format!("--allow-read={read_scope}")];
+    if !write_paths.is_empty() {
+        let write_scope = write_paths
+            .iter()
+            .map(|path| path.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(",");
+        argv.push(format!("--allow-write={write_scope}"));
+    }
+    if arg_value(args, "--url").is_some() {
+        argv.push("--allow-net=pobb.in".into());
+    }
+    argv.push("crates/tree_render/assets/planner/interop_cli.ts".into());
+    argv.push(command.into());
+    argv.extend(args.iter().cloned());
+    argv.extend(internal_args);
+    sh(ctx, &format!("{command} (shared adapter)"), &program, &argv)
+}
+
+pub fn pob_inspect(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    interop_cli(ctx, "pob-inspect", args)
+}
+
+pub fn pob_import(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    interop_cli(ctx, "pob-import", args)
+}
+
+pub fn build_inspect(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    interop_cli(ctx, "build-inspect", args)
+}
+
+pub fn build_import(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    interop_cli(ctx, "build-import", args)
 }
 
 // ---------------------------------------------------------------------
@@ -5264,32 +7120,107 @@ pub fn deploy(ctx: &Ctx, _args: &[String]) -> Result<(), String> {
 
 pub fn update_native(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let style = ctx.style;
-    ui::note(style, "SCENARIO 2 — first-party mine from the GGG CDN");
-    patch(ctx, &[])?;
+    let (game, rest) = take_game(args)?;
+    let (explicit_patch, extra) = take_patch(&rest);
+    if !extra.is_empty() {
+        return Err("usage: buildwright update-native [--game poe1|poe2] [--patch <patch>]".into());
+    }
+    let profile = GameProfile::from_id(game_name(game))?;
+    let patch_was_explicit = explicit_patch.is_some();
+    ui::note(
+        style,
+        &format!(
+            "first-party {} update — exact GGG sources, fail-closed release stages",
+            profile.id
+        ),
+    );
+    patch(ctx, &["--game".into(), profile.id.into()])?;
+    refresh_dat_schema(ctx)?;
 
-    // Mine the raw GGG tables to data/parsed/<patch>_native/, then hash
-    // them on the same manifest path as everything else.
+    let live = fetch::patch_info_for(game).map_err(|e| e.to_string())?;
+    let base_patch = if let Some(value) = explicit_patch {
+        if GameProfile::from_patch(&value).game != game {
+            return Err(format!(
+                "--game {} cannot update patch {value:?}",
+                profile.id
+            ));
+        }
+        if game == data_miner::fetch::Game::Poe2 {
+            value.trim_end_matches("_native").to_string()
+        } else {
+            value
+        }
+    } else if game == data_miner::fetch::Game::Poe1 {
+        // Mirror poe1-tree's automatic selector so every following stage
+        // owns the exact directory it just created.
+        let page_version = fetch_url("https://www.pathofexile.com/passive-skill-tree")
+            .ok()
+            .as_deref()
+            .and_then(poe1_page_version);
+        match page_version {
+            Some(version) if poe1_versions_compatible(&version, &live.version) => {
+                format!("poe1_{version}")
+            }
+            _ => format!("poe1_{}", poe1_release_label(&live.version)?),
+        }
+    } else {
+        live.version.clone()
+    };
+    let generated_patch = if game == data_miner::fetch::Game::Poe1 {
+        base_patch.clone()
+    } else {
+        format!("{base_patch}_native")
+    };
+
+    if game == data_miner::fetch::Game::Poe1 {
+        ui::step_banner(style, "select + shape passive tree");
+        if patch_was_explicit {
+            poe1_tree(
+                ctx,
+                &[
+                    "--source".into(),
+                    "cdn".into(),
+                    "--label".into(),
+                    base_patch.trim_start_matches("poe1_").into(),
+                ],
+            )?;
+        } else {
+            poe1_tree(ctx, &["--source".into(), "auto".into()])?;
+        }
+        if !ctx
+            .root
+            .join("data/parsed")
+            .join(&base_patch)
+            .join("tree/nodes.tsv")
+            .is_file()
+        {
+            return Err(format!(
+                "PoE1 auto tree did not produce the selected dataset {base_patch}"
+            ));
+        }
+    }
+
+    // Mine the raw GGG tables into the game-owned patch directory.
     ui::step_banner(style, "mine tables");
-    mine(ctx, args)?;
+    let base_args = ["--patch".to_string(), base_patch.clone()];
+    mine(ctx, &base_args)?;
+    let generated_args = ["--patch".to_string(), generated_patch.clone()];
 
-    let base_patch = resolve_patch(ctx, args)?;
-    let native = format!("{base_patch}_native");
-    let man_args = ["--patch".to_string(), native.clone()];
-
-    // Shape the raw tables into the site's schemas. Each shaper fetches
-    // what it needs and writes under data/parsed/<patch>_native/; a
-    // failure warns (that dataset is skipped) rather than aborting the
-    // whole import. `tree` runs the masteries derivation after, since it
-    // consumes the tree/edges.tsv we just wrote.
+    // Required planner datasets fail closed. An update that lacks skills,
+    // items, tree, art, or catalogues must never reach manifest/verify.
     ui::step_banner(style, "shape datasets");
     let shape_args = |dataset: &str| -> Vec<String> {
-        vec![
+        let mut values = vec![
             dataset.to_string(),
             "--patch".to_string(),
             base_patch.clone(),
-        ]
+        ];
+        if dataset == "tree" {
+            values.extend(["--source".into(), "auto".into()]);
+        }
+        values
     };
-    for dataset in [
+    let mut required = vec![
         "bases",
         "grants",
         "jewels",
@@ -5298,60 +7229,112 @@ pub fn update_native(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         "active_skills",
         "support_skills",
         "skill_levels",
-        "soul_cores",
         "gem_quality",
         "unique_art",
-        "tree",
-    ] {
-        if let Err(e) = shape(ctx, &shape_args(dataset)) {
-            ui::warn(style, &format!("shape {dataset}: {e} — skipped"));
-        }
+        "passive_interop",
+    ];
+    if game == data_miner::fetch::Game::Poe2 {
+        required.push("soul_cores");
+        required.push("tree");
     }
-    // Mastery lighting derives from the tree we just shaped.
+    for dataset in required {
+        shape(ctx, &shape_args(dataset))
+            .map_err(|e| format!("required shape stage {dataset} failed: {e}"))?;
+    }
+
+    // Mastery lighting and art are release-critical.
     ui::step_banner(style, "mastery mapping");
-    if let Err(e) = masteries(ctx, &man_args) {
-        ui::warn(style, &format!("masteries: {e} — skipped"));
+    masteries(ctx, &generated_args).map_err(|e| format!("required masteries failed: {e}"))?;
+    if game == data_miner::fetch::Game::Poe1
+        && ctx
+            .root
+            .join("data/parsed")
+            .join(&generated_patch)
+            .join("tree.json")
+            .is_file()
+    {
+        let label = generated_patch.trim_start_matches("poe1_").to_string();
+        poe1_sprites(ctx, &["--label".into(), label])
+            .map_err(|e| format!("required PoE1 atlas sprites failed: {e}"))?;
     }
-    // Node icons: decode DDS → PNG + sprites.tsv (needs the shaped tree).
     ui::step_banner(style, "sprites");
-    if let Err(e) = sprites(ctx, &man_args) {
-        ui::warn(style, &format!("sprites: {e} — skipped"));
-    }
-    // Uniques: the one PoB-pinned dataset, resolved against the mods.tsv we
-    // just shaped. Best-effort by design — if PoB is absent or lags GGG,
-    // this warns and the first-party datasets above still stand + hash.
+    sprites(ctx, &generated_args).map_err(|e| format!("required sprites failed: {e}"))?;
+
+    // Uniques remain the explicitly optional, provenance-locked PoB recipe
+    // seam. New first-party bases/mods still ship if PoB has not caught up.
     ui::step_banner(style, "uniques (pob-pinned)");
-    if let Err(e) = uniques(ctx, &man_args) {
+    if let Err(e) = uniques(ctx, &generated_args) {
         ui::warn(
             style,
             &format!("uniques: {e} — skipped (native data intact)"),
         );
     }
 
-    // Wizard skill/item catalogues — first-party JSON joined from the
-    // shaped gem/skill/unique TSVs (into viewer/assets/). Best-effort:
-    // a failure here doesn't invalidate the mined + hashed datasets.
-    ui::step_banner(style, "skill stats (per-level numbers)");
-    if let Err(e) = skill_stats(ctx, &man_args) {
-        ui::warn(style, &format!("skill-stats: {e} — skipped"));
+    if game == data_miner::fetch::Game::Poe1 {
+        ui::step_banner(style, "PoE1 inventory + portrait art");
+        poe1_gem_icons(ctx, &generated_args)
+            .map_err(|e| format!("required PoE1 gem icons failed: {e}"))?;
+        poe1_item_icons(ctx, &generated_args)
+            .map_err(|e| format!("required PoE1 item icons failed: {e}"))?;
+        poe1_portraits(ctx, &generated_args)
+            .map_err(|e| format!("required PoE1 portraits failed: {e}"))?;
     }
+
+    ui::step_banner(style, "skill stats (per-level numbers)");
+    skill_stats(ctx, &generated_args).map_err(|e| format!("required skill-stats failed: {e}"))?;
     ui::step_banner(style, "wizard catalogues");
-    if let Err(e) = catalogues(ctx, &man_args) {
-        ui::warn(style, &format!("catalogues: {e} — skipped"));
+    catalogues(ctx, &generated_args).map_err(|e| format!("required catalogues failed: {e}"))?;
+
+    ui::step_banner(style, "render + browser bundles");
+    let tree_dir = format!("data/parsed/{generated_patch}/tree");
+    let output = if game == data_miner::fetch::Game::Poe1 {
+        "viewer/planner-poe1.html"
+    } else {
+        "viewer/planner.html"
+    };
+    render(
+        ctx,
+        &[
+            "--game".into(),
+            profile.id.into(),
+            "--tree-dir".into(),
+            tree_dir,
+            "--output".into(),
+            output.into(),
+        ],
+    )
+    .map_err(|e| format!("required render failed: {e}"))?;
+    js(ctx, &[]).map_err(|e| format!("required browser bundle failed: {e}"))?;
+
+    // Every CDN-backed stage opens its own exact-version client. A release
+    // can roll while a long update is running, so refuse to source-lock a
+    // directory unless the live endpoint still names the version captured
+    // at the transaction boundary above. The next run will then rebuild all
+    // generated outputs from the new exact version.
+    let final_live = fetch::patch_info_for(game).map_err(|e| e.to_string())?;
+    if final_live.version != live.version {
+        return Err(format!(
+            "{} rolled from {} to {} during the update; no manifest was written. \
+             Rerun update-native so every generated asset comes from one exact release",
+            profile.id, live.version, final_live.version
+        ));
     }
 
     ui::step_banner(style, "manifest");
-    manifest(ctx, &man_args)?;
+    manifest(ctx, &generated_args)?;
+    verify(ctx, &generated_args)?;
 
     ui::ok(
         style,
-        &format!("first-party datasets built + hashed → data/parsed/{native}/"),
+        &format!(
+            "{} datasets built, source-locked, rendered, and verified → data/parsed/{generated_patch}/",
+            profile.id
+        ),
     );
     ui::note(
         style,
-        "next: verify + flip CURRENT. Uniques are resolved first-party from \
-         PoB's pinned mod-id list (its commit is recorded in \
-         items/uniques.pob.json); everything else is 100% GGG.",
+        "CURRENT is deliberately unchanged for local review. Flip it only \
+         after the locally served planners have been approved.",
     );
     Ok(())
 }
@@ -5585,6 +7568,155 @@ mod tests {
         assert!(full.rgba[0] > 0, "frame must be visible");
         assert!(full.rgba[2] > 0, "liquid must be visible beneath frame");
     }
+
+    #[test]
+    fn poe1_release_lines_match_tree_and_cdn_patch_notations() {
+        assert_eq!(poe1_release_line("poe1_3.28.0k"), Some((3, 28, 0)));
+        assert_eq!(poe1_release_line("3.28.0.16"), Some((3, 28, 0)));
+        assert_eq!(poe1_release_line("poe1_3.29.0"), Some((3, 29, 0)));
+        assert_eq!(poe1_release_line("3.29.0.1"), Some((3, 29, 0)));
+        assert!(poe1_versions_compatible("poe1_3.28.0k", "3.28.0.16"));
+        assert!(poe1_versions_compatible("poe1_3.29.0", "3.29.0.1"));
+        assert!(!poe1_versions_compatible("poe1_3.29.0", "3.28.0.16"));
+        assert_eq!(poe1_release_line("poe1_current"), None);
+        assert_eq!(poe1_release_label("3.28.0.16").as_deref(), Ok("3.28.0.16"));
+        assert!(poe1_release_label("3.28.0.16/../bad").is_err());
+    }
+
+    #[test]
+    fn take_game_is_shared_and_removes_both_flag_forms() {
+        use data_miner::fetch::Game::{Poe1, Poe2};
+
+        let args = vec![
+            "--game".to_string(),
+            "poe1".to_string(),
+            "metadata/passiveskillgraph.psg".to_string(),
+        ];
+        let (game, rest) = take_game(&args).expect("poe1");
+        assert_eq!(game, Poe1);
+        assert_eq!(rest, vec!["metadata/passiveskillgraph.psg"]);
+
+        let args = vec!["--game=poe2".to_string(), "--raw".to_string()];
+        let (game, rest) = take_game(&args).expect("poe2");
+        assert_eq!(game, Poe2);
+        assert_eq!(rest, vec!["--raw"]);
+
+        assert!(take_game(&["--game".to_string()]).is_err());
+        assert!(take_game(&["--game=poe3".to_string()]).is_err());
+    }
+
+    #[test]
+    fn portrait_roster_keeps_data_driven_classes_and_exact_ascendancy_ids() {
+        let meta = "\
+class\tScion\tAscendant|Reliquarian|Luminary
+class\tRanger\tWarden|Deadeye|Pathfinder
+asc_internal\tAscendant\tScion1\tScion
+asc_internal\tReliquarian\tScion2\tScion
+asc_internal\tLuminary\tScion3\tScion
+asc_internal\tWarden\tRanger1\tRanger
+asc_internal\tDeadeye\tRanger2\tRanger
+asc_internal\tPathfinder\tRanger3\tRanger
+";
+        let roster = portrait_roster(meta);
+        assert_eq!(roster.len(), 8);
+        assert!(roster.contains(&(
+            "ascendancy".into(),
+            "Pathfinder".into(),
+            "Ranger3".into(),
+            "Ranger".into(),
+        )));
+        assert!(roster.contains(&(
+            "class".into(),
+            "Scion".into(),
+            String::new(),
+            "Scion".into(),
+        )));
+    }
+
+    #[test]
+    fn poe2_face_paths_use_exact_gaps_and_variants() {
+        assert_eq!(
+            poe2_face_vpath("DexFour", Some("Ranger3")),
+            "art/textures/interface/2d/2dart/uiimages/common/icondexfour_ranger3.dds",
+        );
+        assert_eq!(
+            poe2_face_vpath("IntFour", Some("Witch3b")),
+            "art/textures/interface/2d/2dart/uiimages/common/iconintfour_witch3b.dds",
+        );
+    }
+
+    #[test]
+    fn poe1_party_face_paths_use_legacy_display_names() {
+        assert_eq!(
+            poe1_party_face_vpath("Dex", Some("Deadeye")),
+            "art/textures/interface/2d/2dart/uiimages/common/icondex_deadeye.dds",
+        );
+        assert_eq!(
+            poe1_party_face_vpath("StrDexInt", None),
+            "art/textures/interface/2d/2dart/uiimages/common/iconstrdexint.dds",
+        );
+        assert_eq!(
+            poe1_party_face_vpath("StrDexInt", Some("A New Class")),
+            "art/textures/interface/2d/2dart/uiimages/common/iconstrdexint_anewclass.dds",
+        );
+    }
+
+    #[test]
+    fn portrait_refresh_preserves_other_source_owned_kinds() {
+        let existing = "\
+min_x\t-1
+portrait\tcard\tScion\tcenterscion\t0\t0\t0\t0
+portrait\tasc\tOld\tOldPanel\t1\t2\t3\t4
+";
+        let refreshed = "\
+portrait\tasc\tLuminary\tLuminaryPanel\t5\t6\t7\t8
+";
+        assert_eq!(
+            merge_portrait_rows(existing, refreshed),
+            "\
+min_x\t-1
+portrait\tcard\tScion\tcenterscion\t0\t0\t0\t0
+portrait\tasc\tLuminary\tLuminaryPanel\t5\t6\t7\t8
+",
+        );
+    }
+
+    #[test]
+    fn runtime_asset_urls_are_local_normalized_and_safe() {
+        let value = json::parse(
+            r#"{
+                "icon": "/assets/sprites/a.png?v=3#x",
+                "nested": ["/assets/poe1-agent/item_icons/b.png"],
+                "external": "https://example.com/assets/c.png",
+                "escape": "/assets/../secret"
+            }"#,
+        )
+        .unwrap();
+        let mut urls = BTreeSet::new();
+        collect_asset_urls(&value, &mut urls);
+        assert_eq!(
+            urls,
+            BTreeSet::from([
+                "viewer/assets/poe1-agent/item_icons/b.png".to_string(),
+                "viewer/assets/sprites/a.png".to_string(),
+            ]),
+        );
+    }
+
+    #[test]
+    fn manifest_rollup_covers_runtime_artifacts() {
+        let datasets = json::parse(r#"{"tree/nodes.tsv":{"sha256":"data"}}"#).unwrap();
+        let first = json::parse(r#"{"viewer/a.png":{"sha256":"one"}}"#).unwrap();
+        let second = json::parse(r#"{"viewer/a.png":{"sha256":"two"}}"#).unwrap();
+        assert_ne!(
+            manifest_rollup(&datasets, Some(&first)),
+            manifest_rollup(&datasets, Some(&second)),
+        );
+        assert_ne!(
+            manifest_rollup(&datasets, None),
+            manifest_rollup(&datasets, Some(&first)),
+        );
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -5637,7 +7769,271 @@ fn poe1_page_version(html: &str) -> Option<String> {
     None
 }
 
+/// Reduce the two official PoE1 version notations to their shared
+/// content-release line. The passive-tree page uses labels such as
+/// `3.28.0k`, while the patch CDN uses `3.28.0.16`; both belong to
+/// release line `(3, 28, 0)`. Comparing that line prevents a generator
+/// for `poe1_3.29.0` from silently reading art out of a still-live
+/// 3.28 CDN without rejecting harmless hotfix/build suffix differences.
+fn poe1_release_line(value: &str) -> Option<(u32, u32, u32)> {
+    let value = value.strip_prefix("poe1_").unwrap_or(value);
+    let mut parts = value.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch_digits: String = parts
+        .next()?
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    let patch = patch_digits.parse().ok()?;
+    Some((major, minor, patch))
+}
+
+fn poe1_versions_compatible(target_patch: &str, live_cdn_version: &str) -> bool {
+    matches!(
+        (
+            poe1_release_line(target_patch),
+            poe1_release_line(live_cdn_version),
+        ),
+        (Some(target), Some(live)) if target == live
+    )
+}
+
+/// Connect to the current official PoE1 CDN only when it belongs to
+/// the same content release as the local parsed patch. This check must
+/// happen before a command creates or prunes generated output.
+fn require_poe1_cdn_patch(ctx: &Ctx, patch: &str, client: &CdnClient) -> Result<(), String> {
+    if !poe1_versions_compatible(patch, &client.info.version) {
+        return Err(format!(
+            "PoE1 patch mismatch: target {patch}, but the official CDN serves {} — refusing to mix release data",
+            client.info.version,
+        ));
+    }
+    ui::note(
+        ctx.style,
+        &format!(
+            "PoE1 patch boundary verified: {patch} ↔ CDN {}",
+            client.info.version,
+        ),
+    );
+    Ok(())
+}
+
+fn poe1_cdn_for_patch(ctx: &Ctx, patch: &str) -> Result<CdnClient, String> {
+    let client =
+        CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
+    require_poe1_cdn_patch(ctx, patch, &client)?;
+    Ok(client)
+}
+
+fn poe1_release_label(version: &str) -> Result<String, String> {
+    poe1_release_line(version)
+        .ok_or_else(|| format!("unrecognised PoE1 CDN version {version:?}"))?;
+    let version = version.strip_prefix("poe1_").unwrap_or(version);
+    if version.is_empty()
+        || !version
+            .chars()
+            .all(|character| character.is_ascii_digit() || character == '.')
+    {
+        return Err(format!("unsafe PoE1 CDN version {version:?}"));
+    }
+    // Keep the exact CDN build in the dataset identity. Reducing
+    // `3.29.0.4` to `3.29.0` would let a later hotfix silently overwrite
+    // the prior source directory and make asset/data diffs ambiguous.
+    Ok(version.to_string())
+}
+
+/// Build the PoE1 tree straight from GGG's patch CDN. This is the
+/// league-start path: `.psg` owns geometry/topology, dat tables own node
+/// metadata and generated cluster-jewel rules, and stat-description files
+/// own display text. It intentionally shares the final TSV contract with
+/// the website-export and PoE2 paths.
+fn poe1_tree_cdn(
+    ctx: &Ctx,
+    label_arg: Option<String>,
+    client: Option<CdnClient>,
+) -> Result<(), String> {
+    let client = match client {
+        Some(client) => client,
+        None => CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?,
+    };
+    let label = label_arg.unwrap_or(poe1_release_label(&client.info.version)?);
+    require_poe1_cdn_patch(ctx, &format!("poe1_{label}"), &client)?;
+
+    let schema_path = dat_schema_path(ctx)?;
+    let set = SchemaSet::from_json_for(
+        &std::fs::read_to_string(&schema_path).map_err(|e| e.to_string())?,
+        data_miner::fetch::Game::Poe1,
+    )
+    .map_err(|e| e.to_string())?;
+    let index = load_index(&client)?;
+    let paths = resolve_table_paths(&index)?;
+
+    let graph_bytes = extract_by_path(&client, &index, "metadata/passiveskillgraph.psg")?;
+    let graph =
+        data_miner::psg::Graph::parse_poe1(&graph_bytes, &data_miner::shape::POE1_SKILLS_PER_ORBIT)
+            .map_err(|e| e.to_string())?;
+    if graph.unparsed_bytes != 0 {
+        return Err(format!(
+            "PoE1 PSG format drift: {} bytes were not parsed; refusing to emit a partial tree",
+            graph.unparsed_bytes
+        ));
+    }
+    ui::note(
+        ctx.style,
+        &format!(
+            "PoE1 PSG v{}: {} groups · {} nodes · sha256 {}",
+            graph.version,
+            graph.groups.len(),
+            graph.nodes.len(),
+            hash::sha256_hex(&graph_bytes),
+        ),
+    );
+
+    // One typed table set feeds both the base tree and PoE1's generated
+    // cluster-jewel sidecar. A BTreeSet makes the fetch list deterministic
+    // and ensures shared tables (PassiveSkills, Stats, …) are parsed once.
+    let table_names: BTreeSet<&str> = data_miner::shape::TREE_TABLES_POE1
+        .iter()
+        .chain(data_miner::shape::JEWELS_TABLES_POE1.iter())
+        .copied()
+        .collect();
+    let mut ts = data_miner::shape::TableSet::new();
+    for name in table_names {
+        let schema = set
+            .table(name)
+            .ok_or_else(|| format!("{name}: missing from PoE1 dat-schema"))?;
+        let base = format!("{}.datc64", name.to_ascii_lowercase());
+        let candidates = paths.get(&base).map(Vec::as_slice).unwrap_or(&[]);
+        let (bytes, fitted) = extract_parseable(&client, &index, name, candidates, schema)
+            .map_err(|e| format!("{e}; PoE1 CDN tree cannot be complete"))?;
+        if fitted.row_width() != schema.row_width() {
+            ui::note(
+                ctx.style,
+                &format!(
+                    "{name}: schema drift {:+}B — auto-fit",
+                    fitted.row_width() as i64 - schema.row_width() as i64
+                ),
+            );
+        }
+        ts.insert(name, bytes, fitted);
+    }
+
+    let mut descriptions = data_miner::csd::StatDescriptions::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut stat_sources = BTreeMap::new();
+    for path in [
+        item_stat_descriptions_path(data_miner::fetch::Game::Poe1),
+        skill_stat_descriptions_path(data_miner::fetch::Game::Poe1),
+        passive_stat_descriptions_path(data_miner::fetch::Game::Poe1),
+    ] {
+        load_csd_chain_recording(
+            &client,
+            &index,
+            path,
+            &mut seen,
+            &mut descriptions,
+            &mut stat_sources,
+        )?;
+    }
+
+    let tree = data_miner::shape::shape_tree_for_game(
+        &graph,
+        &ts,
+        &descriptions,
+        data_miner::fetch::Game::Poe1,
+    )
+    .map_err(|e| e.to_string())?;
+    let jewels =
+        data_miner::shape::shape_jewels(&ts, Some(&descriptions)).map_err(|e| e.to_string())?;
+
+    let dataset_dir = ctx.root.join(format!("data/parsed/poe1_{label}"));
+    let tree_dir = dataset_dir.join("tree");
+    std::fs::create_dir_all(&tree_dir).map_err(|e| e.to_string())?;
+    for (name, body) in [
+        ("nodes.tsv", &tree.nodes),
+        ("edges.tsv", &tree.edges),
+        ("meta.tsv", &tree.meta),
+        ("jewels.tsv", &jewels),
+    ] {
+        let path = tree_dir.join(name);
+        std::fs::write(&path, body).map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+
+    let mut source = json::Map::new();
+    source.insert("dataset".into(), json::Value::Str("tree".into()));
+    source.insert("game".into(), json::Value::Str("poe1".into()));
+    source.insert("source".into(), json::Value::Str("ggg-patch-cdn".into()));
+    source.insert(
+        "cdn_version".into(),
+        json::Value::Str(client.info.version.clone()),
+    );
+    source.insert(
+        "graph_path".into(),
+        json::Value::Str("metadata/passiveskillgraph.psg".into()),
+    );
+    source.insert(
+        "graph_sha256".into(),
+        json::Value::Str(hash::sha256_hex(&graph_bytes)),
+    );
+    source.insert(
+        "stat_descriptions".into(),
+        json::Value::Object(
+            stat_sources
+                .into_iter()
+                .map(|(path, digest)| (path, json::Value::Str(digest)))
+                .collect(),
+        ),
+    );
+    std::fs::write(
+        tree_dir.join("tree.source.json"),
+        json::emit_pretty(&json::Value::Object(source)) + "\n",
+    )
+    .map_err(|e| e.to_string())?;
+    std::fs::write(
+        dataset_dir.join(".source"),
+        format!("GGG PoE1 patch CDN {}\n", client.info.version),
+    )
+    .map_err(|e| e.to_string())?;
+
+    if let Some(reference) =
+        compatible_poe1_web_tree(&ctx.root, &label).filter(|path| path != &tree_dir)
+    {
+        validate_poe1_tree_parity(&reference, &tree_dir)?;
+        ui::ok(
+            ctx.style,
+            &format!(
+                "PoE1 CDN parity: topology + render metadata match {}",
+                reference.display()
+            ),
+        );
+    } else {
+        ui::note(
+            ctx.style,
+            "PoE1 CDN parity: no same-release website export (expected during league-start lead time)",
+        );
+    }
+
+    let node_count = tree.nodes.lines().count().saturating_sub(1);
+    let edge_count = tree.edges.lines().count().saturating_sub(1);
+    ui::ok(
+        ctx.style,
+        &format!(
+            "poe1 CDN tree ({label}): {node_count} nodes, {edge_count} edges → {}",
+            tree_dir.display(),
+        ),
+    );
+    ui::note(
+        ctx.style,
+        &format!(
+            "next: buildwright sprites --patch poe1_{label} (all art remains generated/ignored)"
+        ),
+    );
+    Ok(())
+}
+
 pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
+    let source = arg_value(args, "--source").unwrap_or_else(|| "auto".into());
     // Label discipline: the dataset label IS the tree version, and the
     // page tells us the version — a hand-passed --label used to be
     // trusted blindly, which is how a July fetch of the live (3.28)
@@ -5649,6 +8045,57 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     //   * --json without --label   → error (nothing to derive from)
     let label_arg = arg_value(args, "--label");
     let json_arg = arg_value(args, "--json");
+
+    match source.as_str() {
+        "cdn" | "bundle" | "psg" => {
+            if json_arg.is_some() {
+                return Err("--json cannot be combined with --source cdn".into());
+            }
+            return poe1_tree_cdn(ctx, label_arg, None);
+        }
+        "website" | "web" | "json" => {}
+        "auto" => {
+            if json_arg.is_none() {
+                let cdn = CdnClient::connect_for(data_miner::fetch::Game::Poe1)
+                    .map_err(|e| e.to_string())?;
+                let page = fetch_url("https://www.pathofexile.com/passive-skill-tree");
+                let page_version = page.ok().as_deref().and_then(poe1_page_version);
+                match page_version {
+                    Some(version) if poe1_versions_compatible(&version, &cdn.info.version) => {
+                        ui::note(
+                            ctx.style,
+                            &format!(
+                                "auto source: website {version} matches CDN {}; using the exact website export",
+                                cdn.info.version
+                            ),
+                        );
+                    }
+                    Some(version) => {
+                        ui::note(
+                            ctx.style,
+                            &format!(
+                                "auto source: website {version} lags CDN {}; using the live CDN tree",
+                                cdn.info.version
+                            ),
+                        );
+                        return poe1_tree_cdn(ctx, label_arg, Some(cdn));
+                    }
+                    None => {
+                        ui::warn(
+                            ctx.style,
+                            "auto source: website tree unavailable/unversioned; using the live CDN tree",
+                        );
+                        return poe1_tree_cdn(ctx, label_arg, Some(cdn));
+                    }
+                }
+            }
+        }
+        other => {
+            return Err(format!(
+                "unknown PoE1 tree source {other:?} (use: auto | website | cdn)"
+            ));
+        }
+    }
 
     // 1. Obtain the JSON: --json <file> or fetch the live page.
     let (raw_html, label) = if json_arg.is_some() {
@@ -6095,8 +8542,32 @@ pub fn poe1_tree(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     std::fs::write(tree_dir.join("meta.tsv"), &meta).map_err(|e| e.to_string())?;
 
-    // Provenance marker consumed by `manifest` — same contract as the
-    // PoE2 patch dirs, so poe1_<label> gets the identical hash story.
+    // Structured provenance consumed by source.lock.json. The embedded raw
+    // JSON is kept locally for atlas slicing and its digest makes website
+    // changes visible even when the shaped TSV happens to stay identical.
+    let mut tree_source = json::Map::new();
+    tree_source.insert("dataset".into(), json::Value::Str("tree".into()));
+    tree_source.insert("game".into(), json::Value::Str("poe1".into()));
+    tree_source.insert(
+        "source".into(),
+        json::Value::Str("ggg-passive-tree-website".into()),
+    );
+    tree_source.insert(
+        "url".into(),
+        json::Value::Str("https://www.pathofexile.com/passive-skill-tree".into()),
+    );
+    tree_source.insert("version".into(), json::Value::Str(label.clone()));
+    tree_source.insert(
+        "tree_json_sha256".into(),
+        json::Value::Str(hash::sha256_hex(raw.as_bytes())),
+    );
+    std::fs::write(
+        tree_dir.join("tree.source.json"),
+        json::emit_pretty(&json::Value::Object(tree_source)) + "\n",
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Human-readable provenance marker retained for status output.
     let source_marker = format!("pathofexile.com/passive-skill-tree ({label})\n");
     std::fs::write(
         tree_dir.parent().unwrap_or(&tree_dir).join(".source"),
@@ -6140,7 +8611,11 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         .ok_or("no sprites")?;
     let assets = ctx.root.join("viewer/assets/sprites");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
-    let cache = cache_root().join("poe1_atlases");
+    let cache_label: String = label
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let cache = cache_root().join("poe1_atlases").join(cache_label);
     std::fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
 
     // The sheets the renderer needs for the base tree. The ascendancy
@@ -6170,6 +8645,8 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     // (width, height, rgba)
     let mut atlases: std::collections::BTreeMap<String, (u32, u32, Vec<u8>)> =
         std::collections::BTreeMap::new();
+    let mut atlas_sources: BTreeMap<String, (String, String, u64)> = BTreeMap::new();
+    let mut expected_files: BTreeSet<String> = BTreeSet::new();
     let mut out = String::from(data_miner::tree_tsv::SPRITES_HEADER);
     let mut count = 0usize;
     for sheet in SHEETS {
@@ -6212,8 +8689,13 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             .next()
             .unwrap_or("atlas")
             .to_string();
-        if !atlases.contains_key(&fname) {
-            let local = cache.join(&fname);
+        if !atlases.contains_key(url) {
+            // URLs, not basenames, identify an atlas. GGG can reuse
+            // generic names such as skills-4.jpg; the URL hash prevents
+            // collisions while the patch-scoped cache prevents a new
+            // league from reusing last league's bytes.
+            let url_hash = hash::sha256_hex(url.as_bytes());
+            let local = cache.join(format!("{}_{}", &url_hash[..16], fname));
             if !local.exists() {
                 let st = std::process::Command::new("curl")
                     .args(["-fsSL", "--retry", "3", "-o"])
@@ -6225,11 +8707,21 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                     return Err(format!("download failed: {url}"));
                 }
             }
+            let source_bytes = std::fs::read(&local)
+                .map_err(|e| format!("read atlas {}: {e}", local.display()))?;
+            atlas_sources.insert(
+                url.to_string(),
+                (
+                    fname.clone(),
+                    hash::sha256_hex(&source_bytes),
+                    source_bytes.len() as u64,
+                ),
+            );
             // Normalize to PNG when needed (JPG/WEBP atlases).
             let png_path = if fname.ends_with(".png") {
                 local.clone()
             } else {
-                let p = cache.join(format!("{fname}.png"));
+                let p = cache.join(format!("{}_{}.png", &url_hash[..16], fname));
                 if !p.exists() {
                     let st = std::process::Command::new("sips")
                         .args(["-s", "format", "png"])
@@ -6249,9 +8741,9 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             };
             let bytes = std::fs::read(&png_path).map_err(|e| e.to_string())?;
             let img = data_miner::png::decode_rgba(&bytes).map_err(|e| format!("{fname}: {e}"))?;
-            atlases.insert(fname.clone(), img);
+            atlases.insert(url.to_string(), img);
         }
-        let (aw, ah, apx) = atlases.get(&fname).cloned().ok_or("atlas missing")?;
+        let (aw, ah, apx) = atlases.get(url).cloned().ok_or("atlas missing")?;
         let (aw, ah) = (aw as usize, ah as usize);
         let Some(coords) = z.get("coords").and_then(json::Value::as_object) else {
             continue;
@@ -6267,16 +8759,15 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
                 continue;
             }
             let file = format!("poe1_{}.png", sanitize(key));
+            expected_files.insert(file.clone());
             let dest = assets.join(&file);
-            if !dest.exists() {
-                let mut px = Vec::with_capacity(w * h * 4);
-                for row in 0..h {
-                    let off = ((y + row) * aw + x) * 4;
-                    px.extend_from_slice(&apx[off..off + w * 4]);
-                }
-                let png = data_miner::png::encode_rgba(w as u32, h as u32, &px);
-                std::fs::write(&dest, &png).map_err(|e| format!("write {file}: {e}"))?;
+            let mut px = Vec::with_capacity(w * h * 4);
+            for row in 0..h {
+                let off = ((y + row) * aw + x) * 4;
+                px.extend_from_slice(&apx[off..off + w * 4]);
             }
+            let png = data_miner::png::encode_rgba(w as u32, h as u32, &px);
+            std::fs::write(&dest, &png).map_err(|e| format!("write {file}: {e}"))?;
             let (ww, wh) = (
                 (w as f64 / sheet_zoom).round() as i64,
                 (h as f64 / sheet_zoom).round() as i64,
@@ -6285,10 +8776,34 @@ pub fn poe1_sprites(ctx: &Ctx, args: &[String]) -> Result<(), String> {
             count += 1;
         }
     }
+    let mut sources = String::from("url\tfile\tsha256\tbytes\n");
+    for (url, (file, sha, bytes)) in atlas_sources {
+        sources.push_str(&format!("{url}\t{file}\t{sha}\t{bytes}\n"));
+    }
+    std::fs::write(out_dir.join("tree/atlas_sources.tsv"), sources).map_err(|e| e.to_string())?;
     std::fs::write(out_dir.join("tree/sprites.tsv"), &out).map_err(|e| e.to_string())?;
+    let mut pruned = 0usize;
+    for entry in std::fs::read_dir(&assets).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with("poe1_")
+            && entry.path().extension().and_then(|x| x.to_str()) == Some("png")
+            && !expected_files.contains(&name)
+        {
+            std::fs::remove_file(entry.path()).map_err(|e| format!("prune {name}: {e}"))?;
+            pruned += 1;
+        }
+    }
     ui::ok(
         ctx.style,
-        &format!("poe1 sprites: {count} sliced → viewer/assets/sprites (poe1_*)"),
+        &format!(
+            "poe1 sprites: {count} sliced{} → viewer/assets/sprites (poe1_*)",
+            if pruned > 0 {
+                format!(", {pruned} stale pruned")
+            } else {
+                String::new()
+            },
+        ),
     );
     Ok(())
 }
@@ -6341,6 +8856,7 @@ pub fn poe1_gem_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     if !patch.starts_with("poe1_") {
         return Err("poe1-gem-icons is a PoE1 command — pass --patch poe1_<ver>".into());
     }
+    let client = poe1_cdn_for_patch(ctx, &patch)?;
     let gems_path = ctx
         .root
         .join("data/parsed")
@@ -6374,11 +8890,13 @@ pub fn poe1_gem_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     }
     ui::note(ctx.style, &format!("{} distinct gem icons", ddses.len()));
 
-    let client =
-        CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
     let index = load_index(&client)?;
     let out_dir = ctx.root.join("viewer/assets/poe1-agent/gem_icons");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let expected_files: BTreeSet<String> = ddses
+        .iter()
+        .map(|dds| format!("{}.png", sprite_safe_name(dds)))
+        .collect();
 
     let mut cache: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     let (mut ok, mut missing) = (0usize, 0usize);
@@ -6415,12 +8933,28 @@ pub fn poe1_gem_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         std::fs::write(out_dir.join(&name), &png).map_err(|e| format!("write {name}: {e}"))?;
         ok += 1;
     }
+    let mut pruned = 0usize;
+    for entry in std::fs::read_dir(&out_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if entry.path().extension().and_then(|x| x.to_str()) == Some("png")
+            && !expected_files.contains(&name)
+        {
+            std::fs::remove_file(entry.path()).map_err(|e| format!("prune {name}: {e}"))?;
+            pruned += 1;
+        }
+    }
     ui::ok(
         ctx.style,
         &format!(
-            "poe1 gem icons: {ok} extracted{} → /assets/poe1-agent/gem_icons",
+            "poe1 gem icons: {ok} extracted{}{} → /assets/poe1-agent/gem_icons",
             if missing > 0 {
                 format!(", {missing} missing")
+            } else {
+                String::new()
+            },
+            if pruned > 0 {
+                format!(", {pruned} stale pruned")
             } else {
                 String::new()
             }
@@ -6439,6 +8973,7 @@ pub fn poe1_item_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     if !patch.starts_with("poe1_") {
         return Err("poe1-item-icons is a PoE1 command — pass --patch poe1_<ver>".into());
     }
+    let client = poe1_cdn_for_patch(ctx, &patch)?;
     let items = ctx.root.join("data/parsed").join(&patch).join("items");
     let bases_path = items.join("bases.tsv");
     let bases = std::fs::read_to_string(&bases_path).map_err(|e| {
@@ -6506,8 +9041,6 @@ pub fn poe1_item_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
         &format!("{} distinct equipment/unique icons", ddses.len()),
     );
 
-    let client =
-        CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
     let index = load_index(&client)?;
     let out_dir = ctx.root.join("viewer/assets/poe1-agent/item_icons");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
@@ -6573,129 +9106,104 @@ pub fn poe1_item_icons(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Crop a centred square from an RGBA image and box-downscale it to
-/// `target` px. Used for character-illustration → card portrait: the
-/// centre square (side = min dim) reliably contains the character even
-/// when GGG framed them off-centre, and the face sits in its upper
-/// portion (the card biases toward the top via CSS object-position).
-fn crop_square_downscale(w: u32, h: u32, rgba: &[u8], target: u32) -> (u32, Vec<u8>) {
-    let (w, h) = (w as usize, h as usize);
-    let side = w.min(h);
-    let (ox, oy) = ((w - side) / 2, (h - side) / 2);
-    let t = (target as usize).min(side);
-    let mut out = vec![0u8; t * t * 4];
-    // Box average: each output pixel averages a src_box × src_box region.
-    for ty in 0..t {
-        for tx in 0..t {
-            let (sx0, sy0) = (ox + tx * side / t, oy + ty * side / t);
-            let (sx1, sy1) = (ox + (tx + 1) * side / t, oy + (ty + 1) * side / t);
-            let (mut r, mut g, mut b, mut a, mut n) = (0u32, 0u32, 0u32, 0u32, 0u32);
-            for sy in sy0..sy1.max(sy0 + 1) {
-                for sx in sx0..sx1.max(sx0 + 1) {
-                    let i = (sy * w + sx) * 4;
-                    r += rgba[i] as u32;
-                    g += rgba[i + 1] as u32;
-                    b += rgba[i + 2] as u32;
-                    a += rgba[i + 3] as u32;
-                    n += 1;
-                }
-            }
-            let n = n.max(1);
-            let o = (ty * t + tx) * 4;
-            out[o] = (r / n) as u8;
-            out[o + 1] = (g / n) as u8;
-            out[o + 2] = (b / n) as u8;
-            out[o + 3] = (a / n) as u8;
-        }
-    }
-    (t as u32, out)
-}
-
-/// Extract PoE1 character portraits (base classes + ascendancies) from
-/// GGG's own `Art/2DArt/BaseClassIllustrations` — the real in-game
-/// character illustrations, not the tree-panel art. One PNG per display
-/// name at /assets/poe1-agent/portraits/, centre-cropped + downscaled,
-/// which build_meta's portraits map points at. Scion and its
-/// ascendancies (Ascendant/Reliquarian) have no corner illustration —
-/// they fall back to the centerscion medallion.
+/// Extract PoE1's actual in-game party portraits (base classes +
+/// ascendancies) from GGG's shared UI texture family. The PoE1 client no
+/// longer ships that family, so its own Characters/Ascendancy tables
+/// define the roster while GGG's current PoE2 bundle supplies the shared
+/// UI bytes. Every row records both source game and exact source patch.
+/// New/special ascendancies without a bespoke party face use the parent
+/// class face, matching the in-game UI (Luminary therefore uses Scion).
 pub fn poe1_portraits(ctx: &Ctx, args: &[String]) -> Result<(), String> {
     let patch = resolve_patch(ctx, args)?;
     if !patch.starts_with("poe1_") {
         return Err("poe1-portraits is a PoE1 command — pass --patch poe1_<ver>".into());
     }
-    // (display name, illustration stem under BaseClassIllustrations).
-    // GGG's filenames carry historical typos (juggernaught, beserker)
-    // and old ascendancy names (Warden's art is `raider`).
-    const MAP: &[(&str, &str)] = &[
-        ("Marauder", "str"),
-        ("Ranger", "dex"),
-        ("Witch", "int"),
-        ("Duelist", "strdex"),
-        ("Templar", "strint"),
-        ("Shadow", "dexint"),
-        ("Juggernaut", "juggernaughtascendency"),
-        ("Berserker", "beserkerascendency"),
-        ("Chieftain", "chieftainascendency"),
-        ("Warden", "raiderascendency"),
-        ("Deadeye", "deadeyeascendency"),
-        ("Pathfinder", "pathfinderascendency"),
-        ("Occultist", "occultistascendency"),
-        ("Elementalist", "elementalistascendency"),
-        ("Necromancer", "necromancerascendency"),
-        ("Slayer", "slayerascendency"),
-        ("Gladiator", "gladiatorascendency"),
-        ("Champion", "championascendency"),
-        ("Inquisitor", "inquisitorascendency"),
-        ("Hierophant", "hierophantascendency"),
-        ("Guardian", "guardianascendency"),
-        ("Assassin", "assassinascendency"),
-        ("Trickster", "tricksterascendency"),
-        ("Saboteur", "saboteurascendency"),
-    ];
-    // No illustration → the Scion medallion (its own in-game centre art).
-    const SCION_FALLBACK: &[&str] = &["Scion", "Ascendant", "Reliquarian"];
-    const TARGET: u32 = 384;
 
-    let client =
-        CdnClient::connect_for(data_miner::fetch::Game::Poe1).map_err(|e| e.to_string())?;
+    let client = poe1_cdn_for_patch(ctx, &patch)?;
+    let meta_path = ctx
+        .root
+        .join("data/parsed")
+        .join(&patch)
+        .join("tree/meta.tsv");
+    let meta = std::fs::read_to_string(&meta_path)
+        .map_err(|e| format!("read {} (run `poe1-tree` first): {e}", meta_path.display()))?;
     let index = load_index(&client)?;
+    let profile = GameProfile::from_patch(&patch);
+    let shared_client = CdnClient::connect_for(data_miner::fetch::Game::Poe2)
+        .map_err(|e| format!("connect to GGG shared UI source: {e}"))?;
+    let shared_index = load_index(&shared_client)?;
+    let specs = portrait_source_specs(ctx, &client, &index, profile, &meta, Some(&shared_index))?;
     let out_dir = ctx.root.join("viewer/assets/poe1-agent/portraits");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let expected_files: BTreeSet<String> = specs
+        .iter()
+        .map(|spec| format!("{}.png", spec.name))
+        .collect();
     let mut cache: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     let mut ok = 0usize;
-    let mut extract = |stem: &str| -> Option<data_miner::dds::Image> {
-        let path = format!("art/2dart/baseclassillustrations/{stem}.dds");
-        let bytes = extract_cached(&client, &index, &path, &mut cache).ok()?;
-        data_miner::dds::decode(&bytes).ok()
-    };
-    for (name, stem) in MAP {
-        let Some(img) = extract(stem) else {
-            ui::warn(
-                ctx.style,
-                &format!("{name}: illustration {stem} missing — skipped"),
-            );
-            continue;
-        };
-        let (side, px) = crop_square_downscale(img.width, img.height, &img.rgba, TARGET);
-        let png = data_miner::png::encode_rgba(side, side, &px);
-        std::fs::write(out_dir.join(format!("{name}.png")), &png).map_err(|e| e.to_string())?;
+    let mut entries = Vec::new();
+
+    for spec in &specs {
+        if spec.source_game != data_miner::fetch::Game::Poe2 {
+            return Err(format!(
+                "PoE1 portrait {} resolved to unsupported source game {:?}",
+                spec.name, spec.source_game
+            ));
+        }
+        let path = spec
+            .source_vpath
+            .as_deref()
+            .ok_or_else(|| format!("PoE1 party portrait {} has no source", spec.name))?;
+        let source_bytes = extract_cached(&shared_client, &shared_index, path, &mut cache)
+            .map_err(|e| {
+                format!(
+                    "required {} party portrait {} ({path}) is missing: {e}",
+                    spec.role, spec.name
+                )
+            })?;
+        let img = data_miner::dds::decode(&source_bytes)
+            .map_err(|e| format!("decode required party portrait {}: {e}", spec.name))?;
+        let png = data_miner::png::encode_rgba(img.width, img.height, &img.rgba);
+        std::fs::write(out_dir.join(format!("{}.png", spec.name)), &png)
+            .map_err(|e| e.to_string())?;
+        entries.push(PortraitAuditEntry {
+            role: spec.role,
+            name: spec.name.clone(),
+            source_game: portrait_source_game_id(spec.source_game),
+            source_patch: shared_client.info.version.clone(),
+            source_vpath: path.into(),
+            source_sha256: hash::sha256_hex(&source_bytes),
+            output_url: format!("/assets/poe1-agent/portraits/{}.png", spec.name),
+            output_sha256: hash::sha256_hex(&png),
+            width: img.width,
+            height: img.height,
+            framing: spec.framing,
+            fallback: spec.fallback.unwrap_or("").into(),
+        });
         ok += 1;
     }
-    // Scion medallion fallback for the 3 Scion-related entries.
-    let scion = std::fs::read(ctx.root.join("viewer/assets/sprites/poe1_centerscion.png")).ok();
-    if let Some(bytes) = scion
-        && let Ok((w, h, rgba)) = data_miner::png::decode_rgba(&bytes)
-    {
-        let (side, px) = crop_square_downscale(w, h, &rgba, TARGET);
-        let png = data_miner::png::encode_rgba(side, side, &px);
-        for name in SCION_FALLBACK {
-            std::fs::write(out_dir.join(format!("{name}.png")), &png).map_err(|e| e.to_string())?;
-            ok += 1;
+    let mut pruned = 0usize;
+    for entry in std::fs::read_dir(&out_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if entry.path().extension().and_then(|x| x.to_str()) == Some("png")
+            && !expected_files.contains(&name)
+        {
+            std::fs::remove_file(entry.path()).map_err(|e| format!("prune {name}: {e}"))?;
+            pruned += 1;
         }
     }
+    write_portrait_catalogue(ctx, &patch, &specs, entries)?;
     ui::ok(
         ctx.style,
-        &format!("poe1 portraits: {ok} → /assets/poe1-agent/portraits"),
+        &format!(
+            "poe1 portraits: {ok}{} → /assets/poe1-agent/portraits",
+            if pruned > 0 {
+                format!(", {pruned} stale pruned")
+            } else {
+                String::new()
+            },
+        ),
     );
     Ok(())
 }

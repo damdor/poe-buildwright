@@ -5,23 +5,54 @@
 //      missing or invalid).
 //   2. Build the top header DOM: title + step nav + actions + save badge.
 //   3. Own the plan store (localStorage-backed, captures-based — see
-//      docs/captures_data_model.md) and expose it via window.PoE2Plan.
+//      docs/captures_data_model.md) and expose it via window.BuildwrightPlan.
 //
 // The wizard's per-step JS owns its OWN content area; this module only
-// touches the header element + the window.PoE2Plan namespace.
+// touches the header element + the window.BuildwrightPlan namespace.
 
 import { decode as decodeShare } from "./share_codec.ts";
+import {
+  createGameProfile,
+  patchBelongsToGame as patchBelongsToProfile,
+  validatePlanForSelectedGame,
+} from "../../crates/tree_render/assets/planner/game_profile.ts";
+import { emitStateChange } from "../../crates/tree_render/assets/planner/runtime_contract.ts";
+import {
+  addChildState as addNativeChildState,
+  mergePlanV2RouteIntoV3,
+  migratePlanV2ToV3,
+  projectPlanV3ToV2,
+  removeActor as removeNativeActor,
+  removeInventoryItem as removeNativeInventoryItem,
+  removeStateSubtree as removeNativeStateSubtree,
+  routeToState,
+  upsertActor as upsertNativeActor,
+  upsertInventoryItem as upsertNativeInventoryItem,
+} from "./plan_v3.ts";
+import { loadNativePlan, saveNativePlan } from "./plan_storage.ts";
 import type {
-  Plan, Capture, Allocation, Skill, Item,
-  CommitMeta, GameId, PlanIndexEntry, PoE2PlanAPI,
+  Allocation,
+  AnyPersistedPlan,
+  BuildwrightPlanAPI,
+  Capture,
+  CommitMeta,
+  GameId,
+  Item,
+  Plan,
+  PlanIndexEntry,
+  PlanV3,
+  Skill,
 } from "../../types/shared.d.ts";
 
 // Storage is namespaced per game so a PoE1 page never sees (or
 // clobbers) PoE2 plans. Default base keeps every existing PoE2 key.
-const GAME_ID: GameId = window.PoE2Game?.id ?? "poe2";
-const STORE_BASE = window.PoE2Game?.storageNamespace ?? `${GAME_ID}-planner`;
-const KEY_PREFIX  = `${STORE_BASE}:plan:`;
-const KEY_INDEX   = `${STORE_BASE}:index`;
+const GAME_DESCRIPTOR = window.BuildwrightGame ?? window.PoE2Game;
+const GAME_ID: GameId = GAME_DESCRIPTOR?.id ?? "poe2";
+const GAME_PROFILE = createGameProfile(GAME_ID);
+const GAME_DEFINITION = GAME_PROFILE.definition;
+const STORE_BASE = GAME_DESCRIPTOR?.storageNamespace ?? `${GAME_ID}-planner`;
+const KEY_PREFIX = `${STORE_BASE}:plan:`;
+const KEY_INDEX = `${STORE_BASE}:index`;
 const KEY_CURRENT = `${STORE_BASE}:current`;
 const PLAN_FORMAT = "buildwright-planner-plan" as const;
 const LEGACY_PLAN_FORMAT = "poe2-planner-plan" as const;
@@ -33,13 +64,19 @@ const DEFAULT_MAX_LEVEL = 100;
 const SECTIONS = ["passives", "skills", "items"] as const;
 type Section = typeof SECTIONS[number];
 
+function gameProfilePlanIssues(candidate: unknown): string[] {
+  return validatePlanForSelectedGame(candidate, GAME_PROFILE);
+}
+
 // -------------------------------------------------------------------
 // Capture + plan factories
 // -------------------------------------------------------------------
 function genCapId(): string {
   const chars = "abcdefghijklmnpqrstuvwxyz0123456789";
   let s = "cap_";
-  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 6; i++) {
+    s += chars[Math.floor(Math.random() * chars.length)];
+  }
   return s;
 }
 
@@ -57,27 +94,30 @@ interface NewCaptureOpts {
 function newCapture(opts?: NewCaptureOpts): Capture {
   const o = opts || {};
   return {
-    id:          o.id || genCapId(),
-    levelRange:  o.levelRange || [1, DEFAULT_MAX_LEVEL],
-    name:        o.name ?? null,
+    id: o.id || genCapId(),
+    levelRange: o.levelRange || [1, DEFAULT_MAX_LEVEL],
+    name: o.name ?? null,
     description: o.description || "",
-    ascendancy:  o.ascendancy ?? null,
-    passives:    o.passives || [],
-    skills:      o.skills   || [],
-    items:       o.items    || [],
+    ascendancy: o.ascendancy ?? null,
+    passives: o.passives || [],
+    skills: o.skills || [],
+    items: o.items || [],
   };
 }
 
 function newPlan(): Plan {
   return {
-    format: PLAN_FORMAT, version: PLAN_VERSION, game: GAME_ID,
+    format: PLAN_FORMAT,
+    version: PLAN_VERSION,
+    game: GAME_ID,
     savedAt: new Date().toISOString(),
     // Game patch this plan was authored against (e.g., "0.4"). Set
     // from window.POE2_PATCH at mint time; reads back on load so we
     // can detect cross-patch builds and warn the user. May be null on
     // plans authored before this field existed.
-    patch: window.POE2_PATCH || null,
-    name: "", description: "",
+    patch: window.BuildwrightPatch ?? window.POE2_PATCH ?? null,
+    name: "",
+    description: "",
     class: null,
     activeSet: "main",
     captures: [newCapture()],
@@ -89,13 +129,17 @@ function newPlan(): Plan {
 // skills + items edited via in-tree overlays (top-right strips). The
 // wizard now shows two top-level destinations: Build (the planner)
 // and Summary (the guide-generator).
-interface Step { id: string; label: string; file: string; }
+interface Step {
+  id: string;
+  label: string;
+  file: string;
+}
 // The Summary page was retired in favor of the in-planner Build Guide
 // (📖) — a floating, editable, hover-linked reading view. STEPS keeps
 // the single Build step; the array stays so the chrome's step-nav
 // machinery is unchanged if a future step lands.
 const STEPS: Step[] = [
-  { id: "passives", label: "Build",   file: "planner.html" },
+  { id: "passives", label: "Build", file: "planner.html" },
 ];
 
 // Defensive normalization for plans loaded from disk — ensures every
@@ -120,8 +164,8 @@ function normalizePlan(p: Plan | null | undefined): Plan {
       c.levelRange = [1, DEFAULT_MAX_LEVEL];
     }
     if (!Array.isArray(c.passives)) c.passives = [];
-    if (!Array.isArray(c.skills))   c.skills   = [];
-    if (!Array.isArray(c.items))    c.items    = [];
+    if (!Array.isArray(c.skills)) c.skills = [];
+    if (!Array.isArray(c.items)) c.items = [];
     if (typeof c.description !== "string") c.description = "";
   }
   // Heal corrupted capture ranges. Without this, a plan from an
@@ -137,8 +181,10 @@ function normalizePlan(p: Plan | null | undefined): Plan {
   // cumulative model means the later cap is a superset (or the user's
   // freshest state if it was the working cap).
   normalizeCapturesRanges(p);
-  if (typeof p.activeCapture !== "number" ||
-      p.activeCapture < 0 || p.activeCapture >= p.captures.length) {
+  if (
+    typeof p.activeCapture !== "number" ||
+    p.activeCapture < 0 || p.activeCapture >= p.captures.length
+  ) {
     p.activeCapture = p.captures.length - 1;
   }
   return p;
@@ -147,41 +193,35 @@ function normalizePlan(p: Plan | null | undefined): Plan {
 // -------------------------------------------------------------------
 // Plan store (localStorage-backed)
 // -------------------------------------------------------------------
-function loadPlan(id: string): Plan | null {
-  try {
-    const raw = localStorage.getItem(KEY_PREFIX + id);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as Plan;
-    if (data.format !== PLAN_FORMAT && data.format !== LEGACY_PLAN_FORMAT) return null;
-    if (data.version !== PLAN_VERSION) return null;
-    if (data.game && data.game !== GAME_ID) return null;
-    return normalizePlan(data);
-  } catch (e) {
-    return null;
-  }
-}
-function savePlan(id: string, plan: Plan): void {
-  plan.format = PLAN_FORMAT;
-  plan.version = PLAN_VERSION;
-  plan.game = GAME_ID;
-  plan.savedAt = new Date().toISOString();
-  localStorage.setItem(KEY_PREFIX + id, JSON.stringify(plan));
+function savePlan(id: string, candidate: PlanV3): PlanV3 {
+  candidate.id = id;
+  const saved = saveNativePlan(
+    localStorage,
+    KEY_PREFIX + id,
+    candidate,
+    GAME_ID,
+  );
+  const view = projectPlanV3ToV2(saved.plan);
   let idx: PlanIndexEntry[] = [];
-  try { idx = JSON.parse(localStorage.getItem(KEY_INDEX) || "[]"); } catch (e) {}
-  const existing = idx.findIndex(e => e.id === id);
-  const active = plan.captures[plan.activeCapture] || plan.captures[0];
+  try {
+    idx = JSON.parse(localStorage.getItem(KEY_INDEX) || "[]");
+  } catch (e) {}
+  const existing = idx.findIndex((e) => e.id === id);
+  const active = view.captures[view.activeCapture] || view.captures[0];
   const entry: PlanIndexEntry = {
     id,
-    name: plan.name || "(untitled)",
-    savedAt: plan.savedAt,
-    class: plan.class || null,
+    name: view.name || "(untitled)",
+    savedAt: saved.plan.savedAt!,
+    class: view.class || null,
     ascendancy: (active && active.ascendancy) || null,
-    nodeCount: (active && active.passives ? active.passives.length : 0),
-    captureCount: plan.captures.length,
+    nodeCount: active && active.passives ? active.passives.length : 0,
+    captureCount: saved.plan.states.length,
   };
-  if (existing >= 0) idx[existing] = entry; else idx.push(entry);
+  if (existing >= 0) idx[existing] = entry;
+  else idx.push(entry);
   localStorage.setItem(KEY_INDEX, JSON.stringify(idx));
   localStorage.setItem(KEY_CURRENT, id);
+  return saved.plan;
 }
 
 // -------------------------------------------------------------------
@@ -194,7 +234,9 @@ function savePlan(id: string, plan: Plan): void {
 function genId(): string {
   const chars = "abcdefghijklmnpqrstuvwxyz23456789";
   let s = "";
-  for (let i = 0; i < 8; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 8; i++) {
+    s += chars[Math.floor(Math.random() * chars.length)];
+  }
   return s;
 }
 const url = new URL(location.href);
@@ -205,7 +247,8 @@ let freshlyMinted = false;
 // clobber the user's last-opened build. The fragment itself survives
 // the replaceState (url was built from location.href) so the importer
 // module picks it up after boot.
-const hasAgentPayload = /[#&]agent=/.test(location.hash) || url.searchParams.has("live");
+const hasAgentPayload = /[#&]agent=/.test(location.hash) ||
+  url.searchParams.has("live");
 if (url.searchParams.has("new") || (hasAgentPayload && !buildId)) {
   buildId = genId();
   freshlyMinted = true;
@@ -221,7 +264,7 @@ if (url.searchParams.has("new") || (hasAgentPayload && !buildId)) {
     // we're at module top-level (not inside a function) under TS.
     throw new Error("[wizard_chrome] redirecting; not initialising");
   }
-  if (window.PoE2Game && window.PoE2Game.id !== "poe2") {
+  if (GAME_DEFINITION.entryWithoutBuild === "mint") {
     // Tree-only games (PoE1) have no landing wizard to bounce to —
     // a first visit mints a fresh build in place, like ?new=1.
     buildId = genId();
@@ -236,9 +279,46 @@ if (url.searchParams.has("new") || (hasAgentPayload && !buildId)) {
 // After the redirect bail, buildId is definitely a string.
 const resolvedBuildId: string = buildId;
 
-const storedPlan = loadPlan(resolvedBuildId);
-let plan: Plan = normalizePlan(storedPlan || newPlan());
-if (freshlyMinted) savePlan(resolvedBuildId, plan);
+const primaryPlanKey = KEY_PREFIX + resolvedBuildId;
+const storedRecord = loadNativePlan(localStorage, primaryPlanKey, GAME_ID);
+const hadStoredRecord = localStorage.getItem(primaryPlanKey) != null;
+let persistenceBlockedReason = hadStoredRecord && !storedRecord.plan
+  ? "The stored build is invalid and was left untouched. Restore a backup before saving."
+  : null;
+let nativePlan: PlanV3 = storedRecord.plan ??
+  migratePlanV2ToV3(normalizePlan(newPlan()));
+nativePlan.id = nativePlan.id || resolvedBuildId;
+// A fresh v2 compatibility shell has no authored exact character level:
+// `1` was only the old capture model's lower bound. Keep the 1–100 replay
+// guidance, but let the planner derive the live level from the tree until
+// the user captures or explicitly edits a named state.
+const scaffoldState = nativePlan.states.length === 1
+  ? nativePlan.states[0]
+  : undefined;
+if (
+  scaffoldState?.name === "Current build" &&
+  scaffoldState.characterLevel === 1 &&
+  scaffoldState.recommendedLevelRange?.[0] === 1 &&
+  scaffoldState.recommendedLevelRange?.[1] === 100 &&
+  !nativePlan.identity.name
+) {
+  delete scaffoldState.characterLevel;
+}
+const storedProfileIssues = gameProfilePlanIssues(nativePlan);
+if (storedRecord.plan && storedProfileIssues.length) {
+  persistenceBlockedReason =
+    "The stored build conflicts with this game profile and was left untouched: " +
+    storedProfileIssues.join("; ");
+}
+let loadedSourceVersion: 2 | 3 = storedRecord.sourceVersion ?? 3;
+let plan: Plan = projectPlanV3ToV2(nativePlan);
+if (freshlyMinted) {
+  nativePlan = savePlan(resolvedBuildId, nativePlan);
+  plan = projectPlanV3ToV2(nativePlan);
+}
+for (const warning of storedRecord.warnings) {
+  console.warn("[plan storage]", warning);
+}
 
 // Share-link RECIPIENTS: the canonical link is
 // /planner.html?build=<id>#code=<code> (the code stays in the URL so
@@ -246,15 +326,33 @@ if (freshlyMinted) savePlan(resolvedBuildId, plan);
 // seen <id> installs the code under it, then reloads once — after
 // that the local copy wins and the hash is inert.
 const codeM = /[#&]code=([A-Za-z0-9_-]+)/.exec(location.hash);
-if (!storedPlan && !freshlyMinted && codeM) {
+if (
+  !storedRecord.plan && !freshlyMinted && codeM && !persistenceBlockedReason
+) {
   void (async () => {
     try {
       const decoded = await decodeShare(codeM[1]!);
-      if (decoded &&
-          (decoded.format === PLAN_FORMAT || decoded.format === LEGACY_PLAN_FORMAT) &&
-          decoded.version === PLAN_VERSION &&
-          (!decoded.game || decoded.game === GAME_ID)) {
-        savePlan(resolvedBuildId, normalizePlan(decoded));
+      let incoming: PlanV3 | null = null;
+      if (
+        decoded &&
+        (decoded.format === PLAN_FORMAT ||
+          decoded.format === LEGACY_PLAN_FORMAT) &&
+        decoded.version === PLAN_VERSION &&
+        (!decoded.game || decoded.game === GAME_ID)
+      ) {
+        incoming = migratePlanV2ToV3(normalizePlan(decoded as Plan));
+      } else if (
+        decoded &&
+        decoded.format === PLAN_FORMAT &&
+        decoded.version === 3 &&
+        decoded.game === GAME_ID &&
+        gameProfilePlanIssues(decoded as PlanV3).length === 0
+      ) {
+        incoming = structuredClone(decoded as PlanV3);
+      }
+      if (incoming) {
+        incoming.id = resolvedBuildId;
+        savePlan(resolvedBuildId, incoming);
         localStorage.setItem(KEY_CURRENT, resolvedBuildId);
         location.reload();
       }
@@ -269,7 +367,9 @@ function activeCapture(): Capture {
   return plan.captures[plan.activeCapture] ?? plan.captures[0]!;
 }
 
-function effectiveAt(section: Section): Map<string, string> | Skill[] | Item[] | null {
+function effectiveAt(
+  section: Section,
+): Map<string, string> | Skill[] | Item[] | null {
   if (!SECTIONS.includes(section)) return null;
   const c = activeCapture();
   if (section === "passives") {
@@ -280,7 +380,7 @@ function effectiveAt(section: Section): Map<string, string> | Skill[] | Item[] |
     return out;
   }
   if (section === "skills") return c.skills.slice();
-  if (section === "items")  return c.items.slice();
+  if (section === "items") return c.items.slice();
   return null;
 }
 
@@ -301,7 +401,10 @@ function effectiveAt(section: Section): Map<string, string> | Skill[] | Item[] |
 // (called by the trash icon in the inline note editor) which sweeps
 // every capture by id.
 function propagateShareableMeta(activeOut: Allocation[]): void {
-  const shareable = new Map<string, { note: string | null; attrVariantId: string | null }>();
+  const shareable = new Map<
+    string,
+    { note: string | null; attrVariantId: string | null }
+  >();
   for (const e of activeOut) {
     if (!e || e.id == null) continue;
     const note = e.note != null ? e.note : null;
@@ -381,17 +484,23 @@ function commitEffective(
     persistDebounced();
     return;
   }
-  if (section === "skills") { c.skills = (next as Skill[] || []).slice(); persistDebounced(); return; }
-  if (section === "items")  { c.items  = (next as Item[]  || []).slice(); persistDebounced(); return; }
+  if (section === "skills") {
+    c.skills = (next as Skill[] || []).slice();
+    persistDebounced();
+    return;
+  }
+  if (section === "items") {
+    c.items = (next as Item[] || []).slice();
+    persistDebounced();
+    return;
+  }
 }
 
 // ===================================================================
 // Captures API (mutations + read helpers).
 // ===================================================================
 function dispatchCaptureChange(reason?: string): void {
-  window.dispatchEvent(new CustomEvent("poe2-capture-change", {
-    detail: { index: plan.activeCapture, reason: reason || "unknown" }
-  }));
+  emitStateChange(reason || "unknown");
 }
 // Heal/enforce the four range invariants on plan.captures (see the
 // doc-comment in normalizePlan). Mutates the plan in place. Safe to
@@ -427,11 +536,11 @@ function normalizeCapturesRanges(p: Plan): void {
       // Don't let merged hi blow past DEFAULT_MAX_LEVEL: clamp.
       prev.levelRange[1] = Math.min(
         DEFAULT_MAX_LEVEL,
-        Math.max(prev.levelRange[1], c.levelRange[1], c.levelRange[0])
+        Math.max(prev.levelRange[1], c.levelRange[1], c.levelRange[0]),
       );
       prev.passives = c.passives;
-      prev.skills   = c.skills;
-      prev.items    = c.items;
+      prev.skills = c.skills;
+      prev.items = c.items;
       // ascendancy / note kept as prev's — those are per-snapshot
       // intent and the inverted cap can't reasonably claim them.
       p.captures.splice(i, 1);
@@ -455,7 +564,9 @@ function isWorkingCapture(idx: number): boolean {
 }
 
 function setActiveCapture(idx: number): boolean {
-  if (typeof idx !== "number" || idx < 0 || idx >= plan.captures.length) return false;
+  if (typeof idx !== "number" || idx < 0 || idx >= plan.captures.length) {
+    return false;
+  }
   if (idx === plan.activeCapture) return true;
   plan.activeCapture = idx;
   persistDebounced();
@@ -474,7 +585,9 @@ function setCaptureRange(idx: number, range: [number, number]): boolean {
   if (!c || !Array.isArray(range) || range.length !== 2) return false;
   const lo = Number(range[0]) | 0;
   const hi = Number(range[1]) | 0;
-  if (lo < 1 || hi < 1 || lo > DEFAULT_MAX_LEVEL || hi > DEFAULT_MAX_LEVEL) return false;
+  if (lo < 1 || hi < 1 || lo > DEFAULT_MAX_LEVEL || hi > DEFAULT_MAX_LEVEL) {
+    return false;
+  }
   if (lo > hi) return false;
   c.levelRange = [lo, hi];
   // Re-enforce contiguity invariants — caller's range may have
@@ -521,8 +634,8 @@ function snapshotAt(level: number): number | false {
     ascendancy: active.ascendancy,
     // Deep-copy via JSON to avoid sharing array refs between captures.
     passives: JSON.parse(JSON.stringify(active.passives)),
-    skills:   JSON.parse(JSON.stringify(active.skills)),
-    items:    JSON.parse(JSON.stringify(active.items)),
+    skills: JSON.parse(JSON.stringify(active.skills)),
+    items: JSON.parse(JSON.stringify(active.items)),
   });
   plan.captures.push(next);
   plan.activeCapture = plan.captures.length - 1;
@@ -536,7 +649,9 @@ function snapshotAt(level: number): number | false {
 }
 function removeCapture(idx: number): boolean {
   if (plan.captures.length <= 1) return false;
-  if (typeof idx !== "number" || idx < 0 || idx >= plan.captures.length) return false;
+  if (typeof idx !== "number" || idx < 0 || idx >= plan.captures.length) {
+    return false;
+  }
   // Refuse deleting the WORKING capture (the last one). The working
   // cap holds the user's live editing state; removing it would either
   // lose those edits or silently promote a frozen cap into the
@@ -581,13 +696,17 @@ function removeCapture(idx: number): boolean {
 
 // Diff between two captures' passive id sets — drives the slider's
 // capture-boundary respec animation (consumed by future UI).
-function diffCaptures(iA: number, iB: number):
-  { added: Set<string>; removed: Set<string>; kept: Set<string> } | null {
+function diffCaptures(
+  iA: number,
+  iB: number,
+): { added: Set<string>; removed: Set<string>; kept: Set<string> } | null {
   const a = plan.captures[iA], b = plan.captures[iB];
   if (!a || !b) return null;
-  const A = new Set(a.passives.map(p => String(p.id)));
-  const B = new Set(b.passives.map(p => String(p.id)));
-  const added = new Set<string>(), removed = new Set<string>(), kept = new Set<string>();
+  const A = new Set(a.passives.map((p) => String(p.id)));
+  const B = new Set(b.passives.map((p) => String(p.id)));
+  const added = new Set<string>(),
+    removed = new Set<string>(),
+    kept = new Set<string>();
   for (const id of B) (A.has(id) ? kept : added).add(id);
   for (const id of A) if (!B.has(id)) removed.add(id);
   return { added, removed, kept };
@@ -615,7 +734,7 @@ if (!host) {
 // `host` is narrowed to HTMLElement past this point.
 const wizardHost: HTMLElement = host;
 const currentStep = wizardHost.dataset.step || "passives";
-if (!STEPS.find(s => s.id === currentStep)) {
+if (!STEPS.find((s) => s.id === currentStep)) {
   console.warn("wizard_chrome.ts: unknown step", currentStep);
 }
 const captureSection: string | null = wizardHost.dataset.captureSection || null;
@@ -628,12 +747,14 @@ wizardHost.innerHTML = `
       <span class="wc-buildid">#${escHtml(resolvedBuildId)}</span>
     </div>
     <ol class="wc-steps">
-      ${STEPS.map(s => `
+      ${
+  STEPS.map((s) => `
         <li data-step="${s.id}" class="${s.id === currentStep ? "active" : ""}">
           <span class="wc-step-num">${STEPS.indexOf(s) + 1}</span>
           <span>${escHtml(s.label)}</span>
         </li>
-      `).join("")}
+      `).join("")
+}
     </ol>
     <div class="wc-actions">
       <span id="wc-save-status" hidden><span class="wc-save-msg"></span></span>
@@ -656,10 +777,14 @@ refreshBuildName();
 // pre-dates the patch field; force-cache would keep using that stale
 // copy and the badge would never appear. Standard revalidate catches
 // the new file via 304 on hit, full download on miss.
-interface BuildMeta { game?: string; patch?: string; source?: string; }
+interface BuildMeta {
+  game?: string;
+  patch?: string;
+  source?: string;
+}
 // Per-game agent dir: the poe1 page's metadata lives under
 // /assets/poe1-agent, and its badge must not claim to be PoE2 data.
-const GAME_LABEL = GAME_ID === "poe2" ? "PoE2" : GAME_ID.replace("poe", "PoE");
+const GAME_LABEL = GAME_DEFINITION.shortLabel;
 // Patch strings are GAME-NAMESPACED: poe1 data patches carry the
 // "poe1." prefix ("poe1.3.26"); poe2 patches are bare ("0.5",
 // "4.5.4.4.native"). A plan can only meaningfully declare a patch
@@ -667,35 +792,45 @@ const GAME_LABEL = GAME_ID === "poe2" ? "PoE2" : GAME_ID.replace("poe", "PoE");
 // era and treated like the null "I don't know" sentinel (restamped
 // silently, no stale-patch banner comparing across games).
 function patchBelongsToGame(patch: string): boolean {
-  return GAME_ID === "poe2" ? !patch.startsWith("poe1.")
-                            : patch.startsWith(GAME_ID + ".");
+  return patchBelongsToProfile(GAME_DEFINITION, patch);
 }
 // Human patch label: the badge/banner already names the game, so the
 // game prefix inside the patch string is redundant noise.
 function patchLabelOf(patch: string): string {
-  return patch.startsWith(GAME_ID + ".") ? patch.slice(GAME_ID.length + 1) : patch;
+  return patch.startsWith(GAME_ID + ".")
+    ? patch.slice(GAME_ID.length + 1)
+    : patch;
 }
-const META_URL = window.PoE2Game?.assets?.buildMeta ?? "/assets/build_meta.json";
+const META_URL = GAME_DESCRIPTOR?.assets?.buildMeta ??
+  "/assets/build_meta.json";
 fetch(META_URL)
-  .then(r => r.ok ? r.json() : null)
+  .then((r) => r.ok ? r.json() : null)
   .then((meta: BuildMeta | null) => {
     if (!meta || !meta.patch) return;
     if (meta.game !== GAME_ID) {
-      throw new Error(`build metadata belongs to ${meta.game}, expected ${GAME_ID}`);
+      throw new Error(
+        `build metadata belongs to ${meta.game}, expected ${GAME_ID}`,
+      );
     }
-    window.POE2_PATCH = meta.patch;
-    window.POE2_SOURCE = meta.source || "";
+    window.BuildwrightPatch = meta.patch;
+    window.BuildwrightDataSource = meta.source || "";
+    // Compatibility for older generated feature bundles.
+    window.POE2_PATCH = window.BuildwrightPatch;
+    window.POE2_SOURCE = window.BuildwrightDataSource;
     const badge = document.getElementById("wc-patch-badge");
     if (badge) {
       // Append a small "preview" suffix when the data isn't from the
-      // canonical PoB2 stable source (e.g. during the preview period
-      // before PoB2 ships the new patch). Empty source = legacy
-      // manifest without the field, treated as stable.
-      const isPreview =
-        GAME_ID === "poe2" && !!meta.source && meta.source !== "pob2-stable";
+      // game profile's canonical source. PoE2 now treats its exact,
+      // source-locked first-party GGG pipeline as stable; PoB/community
+      // overlays remain visibly marked as previews. Empty source is a
+      // legacy manifest and remains stable for compatibility.
+      const isPreview = !!GAME_DEFINITION.stableDataSource &&
+        !!meta.source &&
+        meta.source !== GAME_DEFINITION.stableDataSource;
       // Patch labels for non-poe2 games carry the game prefix
       // ("poe1.3.26") — the badge already names the game, so drop it.
-      badge.textContent = GAME_LABEL + " " + patchLabelOf(meta.patch) + (isPreview ? " preview" : "");
+      badge.textContent = GAME_LABEL + " " + patchLabelOf(meta.patch) +
+        (isPreview ? " preview" : "");
       badge.title = isPreview
         ? "Preview data from " + meta.source + " — may differ from final patch"
         : GAME_LABEL + " data version currently loaded";
@@ -703,7 +838,7 @@ fetch(META_URL)
       badge.hidden = false;
     }
     // Stamp the patch onto plans that pre-date this field. New plans
-    // get it from window.POE2_PATCH in newPlan(); existing ones get
+    // get it from window.BuildwrightPatch in newPlan(); existing ones get
     // it set here so future edits don't false-alarm as cross-patch
     // on subsequent loads. Only stamp when plan.patch is null (the
     // "I don't know" sentinel) — if the plan already declares a
@@ -728,20 +863,24 @@ fetch(META_URL)
 // plan technically contains. We don't auto-migrate or refuse to load;
 // users keep what works and re-edit the rest.
 function showStalePatchBanner(planPatch: string, currentPatch: string): void {
-  if (document.getElementById("wc-stale-banner")) return;  // already shown
+  if (document.getElementById("wc-stale-banner")) return; // already shown
   const bar = document.createElement("div");
   bar.id = "wc-stale-banner";
   bar.className = "wc-stale-banner";
-  bar.innerHTML =
-    "<span>This build was authored for <b>" + GAME_LABEL + " " + escHtml(patchLabelOf(planPatch)) +
-    "</b>. Loading in <b>" + GAME_LABEL + " " + escHtml(patchLabelOf(currentPatch)) +
+  bar.innerHTML = "<span>This build was authored for <b>" + GAME_LABEL + " " +
+    escHtml(patchLabelOf(planPatch)) +
+    "</b>. Loading in <b>" + GAME_LABEL + " " +
+    escHtml(patchLabelOf(currentPatch)) +
     "</b>: allocations referencing moved or removed nodes may have been dropped.</span>" +
     '<button class="wc-stale-dismiss" type="button" aria-label="Dismiss">×</button>';
   wizardHost.parentNode?.insertBefore(bar, wizardHost.nextSibling);
-  bar.querySelector(".wc-stale-dismiss")?.addEventListener("click", () => bar.remove());
+  bar.querySelector(".wc-stale-dismiss")?.addEventListener(
+    "click",
+    () => bar.remove(),
+  );
 }
 
-wizardHost.querySelectorAll<HTMLElement>(".wc-steps li").forEach(li => {
+wizardHost.querySelectorAll<HTMLElement>(".wc-steps li").forEach((li) => {
   li.addEventListener("click", () => {
     const step = li.dataset.step;
     if (step) goToStep(step);
@@ -749,25 +888,26 @@ wizardHost.querySelectorAll<HTMLElement>(".wc-steps li").forEach(li => {
 });
 
 function goToStep(target: string): void {
-  const targetStep = STEPS.find(s => s.id === target);
+  const targetStep = STEPS.find((s) => s.id === target);
   if (!targetStep) return;
   if (target === currentStep) return;
   if (!plan.name) {
     flashSave("Set a build name first (sidebar → Identity)", true);
     return;
   }
-  location.href = "/" + targetStep.file + "?build=" + encodeURIComponent(resolvedBuildId);
+  location.href = "/" + targetStep.file + "?build=" +
+    encodeURIComponent(resolvedBuildId);
 }
-document.querySelectorAll<HTMLElement>("[data-step-link]").forEach(el => {
+document.querySelectorAll<HTMLElement>("[data-step-link]").forEach((el) => {
   const target = el.dataset.stepLink;
   if (!target) return;
-  const targetStep = STEPS.find(s => s.id === target);
+  const targetStep = STEPS.find((s) => s.id === target);
   if (!targetStep) return;
   if (el.tagName === "A") {
-    (el as HTMLAnchorElement).href =
-      "/" + targetStep.file + "?build=" + encodeURIComponent(resolvedBuildId);
+    (el as HTMLAnchorElement).href = "/" + targetStep.file + "?build=" +
+      encodeURIComponent(resolvedBuildId);
   }
-  el.addEventListener("click", e => {
+  el.addEventListener("click", (e) => {
     e.preventDefault();
     goToStep(target);
   });
@@ -791,15 +931,60 @@ function persistDebounced(): void {
   flashSave("Saving…");
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    savePlan(resolvedBuildId, plan);
-    flashSave("Saved");
-    refreshBuildName();
+    if (persistenceBlockedReason) {
+      flashSave(persistenceBlockedReason, true);
+      return;
+    }
+    try {
+      nativePlan = mergePlanV2RouteIntoV3(nativePlan, plan);
+      nativePlan = savePlan(resolvedBuildId, nativePlan);
+      loadedSourceVersion = 3;
+      plan = projectPlanV3ToV2(nativePlan);
+      flashSave("Saved");
+      refreshBuildName();
+    } catch (error) {
+      flashSave(
+        "Could not save: " +
+          (error instanceof Error ? error.message : String(error)),
+        true,
+      );
+    }
   }, 250);
+}
+
+function installNativeMutation(next: PlanV3, reason: string): boolean {
+  const errors = gameProfilePlanIssues(next);
+  if (errors.length) {
+    flashSave("State change refused: " + errors.join("; "), true);
+    return false;
+  }
+  nativePlan = next;
+  plan = projectPlanV3ToV2(nativePlan);
+  loadedSourceVersion = 3;
+  persistenceBlockedReason = null;
+  persistDebounced();
+  refreshBuildName();
+  dispatchCaptureChange(reason);
+  return true;
+}
+
+function syncCompatibilityEdits(): boolean {
+  try {
+    nativePlan = mergePlanV2RouteIntoV3(nativePlan, plan);
+    return true;
+  } catch (error) {
+    flashSave(
+      "Could not update state graph: " +
+        (error instanceof Error ? error.message : String(error)),
+      true,
+    );
+    return false;
+  }
 }
 let flashTimer: ReturnType<typeof setTimeout> | null = null;
 function flashSave(msg: string, isError?: boolean): void {
   const wrap = document.getElementById("wc-save-status");
-  const m    = wrap && wrap.querySelector<HTMLElement>(".wc-save-msg");
+  const m = wrap && wrap.querySelector<HTMLElement>(".wc-save-msg");
   if (!wrap || !m) return;
   m.textContent = msg;
   wrap.classList.toggle("is-error", !!isError);
@@ -807,29 +992,248 @@ function flashSave(msg: string, isError?: boolean): void {
   // Auto-hide: routine confirmations clear fast, errors linger long
   // enough to read. A new flash resets the clock.
   if (flashTimer) clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => { wrap.hidden = true; }, isError ? 7000 : 2500);
+  flashTimer = setTimeout(() => {
+    wrap.hidden = true;
+  }, isError ? 7000 : 2500);
 }
 
 // -------------------------------------------------------------------
 // Public API.
 // -------------------------------------------------------------------
-const api: PoE2PlanAPI = {
+const api: BuildwrightPlanAPI = {
   buildId: () => resolvedBuildId,
   get: () => plan,
-  set: (next: Plan) => { plan = normalizePlan(next); persistDebounced(); refreshBuildName(); },
+  set: (next: Plan) => {
+    plan = normalizePlan(next);
+    nativePlan = migratePlanV2ToV3(plan);
+    nativePlan.id = resolvedBuildId;
+    persistenceBlockedReason = null;
+    loadedSourceVersion = 3;
+    persistDebounced();
+    refreshBuildName();
+  },
   save: () => persistDebounced(),
   flash: (msg, isError) => flashSave(msg, isError),
   step: () => currentStep,
   reload: () => {
-    plan = normalizePlan(loadPlan(resolvedBuildId) || plan);
+    const loaded = loadNativePlan(localStorage, primaryPlanKey, GAME_ID);
+    if (loaded.plan && !gameProfilePlanIssues(loaded.plan).length) {
+      nativePlan = loaded.plan;
+      loadedSourceVersion = loaded.sourceVersion ?? 3;
+      plan = projectPlanV3ToV2(nativePlan);
+    }
     refreshBuildName();
     return plan;
+  },
+  native: {
+    get: () => structuredClone(nativePlan),
+    sync: () => syncCompatibilityEdits(),
+    replace: (candidate) => {
+      if (candidate.game !== GAME_ID) {
+        flashSave(
+          `Could not restore ${candidate.game} backup in the ${GAME_ID} planner.`,
+          true,
+        );
+        return false;
+      }
+      const next = structuredClone(candidate);
+      next.id = resolvedBuildId;
+      return installNativeMutation(next, "restore-native-plan");
+    },
+    sourceVersion: () => loadedSourceVersion,
+    route: () =>
+      structuredClone(routeToState(
+        nativePlan,
+        nativePlan.editor?.routeLeafId ?? nativePlan.defaultLeafId,
+      )),
+    setActiveState: (stateId) => {
+      if (!syncCompatibilityEdits()) return false;
+      if (!nativePlan.states.some((state) => state.id === stateId)) {
+        return false;
+      }
+      const next = structuredClone(nativePlan);
+      const currentRoute = routeToState(
+        next,
+        next.editor?.routeLeafId ?? next.defaultLeafId,
+      );
+      if (!currentRoute.some((state) => state.id === stateId)) {
+        next.editor = { ...(next.editor ?? {}), routeLeafId: stateId };
+      }
+      next.activeStateId = stateId;
+      return installNativeMutation(next, "set-active-state");
+    },
+    selectRoute: (leafId) => {
+      if (!syncCompatibilityEdits()) return false;
+      try {
+        routeToState(nativePlan, leafId);
+      } catch {
+        return false;
+      }
+      const next = structuredClone(nativePlan);
+      next.editor = { ...(next.editor ?? {}), routeLeafId: leafId };
+      next.activeStateId = leafId;
+      return installNativeMutation(next, "select-state-route");
+    },
+    addChildState: (parentId, input = {}) => {
+      if (!syncCompatibilityEdits()) return false;
+      try {
+        const next = addNativeChildState(nativePlan, parentId, input);
+        const id = next.activeStateId;
+        return installNativeMutation(next, "add-state") ? id : false;
+      } catch (error) {
+        flashSave(
+          "Could not add state: " +
+            (error instanceof Error ? error.message : String(error)),
+          true,
+        );
+        return false;
+      }
+    },
+    updateState: (stateId, patch) => {
+      if (!syncCompatibilityEdits()) return false;
+      const next = structuredClone(nativePlan);
+      const state = next.states.find((candidate) => candidate.id === stateId);
+      if (!state) return false;
+      if (patch.name !== undefined) {
+        state.name = patch.name.trim() || "Untitled state";
+      }
+      if (patch.description !== undefined) {
+        state.description = patch.description;
+      }
+      if (patch.phase !== undefined) state.phase = patch.phase;
+      if (patch.characterLevel !== undefined) {
+        if (patch.characterLevel == null) delete state.characterLevel;
+        else {state.characterLevel = Math.max(
+            1,
+            Math.min(100, Math.trunc(patch.characterLevel)),
+          );}
+      }
+      if (patch.recommendedLevelRange !== undefined) {
+        if (patch.recommendedLevelRange == null) {
+          delete state.recommendedLevelRange;
+        } else {
+          const from = Math.max(
+            1,
+            Math.min(100, Math.trunc(patch.recommendedLevelRange[0])),
+          );
+          const to = Math.max(
+            from,
+            Math.min(100, Math.trunc(patch.recommendedLevelRange[1])),
+          );
+          state.recommendedLevelRange = [from, to];
+        }
+      }
+      return installNativeMutation(next, "update-state");
+    },
+    removeStateSubtree: (stateId) => {
+      if (!syncCompatibilityEdits()) return false;
+      try {
+        return installNativeMutation(
+          removeNativeStateSubtree(nativePlan, stateId),
+          "remove-state",
+        );
+      } catch (error) {
+        flashSave(
+          "Could not remove state: " +
+            (error instanceof Error ? error.message : String(error)),
+          true,
+        );
+        return false;
+      }
+    },
+    setDefaultLeaf: (stateId) => {
+      if (!syncCompatibilityEdits()) return false;
+      const state = nativePlan.states.find((candidate) =>
+        candidate.id === stateId
+      );
+      if (
+        !state ||
+        nativePlan.states.some((candidate) => candidate.parentId === stateId)
+      ) {
+        return false;
+      }
+      const next = structuredClone(nativePlan);
+      next.defaultLeafId = stateId;
+      return installNativeMutation(next, "set-default-route");
+    },
+    upsertActor: (stateId, actor) => {
+      if (!syncCompatibilityEdits()) return false;
+      if (!GAME_PROFILE.rules.actorKindAllowed(actor.kind)) {
+        flashSave(
+          `${GAME_DEFINITION.shortLabel} does not support actor kind ${actor.kind}.`,
+          true,
+        );
+        return false;
+      }
+      try {
+        return installNativeMutation(
+          upsertNativeActor(nativePlan, stateId, actor),
+          "update-actor",
+        );
+      } catch (error) {
+        flashSave(
+          "Could not update actor: " +
+            (error instanceof Error ? error.message : String(error)),
+          true,
+        );
+        return false;
+      }
+    },
+    removeActor: (stateId, actorId) => {
+      if (!syncCompatibilityEdits()) return false;
+      try {
+        return installNativeMutation(
+          removeNativeActor(nativePlan, stateId, actorId),
+          "remove-actor",
+        );
+      } catch (error) {
+        flashSave(
+          "Could not remove actor: " +
+            (error instanceof Error ? error.message : String(error)),
+          true,
+        );
+        return false;
+      }
+    },
+    upsertInventoryItem: (stateId, owner, item) => {
+      if (!syncCompatibilityEdits()) return false;
+      try {
+        return installNativeMutation(
+          upsertNativeInventoryItem(nativePlan, stateId, owner, item),
+          "update-inventory-item",
+        );
+      } catch (error) {
+        flashSave(
+          "Could not update item: " +
+            (error instanceof Error ? error.message : String(error)),
+          true,
+        );
+        return false;
+      }
+    },
+    removeInventoryItem: (stateId, owner, itemId) => {
+      if (!syncCompatibilityEdits()) return false;
+      try {
+        return installNativeMutation(
+          removeNativeInventoryItem(nativePlan, stateId, owner, itemId),
+          "remove-inventory-item",
+        );
+      } catch (error) {
+        flashSave(
+          "Could not remove item: " +
+            (error instanceof Error ? error.message : String(error)),
+          true,
+        );
+        return false;
+      }
+    },
   },
 
   // Section accessor — reads/writes the ACTIVE capture's section.
   data: {
     section: () => captureSection,
-    effective: (section?: string) => effectiveAt((section ?? captureSection) as Section),
+    effective: (section?: string) =>
+      effectiveAt((section ?? captureSection) as Section),
     commit: (next, section, meta) =>
       commitEffective((section ?? captureSection) as Section, next, meta),
   },
@@ -841,31 +1245,39 @@ const api: PoE2PlanAPI = {
 
   // Captures API — see docs/captures_data_model.md.
   captures: {
-    list:        () => plan.captures.slice(),
-    count:       () => plan.captures.length,
-    active:      () => activeCapture(),
+    list: () => plan.captures.slice(),
+    count: () => plan.captures.length,
+    active: () => activeCapture(),
     activeIndex: () => plan.activeCapture,
     // True iff the given index (or the active capture, if no arg) is
     // the WORKING cap (last in the array). UI uses this to gate
     // snap/edit operations that only make sense on the working state,
     // not on a frozen historical snapshot.
-    isWorking:   (idx) => isWorkingCapture(typeof idx === "number" ? idx : plan.activeCapture),
-    setActive:   (idx) => setActiveCapture(idx),
-    snapshotAt:  (level) => snapshotAt(level),
-    remove:      (idx) => removeCapture(idx),
-    setRange:       (idx, range) => setCaptureRange(idx, range),
-    setName:        (idx, name)  => setCaptureName(idx, name),
-    setDescription: (idx, text)  => setCaptureDescription(idx, text),
-    setAscendancy:  (idx, asc)   => setCaptureAscendancy(idx, asc),
-    diff:           (iA, iB)     => diffCaptures(iA, iB),
-    pointBudgetFor: (cap)        => pointBudgetFor(cap),
-    isFull:         (cap)        => isFull(cap),
+    isWorking: (idx) =>
+      isWorkingCapture(typeof idx === "number" ? idx : plan.activeCapture),
+    setActive: (idx) => setActiveCapture(idx),
+    snapshotAt: (level) => snapshotAt(level),
+    remove: (idx) => removeCapture(idx),
+    setRange: (idx, range) => setCaptureRange(idx, range),
+    setName: (idx, name) => setCaptureName(idx, name),
+    setDescription: (idx, text) => setCaptureDescription(idx, text),
+    setAscendancy: (idx, asc) => setCaptureAscendancy(idx, asc),
+    diff: (iA, iB) => diffCaptures(iA, iB),
+    pointBudgetFor: (cap) => pointBudgetFor(cap),
+    isFull: (cap) => isFull(cap),
   },
 };
+window.BuildwrightPlan = api;
 window.PoE2Plan = api;
 
 function escHtml(s: unknown): string {
-  return String(s ?? "").replace(/[&<>"']/g, c => (
-    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] ?? c
+  return String(s ?? "").replace(/[&<>"']/g, (c) => (
+    {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[c] ?? c
   ));
 }

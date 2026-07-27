@@ -105,18 +105,19 @@ pub const COMMANDS: &[Command] = &[
         name: "patch",
         group: Group::Sources,
         badge: Badge::Native,
-        summary: "Detect the current live PoE2 patch (CDN handshake)",
+        summary: "Detect either game's current live patch (CDN handshake)",
         help: "\
-buildwright patch — detect the current live PoE2 patch
+buildwright patch — detect a game's current live patch
 
-Performs the GGG patch-server handshake (TCP patch.pathofexile2.com)
-and prints the CDN version + base URL. This is the authoritative
+Performs the selected game's GGG patch-server handshake and prints the
+CDN version + base URL. This is the authoritative
 'what is live right now' signal for the update pipelines.
 
 USAGE
-    buildwright patch
+    buildwright patch [--game poe1|poe2]
 
 NOTES
+    · Defaults to poe2 for backwards compatibility.
     · No install or auth required.
     · The CDN only serves the current version; old versions 404.",
         run: crate::handlers::patch,
@@ -135,7 +136,10 @@ preview) and manifest patch/version, and compares against the live
 CDN patch so you can see at a glance whether the checkout is stale.
 
 USAGE
-    buildwright status",
+    buildwright status [--game poe1|poe2]
+
+NOTES
+    · Defaults to poe2 for backwards compatibility.",
         run: crate::handlers::status,
     },
     Command {
@@ -167,11 +171,12 @@ version root) into the version-keyed cache and prints the local path.
 Already-cached files are returned without re-downloading.
 
 USAGE
-    buildwright fetch <path>
+    buildwright fetch <path> [--game poe1|poe2]
 
 EXAMPLES
     buildwright fetch Bundles2/_.index.bin
-    buildwright fetch Bundles2/Data/Passiveskills.bundle.bin",
+    buildwright fetch Bundles2/Data/Passiveskills.bundle.bin
+    buildwright fetch Bundles2/_.index.bin --game poe1",
         run: crate::handlers::fetch,
     },
     Command {
@@ -378,11 +383,15 @@ EXAMPLES
         help: "\
 buildwright manifest — write the integrity manifest
 
-Hashes every dataset file under data/parsed/<patch>/ (SHA-256) into a
-single deterministic manifest.json: per-file sha256 + bytes + rows,
-plus a rollup hash over the whole set and the .source provenance. No
-timestamp, so it's byte-stable — clean git diffs. Native replacement
-for scripts/build_manifests.py.
+Hashes every dataset under data/parsed/<patch>/ plus every game-owned
+runtime artifact it deploys (tree/item/gem/portrait PNGs, catalogue +
+agent payloads, and the rendered planner). The deterministic schema-v3
+schema-v4 manifest records per-file SHA-256 + bytes (+ TSV rows), a
+source.lock.json covering the exact CDN/export/dat-schema/PoB seams,
+and one rollup over data, browser code, and runtime artifacts. GGG
+binaries remain ignored/uncommitted; their deployed derivatives are
+integrity-addressed by repository-relative path. `verify` also rejects
+missing, changed, stale, cross-game, or unhashed inputs/assets.
 
 USAGE
     buildwright manifest [--patch <p>] [--source <s>]
@@ -396,18 +405,24 @@ DEFAULTS
         name: "poe1-tree",
         group: Group::Data,
         badge: Badge::Native,
-        summary: "Ingest GGG's official PoE1 passive-tree JSON (tree TSVs)",
+        summary: "Ingest the official PoE1 tree (website or live patch CDN)",
         help: "\
-buildwright poe1-tree — PoE1 passive tree from the official export
+buildwright poe1-tree — PoE1 passive tree from official sources
 
-Fetches https://www.pathofexile.com/passive-skill-tree (or reads
---json <file>), extracts the embedded passiveSkillTreeData, and emits
+With --source auto (the default), compares GGG's live PoE1 patch CDN
+release with https://www.pathofexile.com/passive-skill-tree. It uses
+the exact website export when current, or shapes PassiveSkillGraph.psg
+plus the live CDN tables when the website lags at league launch.
+
+The CDN path is parity-gated against a same-release website tree when
+one is available. Both sources emit
 data/parsed/poe1_<label>/tree/{nodes,edges,meta,jewels}.tsv in the same
-shape the PoE2 pipeline produces — tree_render and the agent
-emitters work unchanged. Re-run each league.
+contract as PoE2, so tree_render and the agent emitters stay shared.
+--json is an offline website-export override and requires --label.
 
 USAGE
-    buildwright poe1-tree [--label <ver>] [--json <file>]",
+    buildwright poe1-tree [--source auto|website|cdn]
+                          [--label <ver>] [--json <file>]",
         run: crate::handlers::poe1_tree,
     },
     Command {
@@ -450,13 +465,15 @@ USAGE
         badge: Badge::Native,
         summary: "Extract PoE1 character portraits (base + ascendancy faces)",
         help: "\
-buildwright poe1-portraits — real character illustrations for build cards
+buildwright poe1-portraits — audited character portraits for build cards
 
-Pulls GGG's own Art/2DArt/BaseClassIllustrations (the in-game class +
-ascendancy character art, faces and all), centre-crops + downscales
-each, and writes PNGs to /assets/poe1-agent/portraits/ keyed by
-display name. build_meta's portraits map points here. Scion + its
-ascendancies fall back to the centre medallion.
+Derives the exact base-class and ascendancy roster from PoE1's live GGG
+Characters/Ascendancy tables, then extracts GGG's in-game party-face
+textures from the shared UI asset family. New/special ascendancies with
+no bespoke face use their parent class portrait (Luminary uses Scion),
+never a passive-tree medallion. portraits/catalogue.tsv records source
+game + exact patch and locks source/output hashes; verify requires exact
+roster coverage.
 
 USAGE
     buildwright poe1-portraits [--patch poe1_<ver>]",
@@ -691,8 +708,8 @@ bundles under viewer/assets/. Pass --watch to rebuild on save.
 USAGE
     buildwright js [--watch]
 
-NOTE
-    Wraps scripts/build_js.sh (vendored esbuild).",
+The Rust command owns the complete entry-point/output map and invokes the
+pinned, integrity-verified esbuild binary directly.",
         run: crate::handlers::js,
     },
     Command {
@@ -728,6 +745,91 @@ needing DOM or WebGL is exercised in the browser instead.
 USAGE
     buildwright test-js",
         run: crate::handlers::test_js,
+    },
+    Command {
+        name: "pob-inspect",
+        group: Group::Build,
+        badge: Badge::Deno,
+        summary: "Inspect PoB/PoB2 input and write an editable review",
+        help: "\
+buildwright pob-inspect — inspect a Path of Building source
+
+Runs the same bounded parser and game profile used by the browser, then
+writes a versioned review document. The default review treats independent
+profiles as alternatives; edit it explicitly before importing.
+
+USAGE
+    buildwright pob-inspect --game poe1|poe2 --source <file> [--output <review.json>]
+    buildwright pob-inspect --game poe1|poe2 --url <https://pobb.in/code> [--output <review.json>]
+
+Without --output the review JSON is written to stdout. Cross-game target
+versions are reported as blocking errors.",
+        run: crate::handlers::pob_inspect,
+    },
+    Command {
+        name: "pob-import",
+        group: Group::Build,
+        badge: Badge::Deno,
+        summary: "Normalize an explicitly reviewed PoB source to native v3",
+        help: "\
+buildwright pob-import — import a reviewed Path of Building source
+
+Re-inspects the source, applies the versioned review choices, loads the
+selected game's current generated catalogues, and validates both the native
+v3 graph and the PoE1/PoE2 profile before writing anything.
+
+USAGE
+    buildwright pob-import --game poe1|poe2 --source <file> \\
+      --review <review.json> --output <plan.json> [--report <report.json>]
+    buildwright pob-import --game poe1|poe2 --url <https://pobb.in/code> \\
+      --review <review.json> --output <plan.json> [--report <report.json>]
+
+Use --patch <value> only to override the patch read from that game's
+generated build_meta.json. Every import is bound to that game's verified
+schema-v4 patch manifest. The plan retains source/review hashes + the
+data rollup, and an immutable receipt is written to
+<plan.json>.receipt.json unless --report supplies another path.",
+        run: crate::handlers::pob_import,
+    },
+    Command {
+        name: "build-inspect",
+        group: Group::Build,
+        badge: Badge::Deno,
+        summary: "Inspect an official PoE2 .build and write a review",
+        help: "\
+buildwright build-inspect — inspect an official GGG Build Planner file
+
+Validates the published schema and every patch-owned passive, skill,
+inventory, ascendancy, and unique identifier through the same pure adapter
+used by the planner. The resulting review is bound to the exact source
+bytes with SHA-256.
+
+USAGE
+    buildwright build-inspect --game poe2 --source <file.build> \\
+      [--output <review.json>]",
+        run: crate::handlers::build_inspect,
+    },
+    Command {
+        name: "build-import",
+        group: Group::Build,
+        badge: Badge::Deno,
+        summary: "Normalize a reviewed official .build to native v3",
+        help: "\
+buildwright build-import — import an official GGG Build Planner file
+
+Requires the matching versioned review, then writes a fully validated
+native version-3 plan. Source intervals, unresolved identifiers, and the
+original official document remain represented in native provenance/report
+data; no browser or localStorage is involved.
+
+USAGE
+    buildwright build-import --game poe2 --source <file.build> \\
+      --review <review.json> --output <plan.json> [--report <report.json>]
+
+The normalized plan and receipt carry source/review SHA-256 values,
+adapter version, and the exact verified patch-data rollup. The default
+receipt path is <plan.json>.receipt.json.",
+        run: crate::handlers::build_import,
     },
     // ---- RUN & SHIP --------------------------------------------------
     Command {
@@ -773,19 +875,22 @@ NOTE
         badge: Badge::Meta,
         summary: "mine → shape → sprites → catalogues → manifest  (first-party)",
         help: "\
-buildwright update-native — first-party mine + rebuild
+buildwright update-native — game-aware first-party update + release gate
 
-Detect the live patch, fetch from GGG's CDN, and build every dataset
-first-party into data/parsed/<patch>_native/ — authoritative
-(source=first-party), zero PoB dependency.
+Detect the selected game's live patch, refresh the dat schema, select
+the current GGG tree source automatically, build every required dataset,
+art asset, catalogue, planner and browser bundle, then source-lock,
+manifest and verify the result. Required stages fail closed. The only
+optional seam is the explicitly pinned PoB unique-recipe list.
 
 USAGE
-    buildwright update-native [--patch <p>]
+    buildwright update-native [--game poe1|poe2] [--patch <p>]
 
 STEPS
-    mine (raw GGG tables) → shape (bases/mods/gems/skills/tree/…) →
-    masteries → sprites → uniques (pob-pinned mod ids) → catalogues →
-    manifest. Then run `verify` + flip CURRENT once you're happy.",
+    live status → dat-schema refresh → auto tree → mine + shape →
+    masteries → all required art/portraits → uniques (optional,
+    pob-pinned) → catalogues → render + JS → source lock → manifest →
+    verify. CURRENT is never flipped automatically.",
         run: crate::handlers::update_native,
     },
     Command {
@@ -830,7 +935,7 @@ pub fn print_menu(style: Style) {
     println!(
         "{} {}",
         style.heading("buildwright"),
-        style.dim("— PoE2 BuildWright operations"),
+        style.dim("— Path of Exile Buildwright operations"),
     );
     println!(
         "\n  The single front door for loading game data and shipping the planner.\n  {}",

@@ -71,7 +71,7 @@ if [ ! -x tools/bin/esbuild ]; then
   tools/setup.sh
 fi
 echo "==> Building JS bundles ..."
-scripts/build_js.sh
+./bw js
 
 # ---- fixture-data guard -----------------------------------------------------
 # `./bw fixture` regenerates viewer/ artifacts (agent grounding data,

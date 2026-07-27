@@ -1,0 +1,145 @@
+{
+  "format": "buildwright-planner-plan",
+  "version": 2,
+  "id": "fixture-poe2",
+  "savedAt": "2026-07-23T00:00:00.000Z",
+  "game": "poe2",
+  "name": "PoE2 v2 migration fixture",
+  "description": "Representative authored facts; IDs are intentionally fixture-local.",
+  "class": "Ranger",
+  "patch": "0.5.4",
+  "captures": [
+    {
+      "id": "cap_poe2_leveling",
+      "levelRange": [1, 50],
+      "name": "Leveling",
+      "passives": [
+        { "id": "2001", "set": "main" },
+        {
+          "id": "2002",
+          "set": "set1",
+          "level": 25,
+          "note": "Weapon-set branch"
+        }
+      ],
+      "skills": [
+        {
+          "id": "Metadata/Items/Gems/SkillGemFixtureProjectile",
+          "level": 12,
+          "quality": 0,
+          "set": "set1",
+          "supports": [
+            {
+              "id": "Metadata/Items/Gems/SupportGemFixtureProjectile",
+              "level": 1,
+              "quality": 0
+            }
+          ]
+        }
+      ],
+      "items": [
+        {
+          "name": "Rare Fixture Crossbow",
+          "slot": "weapon1",
+          "base": "Fixture Crossbow",
+          "rarity": "rare",
+          "mods": ["Adds fixture lightning damage"]
+        },
+        {
+          "name": "Fixture Life Flask",
+          "slot": "flask1",
+          "base": "Fixture Life Flask",
+          "rarity": "normal"
+        },
+        {
+          "name": "Fixture Charm",
+          "slot": "charm1",
+          "base": "Fixture Charm",
+          "rarity": "magic",
+          "mods": ["Fixture charm effect"]
+        }
+      ],
+      "ascendancy": null,
+      "description": "Campaign weapon-set setup.",
+      "class": "Ranger"
+    },
+    {
+      "id": "cap_poe2_endgame",
+      "levelRange": [51, 100],
+      "name": "Endgame",
+      "passives": [
+        { "id": "2001", "set": "main" },
+        {
+          "id": "2002",
+          "set": "set1",
+          "level": 25,
+          "note": "Weapon-set branch"
+        },
+        {
+          "id": "2003",
+          "set": "main",
+          "attrVariantId": "fixture_strength_variant"
+        }
+      ],
+      "skills": [
+        {
+          "id": "Metadata/Items/Gems/SkillGemFixtureProjectile",
+          "level": 20,
+          "quality": 20,
+          "set": "set1",
+          "note": "Endgame clear skill",
+          "supports": [
+            {
+              "id": "Metadata/Items/Gems/SupportGemFixtureProjectile",
+              "level": 20,
+              "quality": 20
+            }
+          ]
+        }
+      ],
+      "items": [
+        {
+          "name": "Fixture Unique Crossbow",
+          "uniqueName": "Fixture Unique Crossbow",
+          "slot": "weapon1",
+          "base": "Fixture Crossbow",
+          "rarity": "unique",
+          "mods": ["Fixture unique modifier"]
+        },
+        {
+          "name": "Fixture Life Flask",
+          "slot": "flask1",
+          "base": "Fixture Life Flask",
+          "rarity": "normal"
+        },
+        {
+          "name": "Fixture Mana Flask",
+          "slot": "flask2",
+          "base": "Fixture Mana Flask",
+          "rarity": "normal"
+        },
+        {
+          "name": "Fixture Charm",
+          "slot": "charm3",
+          "base": "Fixture Charm",
+          "rarity": "magic",
+          "mods": ["Improved fixture charm effect"]
+        },
+        {
+          "name": "Fixture Jewel",
+          "slot": "jewel",
+          "base": "Fixture Jewel",
+          "rarity": "rare",
+          "mods": ["Fixture jewel modifier"],
+          "socket": 9002
+        }
+      ],
+      "ascendancy": "Deadeye",
+      "description": "Complete endgame setup.",
+      "class": "Ranger"
+    }
+  ],
+  "activeCapture": 1,
+  "activeSet": "set1",
+  "guide": "Global fixture guide."
+}

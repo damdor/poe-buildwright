@@ -186,8 +186,8 @@ if (GUIDE_ON) {
   }
 
   function render(): void {
-    if (!window.PoE2Plan || !bodyEl) return;
-    const plan = window.PoE2Plan;
+    if (!window.BuildwrightPlan || !bodyEl) return;
+    const plan = window.BuildwrightPlan;
     const caps: Capture[] = plan.captures.list();
     const p = plan.get();
     const name = (document.getElementById("build-name") as HTMLInputElement | null)?.value
@@ -256,24 +256,24 @@ if (GUIDE_ON) {
   });
   bodyEl.addEventListener("input", e => {
     const ta = (e.target as HTMLElement | null)?.closest<HTMLTextAreaElement>(".gv-edit-ta");
-    if (!ta || !window.PoE2Plan) return;
+    if (!ta || !window.BuildwrightPlan) return;
     const key = ta.dataset.desc || "";
     if (key === "build") {
-      window.PoE2Plan.get().description = ta.value;
+      window.BuildwrightPlan.get().description = ta.value;
       // Mirror into the sidebar field so the planner's own autosave
       // hash sees the change too.
       const sideEl = document.getElementById("build-description") as HTMLTextAreaElement | null;
       if (sideEl) sideEl.value = ta.value;
-      window.PoE2Plan.save();
+      window.BuildwrightPlan.save();
     } else if (key.startsWith("cap:")) {
-      window.PoE2Plan.captures.setDescription(+key.slice(4), ta.value);
-      window.PoE2Plan.save();
+      window.BuildwrightPlan.captures.setDescription(+key.slice(4), ta.value);
+      window.BuildwrightPlan.save();
     }
   });
 
   // ---- agent handoff: the whole story as chronological JSON ----
   function buildAgentSummary(): object {
-    const plan = window.PoE2Plan!;
+    const plan = window.BuildwrightPlan!;
     const p = plan.get();
     const caps = plan.captures.list();
     let prevPassives = new Set<string>();
@@ -374,7 +374,7 @@ if (GUIDE_ON) {
     };
   }
   agentBtn.addEventListener("click", () => {
-    if (!window.PoE2Plan) return;
+    if (!window.BuildwrightPlan) return;
     const text = JSON.stringify(buildAgentSummary(), null, 1);
     navigator.clipboard?.writeText(text).then(
       () => { agentBtn.textContent = "Copied ✓"; setTimeout(() => { agentBtn.textContent = "Copy for agent"; }, 1600); },

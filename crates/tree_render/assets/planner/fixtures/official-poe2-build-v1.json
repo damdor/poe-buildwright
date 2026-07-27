@@ -1,0 +1,53 @@
+{
+  "name": "Buildwright official adapter fixture",
+  "author": "Buildwright tests",
+  "link": "https://example.com/buildwright-fixture",
+  "description": "A small hand-authored Version 1 compatibility fixture.",
+  "ascendancy": "Druid1",
+  "passives": [
+    "strength89",
+    {
+      "id": "melee17",
+      "level_interval": [
+        12,
+        100
+      ],
+      "weapon_set": 0,
+      "additional_text": "Allocate after the first weapon upgrade."
+    }
+  ],
+  "skills": [
+    {
+      "id": "Metadata/Items/Gems/SkillGemEarthquake",
+      "level_interval": [
+        1,
+        100
+      ],
+      "support_skills": [
+        "Metadata/Items/Gems/SupportGemFastForward"
+      ]
+    }
+  ],
+  "inventory_slots": [
+    {
+      "inventory_id": "Weapon1",
+      "slot_x": 0,
+      "slot_y": 0,
+      "additional_text": "Use the strongest suitable weapon."
+    },
+    {
+      "inventory_id": "Flask2",
+      "slot_x": 0,
+      "slot_y": 0,
+      "level_interval": [
+        1,
+        100
+      ]
+    },
+    {
+      "inventory_id": "Charm1",
+      "slot_x": 0,
+      "slot_y": 0
+    }
+  ]
+}

@@ -4,16 +4,17 @@ Scope: render and plan the PoE1 passive tree, skills, and every standard
 equipment slot with the same planner UX and agentic grounding as PoE2.
 That includes both weapon sets, armour, jewellery, belts, five flasks,
 tinctures, base implicits/requirements/defences/weapon stats, craftable
-mods, uniques, and real inventory art. Jewels (including cluster jewels)
-and timeless mechanics remain explicitly deferred; the event/bloodline
-ascendancies present in the data are also deferred.
+mods, uniques, jewels, cluster jewels, event/bloodline ascendancies, and
+real inventory art. Timeless-jewel transformation mechanics remain
+explicitly deferred.
 
 ## Pipeline (fully CLI, no hand fixing)
 
 ```
-./bw poe1-tree                     # fetch + shape; SELF-LABELS from
-                                   # the page's own version marker
-./bw poe1-sprites --label <ver>    # fetch + slice the official atlases
+./bw poe1-tree --source auto       # exact website export when current;
+                                   # live patch CDN when the site lags
+./bw sprites --patch poe1_<ver>    # live CDN node/ascendancy art, with
+                                   # website-atlas-only chrome fallback
 ./bw shape bases      --patch poe1_<ver>
 ./bw shape mods       --patch poe1_<ver>
 ./bw shape unique_art --patch poe1_<ver>
@@ -33,18 +34,39 @@ ascendancies present in the data are also deferred.
 tree_render, so the agent sidecars regenerate with every bake — never
 call tree_render directly for a shipped page.
 
-`poe1-tree` fetches `pathofexile.com/passive-skill-tree` itself,
-brace-matches the `passiveSkillTreeData` embed, and LABELS THE
-DATASET FROM THE PAGE'S OWN `version:` MARKER — an explicit `--label`
-must match it or the command errors (the first ingest trusted a
-hand-passed "3.26" while fetching the live 3.28 tree). Offline
-`--json` reuse requires an explicit label and is marked unverified. `poe1-sprites` needs the saved
-`tree.json` and converts non-PNG atlases (JPG/WEBP) via macOS `sips` —
-the one platform-specific step in the import.
+`poe1-tree --source auto` reads the live PoE1 patch-server version and
+the website export's own `version:` marker. When their release lines
+match, it keeps the website's exact export. When the website lags, it
+parses `PassiveSkillGraph.psg` and the passive/ascendancy/stat tables
+straight from the live CDN. CDN datasets keep the exact patch-server
+build in their default label (`poe1_3.29.0.4`, not merely
+`poe1_3.29.0`), so hotfix data and art cannot overwrite an earlier
+snapshot invisibly. An explicit `--label` must match the chosen official
+release. Offline `--json` reuse requires an explicit label and is marked
+unverified.
+
+The binary graph is game-aware: PoE1 connections contain only a target
+node id, while PoE2 connections also contain curvature. The shared
+shaper selects the correct parser, orbit constants, table set, class
+ownership, and tooltip chain through the game profile. Whenever a
+same-release website tree exists locally, the CDN build must pass an
+automatic parity gate for node identity/classification, render metadata,
+coordinates, non-empty stat coverage, and the exact undirected edge set.
+
+`sprites --patch poe1_<ver>` resolves live node icons and ascendancy
+panels from that same CDN version. A small fixed set of renderer chrome
+exists only in GGG's website atlases; the newest local official atlas
+manifest is therefore an explicit fallback for those keys. Live rows
+override it, and every selected runtime file is hash-covered by the
+manifest. `poe1-sprites` remains the exact website-atlas slicer when the
+website export is already current.
 
 ## Data contracts
 
-- `data/parsed/poe1_<label>/tree.json` — the official embed, verbatim.
+- `data/parsed/poe1_<label>/tree.json` — the official website embed when
+  that source is selected.
+- `tree/tree.source.json` — source/version provenance; CDN builds also
+  record the graph path and SHA-256.
 - `tree/{nodes,edges,meta,sprites}.tsv` — the same 17-column shape the
   PoE2 shaper emits, so `tree_render` consumes both games unchanged.
 - `items/{bases,mods,unique_art}.tsv` — first-party PoE1 CDN data shaped
@@ -58,9 +80,19 @@ the one platform-specific step in the import.
   `item_icons/*.png` — the per-game grounding/catalogue namespace used
   by the shared gear overlay. The icon generator mirrors only supported
   equipment and resolved non-jewel uniques, pruning stale output.
-- `.source` provenance marker + `manifest.json` (SHA-256 per file +
-  rollup). `verify` requires the PoE1 tree, skill, base, mod, unique-art,
-  and resolved-unique datasets to be present and non-empty.
+- `/assets/poe1-agent/portraits/*.png` — GGG's actual in-game party-face
+  art. The PoE1 tables define the exact class/ascendancy roster; the
+  shared UI textures are extracted from the exact source-locked PoE2 CDN
+  patch because PoE1 no longer ships that legacy texture family.
+  Ascendancies without a bespoke face use their parent class portrait
+  (for example Luminary → Scion), never a passive-tree medallion.
+- `.source` provenance marker + schema-v3 `manifest.json`. It hashes
+  every parsed data file and every deployed PoE1 runtime artifact:
+  sliced tree sprites, gem/item/portrait PNGs, agent/catalogue payloads,
+  and the rendered planner. GGG binaries stay ignored and uncommitted;
+  repository-relative hashes let `verify` detect missing, changed,
+  stale, or newly generated-but-unhashed output. `diff` reports runtime
+  artifacts as added/removed/changed alongside field-level TSV changes.
 - Node positions: `group.xy + r*(sin a, -cos a)` with
   `orbitRadii`/`skillsPerOrbit` from the embed's constants — but the
   angle is NOT uniform for every orbit. GGG's `getOrbitAngle`
@@ -72,9 +104,10 @@ the one platform-specific step in the import.
   tables (`poe1_orbit_angle` in handlers.rs) — uniform math puts
   those nodes up to 7.5° off and the start-emblem ornaments visibly
   miss their first passives.
-- Dropped at ingest: nodes without groups (cluster-jewel proxies) and
-  ascendancy↔main crossing edges (mechanics, not visuals — rendered
-  literally they streak across the whole tree).
+- Main-tree ingest excludes runtime cluster-jewel proxy nodes; the
+  separate first-party cluster recipe/interoperability pipeline expands
+  socketed large, medium, and small jewels at runtime. Ascendancy↔main
+  crossing edges are mechanics, not visuals, and are also excluded.
 - "Pick one" notables (isMultipleChoice + isMultipleChoiceOption):
   emitted as `multichoice <parent> <opt1,opt2,…>` meta rows, derived
   from flags + adjacency — never hardcoded per ascendancy. Covers
@@ -210,9 +243,7 @@ narrowest home that covers its consumers — never copied.
 
 ## Remaining deferred capabilities
 
-- Cluster jewels (proxy groups are dropped at ingest).
-- Event/bloodline alternate ascendancies (14 in the data, not
-  class-pickable).
+- Timeless-jewel radius transformations and their unique seed logic.
 - PoE1 masteries popout UX (mastery nodes render; effect picking is
   PoE2-only).
 - Server-side agent validate endpoints for poe1 (static grounding

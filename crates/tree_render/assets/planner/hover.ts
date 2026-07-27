@@ -273,13 +273,13 @@ export function showTooltip(id: string, cx: number, cy: number): void {
   // and recommendation as one card. Same number as the matching
   // slider tick + tree badge, so the three surfaces cross-reference
   // by index without the user having to chase the text in two
-  // tooltips. Timeline-aware: PoE2Notes carries entries from every
+  // tooltips. Timeline-aware: BuildwrightNotes carries entries from every
   // capture, but we only show the note section when the node is
   // ACTUALLY allocated at the current view (active capture in
   // editing, slider level in replay) — a respec'd node's stale
   // note shouldn't surface on tooltip hover.
-  if (window.PoE2Notes && state.selected.has(String(id))) {
-    const noteInfo = window.PoE2Notes.get(String(id));
+  if (window.BuildwrightNotes && state.selected.has(String(id))) {
+    const noteInfo = window.BuildwrightNotes.get(String(id));
     if (noteInfo) {
       html += '<div class="tt-note-section">' +
                 '<div class="tt-note-head">Note ' + noteInfo.num + ' · Lv ' + noteInfo.level + '</div>' +

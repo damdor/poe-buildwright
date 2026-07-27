@@ -41,7 +41,7 @@ if (token && /^[A-Za-z0-9_-]{16,64}$/.test(token)) {
     const url = new URL(location.href);
     url.searchParams.delete("live");
     history.replaceState(null, "", url);
-    window.PoE2Plan?.flash(reason);
+    window.BuildwrightPlan?.flash(reason);
   };
   badge.querySelector("#live-takeover")?.addEventListener("click", () =>
     stop("Detached from live channel — this copy is yours now"));
@@ -58,7 +58,8 @@ if (token && /^[A-Za-z0-9_-]{16,64}$/.test(token)) {
         if (body.plan && typeof body.rev === "number" && body.rev > rev) {
           rev = body.rev;
           if ((body.plan.format === "poe2-agent-plan" || body.plan.format === "buildwright-agent-plan") &&
-              (!body.plan.game || body.plan.game === (window.PoE2Game?.id ?? "poe2"))) {
+              (!body.plan.game || body.plan.game ===
+                ((window.BuildwrightGame ?? window.PoE2Game)?.id ?? "poe2"))) {
             await importAgentPlan(body.plan);
           }
           // Presence: `focus` names the node the agent is working on —
@@ -99,7 +100,7 @@ if (token && /^[A-Za-z0-9_-]{16,64}$/.test(token)) {
 
   // Wait for the app to be ready (same gate as the #agent= importer).
   const boot = (): void => {
-    if (window.PoE2Plan) void tick();
+    if (window.BuildwrightPlan) void tick();
     else setTimeout(boot, 150);
   };
   boot();

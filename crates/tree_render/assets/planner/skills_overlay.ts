@@ -5,7 +5,7 @@
 // Active capture's skills render as a text strip in the upper-right;
 // click any row (or +Add skill) to open a centered modal popover with
 // searchable comboboxes + level + weapon-set + supports + notes.
-// Writes go through window.PoE2Plan.data.commit(skills, 'skills'),
+// Writes go through window.BuildwrightPlan.data.commit(skills, 'skills'),
 // so the snapshot timeline + .build run-collapse export Just Work.
 // ============================================================================
 import { featureOn } from "./game.ts";
@@ -13,6 +13,7 @@ import { spiritCapAt, state } from "./state.ts";
 import { SOCKET_MODEL } from "./game.ts";
 import { loadGameAsset } from "./asset_loader.ts";
 import { currentCharacterLevel } from "./captures_bar.ts";
+import { emitStateChange, PLANNER_EVENTS } from "./runtime_contract.ts";
 import type { Skill } from "../../../../types/shared.d.ts";
 
 // Tree-only games ship no skills/spirit UI either.
@@ -143,14 +144,13 @@ if (SKILLS_ON) {
         supportGems = data.gems.filter(g => g.gem_type === 'Support')
           .sort((a, b) => a.name.localeCompare(b.name));
         gemById = new Map(data.gems.map(g => [g.id, g] as const));
-        // POE2_GEMS_BY_ID is consumed by level_slider; the runtime
-        // shape IS Map<string, Gem> but the global type slot was
-        // declared loose — cast at the seam.
-        (window as unknown as { POE2_GEMS_BY_ID: Map<string, Gem> }).POE2_GEMS_BY_ID = gemById;
+        // Replay labels consume the same catalogue without caring which
+        // game supplied it. Keep the old property for generated bundles.
+        window.BuildwrightGemsById = gemById;
+        (window as unknown as { POE2_GEMS_BY_ID?: Map<string, Gem> }).POE2_GEMS_BY_ID = gemById;
         // Slider may have rendered before catalogue loaded — kick a
         // re-render so skill-note ticks pick up gem-name labels.
-        window.dispatchEvent(new CustomEvent('poe2-capture-change',
-          { detail: { reason: 'catalogue-loaded' } }));
+        emitStateChange('catalogue-loaded');
         return data;
       })
       .catch(e => { console.warn('skill catalogue load failed:', e); catalogue = null; throw e; });
@@ -432,8 +432,8 @@ if (SKILLS_ON) {
     return 1;
   }
   function supportCopyCount(supportId: string, currentSlotIdx: number): number {
-    if (!window.PoE2Plan || !draft) return 0;
-    const cap = window.PoE2Plan.captures.active();
+    if (!window.BuildwrightPlan || !draft) return 0;
+    const cap = window.BuildwrightPlan.captures.active();
     const skills = (cap && cap.skills) || [];
     let n = 0;
     for (let k = 0; k < skills.length; k++) {
@@ -462,23 +462,24 @@ if (SKILLS_ON) {
   // Strip rendering (text-only)
   // ---------------------------------------------------------------
   function renderStrip(): void {
-    if (!window.PoE2Plan) return;
+    if (!window.BuildwrightPlan) return;
     // During replay the strip time-travels with the slider: it shows
     // the SCRUBBED capture's loadout (snapshots carry skills + items,
     // not just the tree), not the working capture's.
-    const list = window.PoE2Plan.captures.list();
+    const list = window.BuildwrightPlan.captures.list();
     const replaying = state.replayActive && state.replayCapIdx >= 0;
-    const idx = replaying ? state.replayCapIdx : window.PoE2Plan.captures.activeIndex();
-    const cap = list[idx] ?? window.PoE2Plan.captures.active();
+    const idx = replaying ? state.replayCapIdx : window.BuildwrightPlan.captures.activeIndex();
+    const cap = list[idx] ?? window.BuildwrightPlan.captures.active();
     const skills = (cap && cap.skills) || [];
     stripEl.hidden = false;
     capLabel.textContent = list.length > 1
-      ? (replaying ? 'replay · ' : '') + 'snap ' + (idx + 1) + '/' + list.length
+      ? (replaying ? 'replay · ' : '') +
+        (cap.name || 'state ' + (idx + 1)) + ' · ' + (idx + 1) + '/' + list.length
       : '';
     // Spirit budget chip (see spiritReservedFor). Level source: the
     // same live/replay-aware character level the sidebar shows.
     loadSkillStats();
-    {
+    if (SOCKET_MODEL === 'spirit') {
       let chip = document.getElementById('ss-spirit');
       if (!chip) {
         chip = document.createElement('span');
@@ -498,12 +499,15 @@ if (SKILLS_ON) {
       } else {
         (chip as HTMLElement).style.display = 'none';
       }
+    } else {
+      const chip = document.getElementById('ss-spirit');
+      if (chip) chip.style.display = 'none';
     }
     listEl.innerHTML = '';
     if (skills.length === 0) {
       const li = document.createElement('li');
       li.className = 'ss-empty';
-      li.textContent = 'No skills in this snapshot yet.';
+      li.textContent = 'No skills in this state yet.';
       listEl.appendChild(li);
       return;
     }
@@ -559,8 +563,8 @@ if (SKILLS_ON) {
   function openPopover(idx: number, opts?: { focusNote?: boolean }): void {
     const o = opts || {};
     loadCatalogue().then(() => {
-      if (!window.PoE2Plan) return;
-      const cap = window.PoE2Plan.captures.active();
+      if (!window.BuildwrightPlan) return;
+      const cap = window.BuildwrightPlan.captures.active();
       const skills = (cap && cap.skills) || [];
       editingIdx = idx;
       if (idx >= 0 && skills[idx]) {
@@ -588,8 +592,8 @@ if (SKILLS_ON) {
         popActiveInput.focus();
       }
     }).catch(() => {
-      if (window.PoE2Plan && window.PoE2Plan.flash) {
-        window.PoE2Plan.flash('Skills catalogue failed to load — check connection', true);
+      if (window.BuildwrightPlan && window.BuildwrightPlan.flash) {
+        window.BuildwrightPlan.flash('Skills catalogue failed to load — check connection', true);
       }
     });
   }
@@ -934,14 +938,14 @@ if (SKILLS_ON) {
     slot?: string; note?: string; supports?: SupportDraft[];
   }
   function applyDraft(): void {
-    if (!draft || !window.PoE2Plan) return;
+    if (!draft || !window.BuildwrightPlan) return;
     if (!draft.id) {
-      if (window.PoE2Plan.flash) window.PoE2Plan.flash('Pick an active skill gem first', true);
+      if (window.BuildwrightPlan.flash) window.BuildwrightPlan.flash('Pick an active skill gem first', true);
       return;
     }
     draft.level = +popLevel.value || 1;
     draft.supports = draft.supports.filter(s => s.id);
-    const cap = window.PoE2Plan.captures.active();
+    const cap = window.BuildwrightPlan.captures.active();
     const skills = ((cap && cap.skills) || []).slice();
     const entry: SkillEntry = {
       id: draft.id, level: draft.level, quality: draft.quality || 0,
@@ -952,22 +956,22 @@ if (SKILLS_ON) {
     if (draft.supports.length > 0) entry.supports = draft.supports;
     if (editingIdx >= 0) skills[editingIdx] = entry;
     else                 skills.push(entry);
-    window.PoE2Plan.data.commit(skills, 'skills');
-    window.dispatchEvent(new CustomEvent('poe2-capture-change', { detail: { reason: 'skills-commit' } }));
-    if (window.PoE2Plan.flash) {
-      window.PoE2Plan.flash(editingIdx >= 0 ? 'Updated skill' : 'Added skill');
+    window.BuildwrightPlan.data.commit(skills, 'skills');
+    emitStateChange('skills-commit');
+    if (window.BuildwrightPlan.flash) {
+      window.BuildwrightPlan.flash(editingIdx >= 0 ? 'Updated skill' : 'Added skill');
     }
     closePopover();
     renderStrip();
   }
   function removeDraft(): void {
-    if (editingIdx < 0 || !window.PoE2Plan) { closePopover(); return; }
-    const cap = window.PoE2Plan.captures.active();
+    if (editingIdx < 0 || !window.BuildwrightPlan) { closePopover(); return; }
+    const cap = window.BuildwrightPlan.captures.active();
     const skills = ((cap && cap.skills) || []).slice();
     skills.splice(editingIdx, 1);
-    window.PoE2Plan.data.commit(skills, 'skills');
-    window.dispatchEvent(new CustomEvent('poe2-capture-change', { detail: { reason: 'skills-commit' } }));
-    if (window.PoE2Plan.flash) window.PoE2Plan.flash('Removed skill');
+    window.BuildwrightPlan.data.commit(skills, 'skills');
+    emitStateChange('skills-commit');
+    if (window.BuildwrightPlan.flash) window.BuildwrightPlan.flash('Removed skill');
     closePopover();
     renderStrip();
   }
@@ -979,8 +983,8 @@ if (SKILLS_ON) {
   // capture while the strip displays a frozen one — exit replay first
   // (restores the authoring state) so edits land where the user sees.
   function exitReplayForEdit(): void {
-    if (state.replayActive && typeof window.PoE2SliderExitRestore === 'function') {
-      window.PoE2SliderExitRestore();
+    if (state.replayActive && typeof window.BuildwrightReplayExitRestore === 'function') {
+      window.BuildwrightReplayExitRestore();
     }
   }
   addBtn.addEventListener('click', () => { exitReplayForEdit(); openPopover(-1); });
@@ -1073,10 +1077,10 @@ if (SKILLS_ON) {
     }
   });
 
-  window.addEventListener('poe2-capture-change', renderStrip);
-  window.addEventListener('poe2-replay-scrub', renderStrip);
+  window.addEventListener(PLANNER_EVENTS.stateChange, renderStrip);
+  window.addEventListener(PLANNER_EVENTS.replayScrub, renderStrip);
   function init(): void {
-    if (window.PoE2Plan) {
+    if (window.BuildwrightPlan) {
       renderStrip();
       loadCatalogue().then(renderStrip).catch(() => {});
     } else {
