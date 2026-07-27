@@ -182,16 +182,16 @@
 <body>
 <main>
   <div class="titlebar"><h1>Path of Exile Build Planner</h1><a class="gh-link" href="https://github.com/damdor/poe-buildwright" target="_blank" rel="noopener" title="Source on GitHub — issues &amp; contact"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a></div>
-  <p class="sub">A fan-made build planner for Path of Exile — both games, one place. PoE2 gets the full toolkit (tree, gems, gear, leveling timeline, typeset guides, <code>.build</code> export); PoE1 gets its real 3.26 passive tree with in-place ascendancies. Your builds stay in this browser, side by side below. Works with any AI assistant.</p>
+  <p class="sub">A fan-made build planner for Path of Exile — both games, one place. PoE1 and PoE2 share the same character-state timeline, passive-tree, skills, gear, guide, and import experience while keeping their game rules and data sources isolated. Your builds stay in this browser, side by side below. Works with any AI assistant.</p>
 
   <div class="row">
     <a class="cta primary" href="/planner.html?new=1" id="new-build-link">
       <b>+ New PoE2 build &rarr;</b>
-      <span class="desc">The full planner on one page: the 0.5 tree, gems, gear, leveling timeline, and the Build Guide.</span>
+      <span class="desc">The full planner on one page: the current tree, gems, gear, and replayable character-state timeline.</span>
     </a>
     <a class="cta poe1" href="/planner-poe1.html?new=1" id="new-poe1-build-link">
       <b>+ New PoE1 build &rarr;</b>
-      <span class="desc">The 3.26 passive tree with in-place ascendancies — pick a class and start pathing. Tree-only for now.</span>
+      <span class="desc">The current PoE1 tree, ascendancies, skills, gear, flasks, jewels, and replayable character-state timeline.</span>
     </a>
   </div>
 
@@ -203,8 +203,8 @@
         <span>Pick a class, click nodes — pathing is automatic. Add gems and gear from the side panels. Hover anything for real in-game numbers.</span>
       </div>
       <div class="step"><span class="n">2</span>
-        <b>Snapshot the leveling story</b>
-        <span>Hit <kbd>+ SNAPSHOT</kbd> at milestones. Each one freezes tree, gems, and gear. Scrub the timeline to replay the journey level by level.</span>
+        <b>Snapshot the whole character journey</b>
+        <span>Capture leveling, early endgame, late endgame, or mirror-tier states. Name each milestone, then scrub the timeline to replay every tree, gem, and gear change.</span>
       </div>
       <div class="step"><span class="n">3</span>
         <b>Read it as a guide</b>
@@ -249,7 +249,7 @@
   </div>
 
   <footer>
-    Wizard + planner saves live in browser <code>localStorage</code> under <code>poe2-planner:plan:&lt;id&gt;</code> (PoE1: <code>poe1-planner:plan:&lt;id&gt;</code>). Format: <a href="https://github.com/damdor/poe-buildwright/blob/main/docs/build_contracts.md">poe2-planner-plan v2</a>. Targets GGG <code>.build</code> schema rev 1.
+    Wizard + planner saves live in browser <code>localStorage</code> under <code>poe2-planner:plan:&lt;id&gt;</code> (PoE1: <code>poe1-planner:plan:&lt;id&gt;</code>). Format: <a href="https://github.com/damdor/poe-buildwright/blob/main/docs/build_contracts.md">buildwright-planner-plan v3</a>. PoE2 also targets GGG <code>.build</code> schema rev 1.
     <br><br>
     This product isn't affiliated with or endorsed by Grinding Gear Games in any way.
     All Path of Exile 2 game content, images, and materials are trademarks and copyrights

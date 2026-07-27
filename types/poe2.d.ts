@@ -7,6 +7,7 @@
 //     .build import/export.
 
 import type { Plan } from "./shared.d.ts";
+import type { OfficialBuildCatalogueData } from "../crates/tree_render/assets/planner/ggg_build_core.ts";
 
 // ===========================================================================
 // GGG .build format (patch 0.5+, interop boundary)
@@ -35,7 +36,7 @@ export type GGGPassive = string | number | GGGPassiveEntry;
 
 export interface GGGPassiveEntry {
   id: string | number;                     // passive node id (or attr-variant id)
-  weapon_set?: 1 | 2;                      // unset = main tree
+  weapon_set?: 0 | 1 | 2;                  // 0/unset = main tree
   level_interval?: GGGLevelInterval;
   additional_text?: string;                // author note + auto-pivot annotations
 }
@@ -44,10 +45,15 @@ export interface GGGPassiveEntry {
  *  additional_text, support_skills). `level`, `quality`, and
  *  `weapon_set` are OUR extensions — not in GGG's schema; the client
  *  ignores unknown fields, and our re-import round-trips them. */
-export interface GGGSkill {
+export type GGGSkill = string | GGGSkillEntry;
+
+export interface GGGSkillEntry {
   id: string;
+  /** @deprecated legacy Buildwright extension — import-only */
   level?: number;
+  /** @deprecated legacy Buildwright extension — import-only */
   quality?: number;
+  /** @deprecated legacy Buildwright extension — import-only */
   weapon_set?: 1 | 2;
   level_interval?: GGGLevelInterval;
   additional_text?: string;
@@ -84,15 +90,15 @@ export interface GGGItem {
 
 /** Top-level .build JSON (GGG schema "Version 1 (Experimental)").
  *  `name` is the one field GGG marks required — our exporter always
- *  emits it. `patch` is OUR extension (client ignores it; other tools
- *  and our re-import can use it). */
+ *  emits it. `patch` is accepted only for our legacy imports. */
 export interface GGGBuild {
   name?: string;                           // required by the client; optional here so import can degrade gracefully
   author?: string;
   link?: string;                           // 0.5.3+: renders a button in the client (whitelisted domains only)
   description?: string;
   ascendancy?: string;                     // GGG internal id (TreeData.asc_internal[name].internal)
-  patch?: string;                          // our extension: game patch the build was authored against
+  /** @deprecated legacy Buildwright extension — import-only */
+  patch?: string;
   passives?: GGGPassive[];
   skills?: GGGSkill[];
   inventory_slots?: GGGItem[];             // official field name
@@ -116,11 +122,6 @@ export interface Poe2TreeData {
 
 declare global {
   interface Window {
-    PoE2Share?: {
-      encode: (plan: Plan) => Promise<string>;
-      decode: (code: string) => Promise<Plan>;
-      buildUrl: (plan: Plan, origin?: string) => Promise<string>;
-    };
     POE2_GEMS_BY_ID?: Record<string, unknown>;
     // Test/debug surface for export/import flows. Exposed by
     // build_io.ts so Playwright tests + console diagnostics can
@@ -128,7 +129,44 @@ declare global {
     PoE2BuildIO?: {
       planToGGGBuild: (plan: Plan, meta?: { name?: string; description?: string }) => GGGBuild;
       validateGGGBuild: (d: unknown) => string | null;
-      gggBuildToPlan: (b: GGGBuild) => Plan;
+      gggBuildToPlan: (
+        b: GGGBuild,
+        catalogue: OfficialBuildCatalogueData,
+      ) => Plan;
+      gggBuildToPlanWithReport: (
+        b: GGGBuild,
+        catalogue: OfficialBuildCatalogueData,
+      ) => {
+        plan: Plan;
+        report: {
+          unresolvedPassiveIds: string[];
+          unknownInventoryIds: string[];
+          legacyGraphIds: string[];
+        };
+      };
+      gggBuildToNativePlanWithReport: (
+        b: GGGBuild,
+        catalogue: import("../crates/tree_render/assets/planner/ggg_build_core.ts").OfficialBuildCatalogueData,
+      ) => {
+        plan: import("./shared.d.ts").PlanV3;
+        report: {
+          unresolvedPassiveIds: string[];
+          unknownInventoryIds: string[];
+          legacyGraphIds: string[];
+        };
+      };
+      inspectGGGBuildCompatibility: (
+        plan: Plan,
+        nativePlan?: import("./shared.d.ts").PlanV3,
+      ) => {
+        canExport: boolean;
+        projection: "route" | "final-state";
+        issues: Array<{
+          severity: "error" | "warning" | "info";
+          code: string;
+          message: string;
+        }>;
+      };
     };
   }
 }

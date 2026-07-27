@@ -9,7 +9,7 @@
 // ids the planner will hard-fail at boot — preferable to silent
 // misbehaviour later.
 
-import { GAME, featureOn } from "./game.ts";
+import { PROFILE, featureOn } from "./game.ts";
 import { ASC_EFFECTS, MULTI_CHOICE, MULTI_CHOICE_PARENT, isMcOption } from "./poe2_rules.ts";
 
 export const canvas = document.getElementById('tree') as HTMLCanvasElement;
@@ -21,6 +21,8 @@ export const ascSel = document.getElementById('asc') as HTMLSelectElement;
 export const allocModeSel = document.getElementById('alloc-mode') as HTMLSelectElement;
 export const buildNameInput = document.getElementById('build-name') as HTMLInputElement;
 export const buildDescInput = document.getElementById('build-description') as HTMLTextAreaElement;
+export const buildAuthorInput = document.getElementById('build-author') as HTMLInputElement;
+export const buildLinkInput = document.getElementById('build-link') as HTMLInputElement;
 export const countMain = document.getElementById('count-main') as HTMLElement;
 export const countSet1 = document.getElementById('count-set1') as HTMLElement;
 export const countSet2 = document.getElementById('count-set2') as HTMLElement;
@@ -33,28 +35,24 @@ export const resetBtn = document.getElementById('reset') as HTMLElement;
 export const exportBtn = document.getElementById('export') as HTMLElement;
 export const zoomfitBtn = document.getElementById('zoomfit') as HTMLElement;
 
-// Chrome that only makes sense for PoE2 (weapon-set allocation modes,
-// the PoE2 share/export codec) is removed outright on other games.
-if (GAME.id !== "poe2") {
-  if (!featureOn("weaponSets")) {
-    allocModeSel?.closest("label")?.remove();
-    allocModeSel?.remove();
-    // The footer HUD's "Set ●0/24 ●0/24" pool segment — the counters
-    // live inside a .hud-pool wrapper; drop the whole segment (and
-    // its separator) so the poe1 footer doesn't show poe2 budgets.
-    // updateSelectionUI keeps writing to the detached counters, which
-    // is a harmless no-op display-wise.
-    const seg = countSet1?.closest(".hud-pool");
-    if (seg?.previousElementSibling?.classList.contains("mode-sep")) {
-      seg.previousElementSibling.remove();
-    }
-    seg?.remove();
+// These are independent capabilities. PoE1 has native Buildwright
+// sharing but no official GGG .build adapter; neither is inferred from
+// the game name.
+if (!featureOn("weaponSets")) {
+  allocModeSel?.closest("label")?.remove();
+  allocModeSel?.remove();
+  const seg = countSet1?.closest(".hud-pool");
+  if (seg?.previousElementSibling?.classList.contains("mode-sep")) {
+    seg.previousElementSibling.remove();
   }
-  if (!featureOn("share")) {
-    exportBtn?.remove();
-    document.getElementById("share")?.remove();
-    document.getElementById("import")?.remove();
-  }
+  seg?.remove();
+}
+if (!PROFILE.integrations.gggBuild) {
+  exportBtn?.remove();
+  document.getElementById("import")?.remove();
+}
+if (!PROFILE.integrations.nativeShare) {
+  document.getElementById("share")?.remove();
 }
 
 // WebGL2 context. We disable the default alpha channel (treat the

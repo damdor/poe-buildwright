@@ -33,6 +33,7 @@ data/parsed/*/tree/edges.tsv
 data/parsed/*/tree/meta.tsv
 data/parsed/*/tree/sprites.tsv
 data/parsed/*/tree/jewels.tsv
+data/parsed/*/tree/atlas_sources.tsv
 
 # Skill data (Phase 1 of the build-planner roadmap). Same convention
 # as tree/: TSVs are generated from PoB2 Lua sources, manifests ARE
@@ -127,7 +128,7 @@ viewer/assets/*.js.map
 # site, so we don't commit the bulk (~15 MB/patch); the `mine`
 # capability + on-demand `manifest` are the tracked artefacts.
 /data/parsed/*_native/
-/data/parsed/poe1_*/dat/
+/data/parsed/poe1_*/
 # Agent grounding data — generated from mined GGG game data (tree_render emits)
 viewer/assets/agent/nodes.json
 viewer/assets/agent/graph.json

@@ -1,0 +1,130 @@
+{
+  "format": "buildwright-planner-plan",
+  "version": 2,
+  "id": "fixture-poe1",
+  "savedAt": "2026-07-23T00:00:00.000Z",
+  "game": "poe1",
+  "name": "PoE1 v2 migration fixture",
+  "description": "Representative authored facts; IDs are intentionally fixture-local.",
+  "class": "Ranger",
+  "patch": "poe1.3.29",
+  "captures": [
+    {
+      "id": "cap_poe1_campaign",
+      "levelRange": [1, 35],
+      "name": "Campaign",
+      "passives": [
+        { "id": "1001", "set": "main", "note": "First travel node" },
+        { "id": "1002", "set": "main" }
+      ],
+      "skills": [
+        {
+          "id": "Metadata/Items/Gems/SkillGemFixtureAttack",
+          "level": 8,
+          "quality": 0,
+          "slot": "body",
+          "supports": [
+            {
+              "id": "Metadata/Items/Gems/SupportGemFixtureDamage",
+              "level": 1,
+              "quality": 0
+            }
+          ]
+        }
+      ],
+      "items": [
+        {
+          "name": "Rare Fixture Bow",
+          "slot": "weapon1",
+          "base": "Fixture Bow",
+          "rarity": "rare",
+          "mods": ["Adds fixture physical damage"]
+        },
+        {
+          "name": "Fixture Life Flask",
+          "slot": "flask1",
+          "base": "Fixture Life Flask",
+          "rarity": "normal"
+        },
+        {
+          "name": "Fixture Utility Flask",
+          "slot": "flask5",
+          "base": "Fixture Utility Flask",
+          "rarity": "magic",
+          "mods": ["Fixture utility effect"]
+        }
+      ],
+      "ascendancy": null,
+      "description": "Level with the linked attack.",
+      "class": "Ranger"
+    },
+    {
+      "id": "cap_poe1_endgame",
+      "levelRange": [36, 100],
+      "name": "Early maps",
+      "passives": [
+        { "id": "1001", "set": "main", "note": "First travel node" },
+        { "id": "1002", "set": "main" },
+        { "id": "1003", "set": "main", "level": 36 }
+      ],
+      "skills": [
+        {
+          "id": "Metadata/Items/Gems/SkillGemFixtureAttack",
+          "level": 20,
+          "quality": 20,
+          "slot": "body",
+          "supports": [
+            {
+              "id": "Metadata/Items/Gems/SupportGemFixtureDamage",
+              "level": 20,
+              "quality": 20,
+              "note": "Main damage support"
+            }
+          ]
+        }
+      ],
+      "items": [
+        {
+          "name": "Rare Fixture Bow",
+          "slot": "weapon1",
+          "base": "Fixture Bow",
+          "rarity": "rare",
+          "mods": ["Adds improved fixture physical damage"]
+        },
+        {
+          "name": "Large Cluster Jewel",
+          "slot": "jewel",
+          "base": "Large Cluster Jewel",
+          "rarity": "rare",
+          "mods": ["Fixture notable"],
+          "socket": 9001,
+          "cluster": {
+            "size": "Large",
+            "skill": "fixture_cluster_skill",
+            "nodeCount": 8,
+            "sockets": 2
+          }
+        },
+        {
+          "name": "Fixture Life Flask",
+          "slot": "flask1",
+          "base": "Fixture Life Flask",
+          "rarity": "normal"
+        },
+        {
+          "name": "Fixture Utility Flask",
+          "slot": "flask5",
+          "base": "Fixture Utility Flask",
+          "rarity": "magic",
+          "mods": ["Fixture utility effect"]
+        }
+      ],
+      "ascendancy": "Deadeye",
+      "description": "First complete mapping state.",
+      "class": "Ranger"
+    }
+  ],
+  "activeCapture": 1,
+  "activeSet": "main",
+  "guide": "Global fixture guide."
+}

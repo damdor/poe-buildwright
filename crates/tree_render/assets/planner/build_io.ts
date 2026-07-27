@@ -23,15 +23,45 @@
 // corrupting state.
 
 
-import { ascSel, buildDescInput, buildNameInput, classSel, state , resolveAscName} from "./state.ts";
+import {
+  ascSel, buildAuthorInput, buildDescInput, buildLinkInput, buildNameInput,
+  classSel, state, resolveAscName,
+} from "./state.ts";
 import { GGG_BUILD_SCHEMA_CURRENT, checkGGGBuild } from "./build_schema.ts";
+import {
+  buildOfficialCatalogueData, enrichPlanWithOfficialCatalogue,
+  gggMarkup, gggPlainText, graphIdToOfficial, officialIdToGraph,
+  officialInventoryDefinitionIssues,
+  officialInventoryIdSupported, officialItemHintLines,
+  prepareOfficialRoute, resolveOfficialItemLocation,
+  selectedNativeRoute,
+} from "./ggg_build_core.ts";
+import type {
+  OfficialBuildCatalogueData, OfficialItemCatalogueEnvelope,
+  OfficialSkillCatalogueEnvelope,
+} from "./ggg_build_core.ts";
+import {
+  importOfficialBuild,
+} from "./official_build_import.ts";
+import { loadGameAsset } from "./asset_loader.ts";
 import { requestRender } from "./render.ts";
 import { updatePreview } from "./pathfind.ts";
 import { applyAsc, refreshAscOptions, updateSelectionUI } from "./sidebar.ts";
 import { flushPersistNow, hydrateFromActiveCapture } from "./wizard_sync.ts";
-import { GAME } from "./game.ts";
-import type { Allocation, Capture, Item, Plan, PlanVersion, Skill, SupportGem } from "../../../../types/shared.d.ts";
-import type { GGGBuild, GGGItem, GGGLevelInterval, GGGPassive, GGGPassiveEntry, GGGSkill, GGGSupport } from "../../../../types/poe2.d.ts";
+import { GAME, PROFILE } from "./game.ts";
+import { validatePlanForSelectedGame } from "./game_profile.ts";
+import {
+  projectPlanV3ToV2,
+} from "../../../../viewer/assets/plan_v3.ts";
+import type {
+  Allocation, Capture, Item, Plan, PlanV3, PlanVersion, Skill,
+} from "../../../../types/shared.d.ts";
+
+export { gggMarkup, gggPlainText } from "./ggg_build_core.ts";
+import type {
+  GGGBuild, GGGItem, GGGPassive, GGGPassiveEntry,
+  GGGSkill, GGGSkillEntry, GGGSupport,
+} from "../../../../types/poe2.d.ts";
 
 export const PLAN_FORMAT = 'buildwright-planner-plan' as const;
 export const LEGACY_PLAN_FORMAT = 'poe2-planner-plan' as const;
@@ -190,20 +220,43 @@ export function validatePlan(d: unknown): string | null {
 // the time we get here the shape is one of {Plan, LegacyPlanSnapshot},
 // both of which carry name/description/class. Other fields are read
 // defensively.
-type ImportedPlan = Plan | LegacyPlanSnapshot;
+type ImportedPlan = Plan | PlanV3 | LegacyPlanSnapshot;
 export function loadPlanData(plan: ImportedPlan): void {
-  if (buildNameInput) buildNameInput.value = plan.name || '';
-  if (buildDescInput) buildDescInput.value = plan.description || '';
-  if (plan.class && plan.class !== state.klass) {
-    classSel.value = plan.class;
+  const native = "identity" in plan ? plan : null;
+  const activeNativeState = native?.states.find(
+    candidate => candidate.id === native.activeStateId,
+  );
+  const name = native?.identity.name ?? ("name" in plan ? plan.name : "") ?? "";
+  const description = native?.identity.description ??
+    ("description" in plan ? plan.description : "") ?? "";
+  const author = native?.identity.author ??
+    ("author" in plan ? plan.author : undefined);
+  const link = native?.identity.links?.[0]?.url ??
+    ("links" in plan ? plan.links?.[0]?.url : undefined);
+  const characterClass = activeNativeState?.character.class ??
+    ("class" in plan ? plan.class : null);
+  if (buildNameInput) buildNameInput.value = name;
+  if (buildDescInput) buildDescInput.value = description;
+  if (buildAuthorInput) {
+    buildAuthorInput.value = author || '';
+  }
+  if (buildLinkInput) {
+    buildLinkInput.value = link || '';
+  }
+  if (characterClass && characterClass !== state.klass) {
+    classSel.value = characterClass;
     refreshAscOptions();
   }
-  state.klass = plan.class || null;
-  if (window.PoE2Plan) {
+  state.klass = characterClass || null;
+  if (window.BuildwrightPlan) {
     // The chrome owns the plan; let it absorb the imported shape and
     // re-derive everything (active capture asc, passives, etc.).
-    window.PoE2Plan.set(plan as Plan);
-    const active = window.PoE2Plan.captures.active();
+    if (native) {
+      if (!window.BuildwrightPlan.native.replace(native)) return;
+    } else {
+      window.BuildwrightPlan.set(plan as Plan);
+    }
+    const active = window.BuildwrightPlan.captures.active();
     const asc = active && active.ascendancy;
     if (asc) {
       const opt = [...ascSel.options].find(o => o.value === asc);
@@ -216,6 +269,9 @@ export function loadPlanData(plan: ImportedPlan): void {
     }
     hydrateFromActiveCapture();
   } else {
+    if (native) {
+      throw new Error("Native backup restore requires the shared plan service.");
+    }
     // Standalone smoke-test fallback (no wizard chrome present).
     const captures = 'captures' in plan ? plan.captures : undefined;
     const activeIdx = 'activeCapture' in plan ? (plan.activeCapture || 0) : 0;
@@ -260,19 +316,382 @@ export function loadPlanData(plan: ImportedPlan): void {
 // final asc is named at the top level; the per-capture passives
 // still emit with their level_intervals so the reader sees the
 // pre-respec asc nodes too. (Edge case — most builds won't hit it.)
-export function planToGGGBuild(plan: Plan, meta?: SnapshotMeta): GGGBuild {
+export function officialPassiveId(graphId: string | number): string | null {
+  return graphIdToOfficial(graphId, TREE.passive_ids);
+}
+
+export function nativePassiveId(buildId: string | number): string | null {
+  return officialIdToGraph(
+    buildId,
+    TREE.passive_ids,
+    new Set(Object.keys(TREE.nodes)),
+  ).graphId;
+}
+
+export interface GGGBuildCompatibilityIssue {
+  severity: "error" | "warning" | "info";
+  code: string;
+  message: string;
+}
+
+export interface GGGBuildCompatibilityReport {
+  canExport: boolean;
+  projection: "route" | "final-state";
+  issues: GGGBuildCompatibilityIssue[];
+}
+
+/** Load patch-owned BaseItemTypes and Words facts through the selected
+ * game's data provider. This is intentionally separate from the UI's
+ * display catalogue state: export correctness must not depend on whether a
+ * picker happened to open before the user pressed Export. */
+export async function loadOfficialBuildCatalogueData(): Promise<OfficialBuildCatalogueData> {
+  const [skills, items] = await Promise.all([
+    loadGameAsset<OfficialSkillCatalogueEnvelope>("skillCatalogue"),
+    loadGameAsset<OfficialItemCatalogueEnvelope>("itemCatalogue"),
+  ]);
+  return buildOfficialCatalogueData(skills, items);
+}
+
+export function enrichPlanForOfficialBuild(
+  plan: Plan,
+  catalogue: OfficialBuildCatalogueData,
+): Plan {
+  return enrichPlanWithOfficialCatalogue(plan, catalogue);
+}
+
+export function preparePlanForGGGBuild(
+  plan: Plan,
+  nativePlan?: PlanV3,
+): { plan: Plan; projection: GGGBuildCompatibilityReport["projection"] } {
+  return prepareOfficialRoute(plan, nativePlan);
+}
+
+export function inspectGGGBuildCompatibility(
+  plan: Plan,
+  nativePlan?: PlanV3,
+  catalogue?: OfficialBuildCatalogueData,
+): GGGBuildCompatibilityReport {
+  const issues: GGGBuildCompatibilityIssue[] = [];
+  const add = (
+    severity: GGGBuildCompatibilityIssue["severity"],
+    code: string,
+    message: string,
+  ): void => {
+    if (!issues.some(issue => issue.code === code && issue.message === message)) {
+      issues.push({ severity, code, message });
+    }
+  };
+
+  if (GAME.id !== "poe2" || !PROFILE.integrations.gggBuild ||
+      !PROFILE.definition.officialBuild) {
+    add("error", "unsupported-game", "Official .build files are currently supported only for PoE2.");
+  }
+  if (!TREE.passive_ids ||
+      Object.keys(TREE.passive_ids.graphToBuild).length === 0) {
+    add("error", "missing-passive-map",
+      "This local patch has no PassiveSkills.Id translation table.");
+  }
+  if (catalogue) {
+    for (const drift of officialInventoryDefinitionIssues(
+      PROFILE.definition.officialBuild,
+      catalogue.inventoryIds,
+    )) {
+      add(
+        "error",
+        "inventory-profile-drift:" + drift.slot,
+        `Planner slot "${drift.slot}" targets "${drift.inventoryId}", ` +
+          "which is not present in this patch’s GGG Inventories table.",
+      );
+    }
+  }
+  for (const capture of plan.captures) {
+    for (const allocation of capture.passives) {
+      const graphId = allocation.attrVariantId || allocation.id;
+      if (!officialPassiveId(graphId)) {
+        add("error", "unresolved-passive:" + graphId,
+          'Passive graph id "' + graphId + '" has no official PassiveSkills.Id.');
+      }
+    }
+    for (const item of capture.items) {
+      const location = officialItemLocation(item);
+      if (!location) {
+        add("warning", "omitted-item-slot:" + (item.slot || item.inventoryId || "unknown"),
+          'Item slot "' + (item.slot || item.inventoryId || "unknown") +
+          '" has no official inventory target and will be omitted.');
+      } else if (catalogue && !officialInventoryIdSupported(
+        location.inventoryId,
+        PROFILE.definition.officialBuild,
+        catalogue.inventoryIds,
+      )) {
+        add(
+          "error",
+          "unknown-official-inventory:" + location.inventoryId,
+          `Inventory id "${location.inventoryId}" is neither a current ` +
+            "GGG Inventories.Id nor an explicit Build Planner target.",
+        );
+      }
+      if (
+        item.base || item.rarity || item.mods?.length ||
+        item.itemLevel != null || item.quality != null ||
+        item.corrupted || item.sockets?.length || item.sourceText
+      ) {
+        add("info", "item-summary",
+          "Native item details will be rendered as inventory hover text because the official schema has no typed item-affix, quality, corruption, or socket fields.");
+      }
+      if (item.uniqueName && !item.officialUniqueName) {
+        add("warning", "unique-name-verification",
+          "An authored unique name has no exact Words-table match; it will remain hover text instead of an in-game unique hint.");
+      } else if (item.officialUniqueName &&
+          !catalogue?.uniqueNames.has(item.officialUniqueName)) {
+        add("error", "unknown-official-unique:" + item.officialUniqueName,
+          'Unique name "' + item.officialUniqueName +
+          '" is not present in this patch’s verified Words catalogue.');
+      }
+    }
+    for (const skill of capture.skills) {
+      if (!catalogue) {
+        add("error", "missing-skill-catalogue",
+          "The current patch’s GGG BaseItemTypes skill catalogue could not be loaded.");
+        break;
+      }
+      if (!catalogue.activeSkillIds.has(skill.id)) {
+        add("error", "unknown-active-skill:" + skill.id,
+          'Active skill id "' + skill.id +
+          '" is not a current GGG skill-gem BaseItemTypes.Id.');
+      } else if (catalogue.metaSkillIds.has(skill.id)) {
+        add("error", "unsupported-meta-skill:" + skill.id,
+          'Meta skill "' + skill.id +
+          '" cannot be represented by the current official Build Planner.');
+      }
+      for (const support of skill.supports ?? []) {
+        if (!catalogue.supportSkillIds.has(support.id)) {
+          add("error", "unknown-support-skill:" + support.id,
+            'Support id "' + support.id +
+            '" is not a current GGG support-gem BaseItemTypes.Id.');
+        }
+      }
+    }
+    if (capture.skills.some(skill =>
+      skill.level !== 1 || (skill.quality ?? 0) !== 0 || (skill.set && skill.set !== "main"))) {
+      add("warning", "skill-metadata-loss",
+        "Gem level, quality, and Buildwright skill specialization are not fields in the official schema.");
+    }
+  }
+  if (plan.links && plan.links.length > 1) {
+    add("warning", "extra-links", "The official format can carry only one build link.");
+  }
+  const ascendancyRoute = plan.captures
+    .map(capture => capture.ascendancy)
+    .filter((value): value is string => !!value);
+  if (new Set(ascendancyRoute).size > 1) {
+    add(
+      "info",
+      "ascendancy-progression",
+      "The official file can name only the final ascendancy. Earlier " +
+        "ascendancies are represented through timed passives and hover guidance.",
+    );
+  }
+  const firstLink = plan.links?.[0]?.url;
+  if (firstLink) {
+    try {
+      const parsed = new URL(firstLink);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        throw new Error("unsupported protocol");
+      }
+    } catch {
+      add("warning", "invalid-link",
+        "The build link is not an HTTP(S) URL and will be omitted.");
+    }
+  }
+
+  const routeIds = new Set(selectedNativeRoute(nativePlan).map(state => state.id));
+  const offRoute = nativePlan?.states.filter(state => !routeIds.has(state.id)) ?? [];
+  if (offRoute.length) {
+    add("warning", "omitted-branches",
+      offRoute.length + " state" + (offRoute.length === 1 ? "" : "s") +
+      " outside the selected route will remain only in the native backup.");
+  }
+  const actorCount = nativePlan?.states.reduce(
+    (count, state) => count + state.actors.length,
+    0,
+  ) ?? 0;
+  if (actorCount) {
+    add("warning", "omitted-actors",
+      "Actor loadouts are not representable in the official .build format.");
+  }
+
+  const prepared = preparePlanForGGGBuild(plan, nativePlan);
+  if (prepared.projection === "final-state") {
+    add("warning", "final-state-projection",
+      "This route has same-level or level-less states, so the official file will contain the selected leaf state only.");
+  }
+  return {
+    canExport: !issues.some(issue => issue.severity === "error"),
+    projection: prepared.projection,
+    issues,
+  };
+}
+
+export function formatGGGBuildCompatibility(report: GGGBuildCompatibilityReport): string {
+  if (!report.issues.length) return "Official .build compatibility: no known losses.";
+  return report.issues.map(issue => {
+    const label = issue.severity === "error"
+      ? "BLOCKING"
+      : issue.severity === "warning" ? "LOSS" : "NOTE";
+    return label + " — " + issue.message;
+  }).join("\n");
+}
+
+interface GGGBuildCompatibilityDialogOptions {
+  mode?: "export" | "import";
+}
+
+function showGGGBuildCompatibility(
+  report: GGGBuildCompatibilityReport,
+  options: GGGBuildCompatibilityDialogOptions = {},
+): Promise<boolean> {
+  const mode = options.mode ?? "export";
+  const modal = document.getElementById("build-compatibility");
+  const kicker = document.getElementById("build-compatibility-kicker");
+  const title = document.getElementById("build-compatibility-title");
+  const status = document.getElementById("build-compatibility-status");
+  const projection = document.getElementById("build-compatibility-projection");
+  const groups = document.getElementById("build-compatibility-groups");
+  const footnote = document.getElementById("build-compatibility-footnote");
+  const close = document.getElementById("build-compatibility-close") as HTMLButtonElement | null;
+  const cancel = document.getElementById("build-compatibility-cancel") as HTMLButtonElement | null;
+  const exportButton =
+    document.getElementById("build-compatibility-export") as HTMLButtonElement | null;
+  if (!modal || !kicker || !title || !status || !projection || !groups ||
+      !footnote || !close || !cancel || !exportButton) {
+    throw new Error("Official .build compatibility dialog is unavailable.");
+  }
+
+  kicker.textContent = mode === "import"
+    ? "OFFICIAL POE2 BUILD · IMPORT"
+    : "OFFICIAL POE2 BUILD · EXPORT";
+  title.textContent = mode === "import"
+    ? "Review imported build"
+    : "Export compatibility";
+  status.textContent = !report.canExport
+    ? "Blocked"
+    : mode === "import" && report.issues.length ? "Review" : "Ready";
+  status.classList.toggle("blocked", !report.canExport);
+  projection.textContent = mode === "import"
+    ? "The file is structurally valid. Review what this patch can edit before replacing the current local plan."
+    : report.projection === "route"
+    ? "The selected route will be projected into level intervals."
+    : "These states have no unambiguous level order; only the selected final state can be projected.";
+  groups.replaceChildren();
+
+  const labels: Record<GGGBuildCompatibilityIssue["severity"], string> =
+    mode === "import"
+      ? {
+        error: "Blocking",
+        warning: "Preserved, not editable",
+        info: "Migration note",
+      }
+      : {
+        error: "Blocking",
+        warning: "Not represented",
+        info: "Represented as guidance",
+      };
+  for (const severity of ["error", "warning", "info"] as const) {
+    const matches = report.issues.filter(issue => issue.severity === severity);
+    if (!matches.length) continue;
+    const section = document.createElement("section");
+    section.className = "build-compatibility-group";
+    section.dataset.severity = severity;
+    const heading = document.createElement("h3");
+    heading.textContent = labels[severity] + " · " + matches.length;
+    const list = document.createElement("ul");
+    for (const issue of matches) {
+      const row = document.createElement("li");
+      row.textContent = issue.message;
+      list.appendChild(row);
+    }
+    section.append(heading, list);
+    groups.appendChild(section);
+  }
+  if (!report.issues.length) {
+    const clean = document.createElement("p");
+    clean.className = "build-compatibility-clean";
+    clean.textContent = "No known compatibility losses on this route.";
+    groups.appendChild(clean);
+  }
+
+  exportButton.disabled = !report.canExport;
+  exportButton.textContent = report.canExport
+    ? mode === "import" ? "Import .build" : "Export .build"
+    : "Resolve blockers";
+  footnote.textContent = mode === "import"
+    ? "Nothing changes until you confirm. The original source is retained in the native plan."
+    : "Your full Buildwright plan remains unchanged.";
+  modal.classList.remove("hidden");
+  close.focus();
+
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = (confirmed: boolean): void => {
+      if (settled) return;
+      settled = true;
+      modal.classList.add("hidden");
+      document.removeEventListener("keydown", onKey);
+      resolve(confirmed);
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      finish(false);
+    };
+    close.onclick = () => finish(false);
+    cancel.onclick = () => finish(false);
+    exportButton.onclick = () => {
+      if (report.canExport) finish(true);
+    };
+    modal.onclick = event => {
+      if (event.target === modal) finish(false);
+    };
+    document.addEventListener("keydown", onKey);
+  });
+}
+
+export function planToGGGBuild(
+  plan: Plan,
+  meta?: SnapshotMeta,
+  catalogue?: OfficialBuildCatalogueData,
+): GGGBuild {
+  if (plan.captures.some(capture => capture.skills.length) && !catalogue) {
+    throw new Error("Official .build export requires the current GGG skill catalogue.");
+  }
+  if (catalogue) {
+    const report = inspectGGGBuildCompatibility(plan, undefined, catalogue);
+    const blocking = report.issues.filter(issue =>
+      issue.severity === "error" &&
+      (issue.code.startsWith("unknown-active-skill:") ||
+       issue.code.startsWith("unsupported-meta-skill:") ||
+       issue.code.startsWith("unknown-support-skill:") ||
+       issue.code.startsWith("unknown-official-unique:")));
+    if (blocking.length) {
+      throw new Error(blocking.map(issue => issue.message).join(" "));
+    }
+  }
   const out: GGGBuild = {};
   const name = (meta && meta.name) || plan.name;
   const desc = (meta && meta.description) || plan.description;
   // `name` is the one field GGG's schema marks required — always emit.
   out.name = name || 'Untitled Build';
+  if (plan.author) out.author = plan.author;
+  const link = plan.links?.map(entry => entry.url).find((url) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "https:" || parsed.protocol === "http:";
+    } catch {
+      return false;
+    }
+  });
+  if (link) out.link = link;
   if (desc) out.description = desc;
-  // Stamp the game patch this build was authored against. Lets the
-  // in-game planner / any third-party tool know which tree shape
-  // these passive ids reference, in case a future patch rearranges
-  // them. Field name `patch` matches our internal plan format.
-  const patch = plan.patch || window.POE2_PATCH;
-  if (patch) out.patch = patch;
   const lastCapture = plan.captures[plan.captures.length - 1];
   if (lastCapture && lastCapture.ascendancy && TREE.asc_internal) {
     const info = TREE.asc_internal[lastCapture.ascendancy];
@@ -333,14 +752,15 @@ export function stampAscPivots(passives: GGGPassive[], captures: Capture[]): voi
     const lastA  = ascA[ascA.length - 1]!;
     const firstB = ascB[0]!;
     const lvl    = capB.levelRange[0];
-    // <b> is the official bold tag (GGG markup uses single-letter
-    // font tags: <r> <b> <i> <u> <s> <m> <l> — see the format doc).
-    const outgoingProse = '<b>Respec at Lv ' + lvl + ':</b> refund ' +
-      A + ' ascendancy and pick ' + B + ' (costs ascendancy refund orbs).';
-    const incomingProse = '<b>Picked at Lv ' + lvl + '</b> after refunding ' +
-      A + ' ascendancy.';
-    annotateById(passives, String(lastA.id),  outgoingProse);
-    annotateById(passives, String(firstB.id), incomingProse);
+    const outgoingProse = gggMarkup("b", "Respec at Lv " + lvl + ":") + " " +
+      gggPlainText("refund " + A + " ascendancy and pick " + B +
+        " (costs ascendancy refund orbs).");
+    const incomingProse = gggMarkup("b", "Picked at Lv " + lvl) + " " +
+      gggPlainText("after refunding " + A + " ascendancy.");
+    const lastOfficial = officialPassiveId(lastA.attrVariantId || lastA.id);
+    const firstOfficial = officialPassiveId(firstB.attrVariantId || firstB.id);
+    if (lastOfficial) annotateById(passives, lastOfficial, outgoingProse);
+    if (firstOfficial) annotateById(passives, firstOfficial, incomingProse);
   }
 }
 
@@ -368,7 +788,7 @@ function annotateById(passives: GGGPassive[], id: string, prose: string): void {
 //
 //   passives: id + set
 //   skills:   id + level + quality + set + sorted supports
-//   items:    inventoryId + slotX + slotY + uniqueName
+//   items:    inventoryId + slotX + slotY + verified officialUniqueName
 //
 // A run that spans the WHOLE build range (first capture's lo to
 // last capture's hi) emits a bare id (when possible) — no
@@ -435,7 +855,14 @@ export function collapsePassives(captures: Capture[]): GGGPassive[] {
       // For attribute nodes with a picked variant, the .build entry
       // uses the VARIANT'S id (Str / Dex / Int has its own passive id
       // in tree.json). The parent attribute id is UI grouping only.
-      const exportId = e.attrVariantId ? String(e.attrVariantId) : String(e.id);
+      const graphId = e.attrVariantId ? String(e.attrVariantId) : String(e.id);
+      const exportId = officialPassiveId(graphId);
+      if (!exportId) {
+        throw new Error(
+          'Cannot export passive graph id "' + graphId +
+          '": this patch has no PassiveSkills.Id translation.',
+        );
+      }
       // If the entry carries an explicit authoring level (asc + set
       // allocations get one stamped on allocate), use it as the lower
       // bound — that's the level the author actually took this node.
@@ -453,7 +880,12 @@ export function collapsePassives(captures: Capture[]): GGGPassive[] {
           effRange = [e.level, lastHi];
         }
       }
-      return makePassiveEntry(exportId, e.set || 'main', effRange, e.note);
+      return makePassiveEntry(
+        exportId,
+        e.set || 'main',
+        effRange,
+        e.note ? gggPlainText(e.note) : undefined,
+      );
     },
   );
   // Stable sort by numeric id (string-fallback) so byte-identical
@@ -493,56 +925,66 @@ export function collapseSkills(captures: Capture[]): GGGSkill[] {
              '|' + (e.set || 'main') + '|' + supports;
     },
     (e, range) => {
-      const out: GGGSkill = { id: e.id, level: e.level || 1, quality: e.quality || 0 };
-      if (e.set === 'set1') out.weapon_set = 1;
-      else if (e.set === 'set2') out.weapon_set = 2;
+      const out: GGGSkillEntry = { id: e.id };
       if (range) out.level_interval = range;
-      if (e.note) out.additional_text = e.note;
+      if (e.note) out.additional_text = gggPlainText(e.note);
       if (e.supports && e.supports.length > 0) {
         out.support_skills = e.supports.map((s) => {
-          const o: GGGSupport = { id: s.id, level: s.level || 1, quality: s.quality || 0 };
-          if (s.note) o.additional_text = s.note;
-          return o;
+          if (!s.note) return s.id;
+          const support: GGGSupport = {
+            id: s.id,
+            additional_text: gggPlainText(s.note),
+          };
+          return support;
         });
       }
-      return out;
+      // GGG permits a bare BaseItemTypes.Id when the root skill carries
+      // no interval, note, or supports.
+      return !out.level_interval && !out.additional_text && !out.support_skills
+        ? out.id
+        : out;
     },
   );
+}
+
+function officialItemLocation(item: Item): {
+  inventoryId: string;
+  slotX: number;
+  slotY: number;
+} | null {
+  return resolveOfficialItemLocation(item, PROFILE.definition.officialBuild);
+}
+
+function officialItemText(item: Item): string | undefined {
+  const lines = officialItemHintLines(item);
+  return lines.length ? gggPlainText(lines.join("\n")) : undefined;
 }
 
 export function collapseItems(captures: Capture[]): GGGItem[] {
   return collapseRuns<Item, GGGItem>(
     captures,
-    c => c.items,
-    (e) => (e.inventoryId || '') + '|' + (e.slotX || 0) + '|' +
-                (e.slotY || 0) + '|' + (e.uniqueName || ''),
+    c => c.items.filter(item => officialItemLocation(item) !== null),
+    (e) => {
+      const location = officialItemLocation(e);
+      if (!location) throw new Error("internal .build item projection mismatch");
+      return location.inventoryId + '|' + location.slotX + '|' +
+        location.slotY + '|' + (e.officialUniqueName || '');
+    },
     (e, range) => {
+      const location = officialItemLocation(e);
+      if (!location) throw new Error("internal .build item projection mismatch");
       const out: GGGItem = {
-        inventory_id: e.inventoryId || '',
-        slot_x: e.slotX || 0,
-        slot_y: e.slotY || 0,
+        inventory_id: location.inventoryId,
+        slot_x: location.slotX,
+        slot_y: location.slotY,
       };
-      if (e.uniqueName) out.unique_name = e.uniqueName;
+      if (e.officialUniqueName) out.unique_name = e.officialUniqueName;
       if (range) out.level_interval = range;
-      if (e.note) out.additional_text = e.note;
+      const text = officialItemText(e);
+      if (text) out.additional_text = text;
       return out;
     },
   );
-}
-
-// GGG's schema writes level applicability as "(array of uint, or
-// uint)": an inclusive [lo, hi] pair, a shorter array, or a bare
-// number. The short forms have no documented upper bound — we read
-// them as "from lo onward". Returns undefined for absent/garbage
-// values (garbage is caught separately by validateGGGBuild).
-export function normalizeInterval(li: GGGLevelInterval | undefined): [number, number] | undefined {
-  if (li === undefined) return undefined;
-  if (typeof li === 'number') return [li, 100];
-  if (!Array.isArray(li) || li.length === 0) return undefined;
-  const lo = li[0];
-  if (typeof lo !== 'number') return undefined;
-  const hi = li.length > 1 && typeof li[1] === 'number' ? li[1] : 100;
-  return [lo, hi];
 }
 
 // Validate an incoming GGG .build object. Derived entirely from the
@@ -572,204 +1014,123 @@ export function attrVariantToParent(): Map<string, string> {
   return m;
 }
 
-// Import a GGG .build into the captures[] plan shape. Reverses
-// the run-collapse export: distinct level_interval boundaries
-// become capture splits, and each capture's cumulative content is
-// the set of entries whose level_interval includes that capture's
-// upper bound. Bare-string passives (no level_interval) count as
-// "always present" and land in every capture.
-export function gggBuildToPlan(b: GGGBuild): Plan {
-  let asc: string | null = null;
-  if (b.ascendancy && TREE.asc_internal) {
-    for (const name in TREE.asc_internal) {
-      if (TREE.asc_internal[name]?.internal === b.ascendancy) { asc = name; break; }
-    }
+// The pure importer uses this loss report in both the browser and CLI.
+export interface GGGBuildImportReport {
+  unresolvedPassiveIds: string[];
+  unknownInventoryIds: string[];
+  invalidInventoryIds: string[];
+  legacyGraphIds: string[];
+  unknownActiveSkillIds: string[];
+  metaSkillIds: string[];
+  unknownSupportSkillIds: string[];
+  unknownUniqueNames: string[];
+  unknownAscendancyId: string | null;
+}
+
+export function gggBuildToNativePlanWithReport(
+  b: GGGBuild,
+  catalogue: OfficialBuildCatalogueData,
+): { plan: PlanV3; report: GGGBuildImportReport } {
+  const classes = new Map<
+    string,
+    Array<{ name: string; internal: string }>
+  >();
+  for (const [name, value] of Object.entries(TREE.asc_internal ?? {})) {
+    const list = classes.get(value.class) ?? [];
+    list.push({ name, internal: value.internal });
+    classes.set(value.class, list);
   }
-  const klass = (asc && TREE.asc_internal?.[asc]?.class) || state.klass;
-
-  // Normalize sections to a uniform { ..., level_interval?, note? } shape.
-  // Detect attribute-variant ids (Str / Dex / Int) and reverse-map them
-  // to the parent attribute node id + attrVariantId — the captures
-  // model uses the parent id for tree positioning, with the variant
-  // id stashed on the entry.
-  const attrMap = attrVariantToParent();
-  function normalizePassive(p: GGGPassive): Allocation {
-    const isBare = typeof p === 'string' || typeof p === 'number';
-    const idStr = isBare ? String(p) : String(p.id);
-    const set: "main" | "set1" | "set2" =
-                !isBare && p.weapon_set === 1 ? 'set1'
-              : !isBare && p.weapon_set === 2 ? 'set2' : 'main';
-    const e: Allocation = { id: idStr, set };
-    const parentForVariant = attrMap.get(idStr);
-    if (parentForVariant) {
-      e.id = parentForVariant;
-      e.attrVariantId = idStr;
-    }
-    if (!isBare) {
-      const li = normalizeInterval(p.level_interval);
-      if (li) e.level_interval = li;
-      if (p.additional_text) e.note = p.additional_text;
-      // For asc + weapon-set entries, the level_interval[0] is the
-      // authoring level the export stamped on them. Restore it as
-      // entry.level so the slider + future re-exports preserve the
-      // off-curve timing. Mains derive level from position and skip
-      // this — their level_interval[0] is just the capture's lo.
-      const node = TREE.nodes[e.id];
-      const isAscOrSet = (node && node.a) || e.set === 'set1' || e.set === 'set2';
-      if (isAscOrSet && li) {
-        e.level = li[0];
-      }
-    }
-    return e;
-  }
-  const passiveEntries: Allocation[] = (b.passives || []).map(normalizePassive);
-  const skillEntries: Skill[] = (b.skills || []).map((s) => {
-    const e: Skill = {
-      id:    s.id,
-      level: typeof s.level === 'number' ? s.level : 1,
-      quality: typeof s.quality === 'number' ? s.quality : 0,
-      set:   s.weapon_set === 1 ? 'set1' : s.weapon_set === 2 ? 'set2' : 'main',
-      supports: (s.support_skills || []).map((sup) => {
-        // GGG allows a bare id string as a support entry.
-        if (typeof sup === 'string') return { id: sup, level: 1, quality: 0 };
-        const so: SupportGem = {
-          id:    sup.id,
-          level: typeof sup.level === 'number' ? sup.level : 1,
-          quality: typeof sup.quality === 'number' ? sup.quality : 0,
-        };
-        if (sup.additional_text) so.note = sup.additional_text;
-        return so;
-      }),
-    };
-    const sli = normalizeInterval(s.level_interval);
-    if (sli) e.level_interval = sli;
-    if (s.additional_text) e.note = s.additional_text;
-    return e;
+  const result = importOfficialBuild(b, {
+    profile: PROFILE,
+    metadata: {
+      game: GAME.id,
+      patch: window.BuildwrightPatch,
+      passive_ids: {
+        ...(TREE.passive_ids ?? {
+          graphToBuild: {},
+          buildToGraph: {},
+        }),
+        attributeToParent: Object.fromEntries(attrVariantToParent()),
+      },
+      classes: [...classes.entries()].map(([name, ascendancies]) => ({
+        name,
+        ascendancies,
+      })),
+    },
+    nativeNodeIds: new Set(Object.keys(TREE.nodes)),
+    catalogue,
   });
-  // Official field is inventory_slots (slot_x/slot_y); accept our
-  // pre-audit items (x/y) alias so old exports keep importing.
-  const itemEntries: Item[] = (b.inventory_slots || b.items || []).map((it) => {
-    const e: Item = {
-      inventoryId: it.inventory_id,
-      slotX: typeof it.slot_x === 'number' ? it.slot_x : (typeof it.x === 'number' ? it.x : 0),
-      slotY: typeof it.slot_y === 'number' ? it.slot_y : (typeof it.y === 'number' ? it.y : 0),
-    };
-    if (it.unique_name) e.uniqueName = it.unique_name;
-    const ili = normalizeInterval(it.level_interval);
-    if (ili) e.level_interval = ili;
-    if (it.additional_text) e.note = it.additional_text;
-    return e;
-  });
+  return result;
+}
 
-  const captures = reconstructCaptures(passiveEntries, skillEntries, itemEntries, asc);
-
+export function gggBuildToPlanWithReport(
+  b: GGGBuild,
+  catalogue: OfficialBuildCatalogueData,
+): { plan: Plan; report: GGGBuildImportReport } {
+  const result = gggBuildToNativePlanWithReport(b, catalogue);
   return {
-    format: PLAN_FORMAT,
-    version: PLAN_VERSION,
-    savedAt: new Date().toISOString(),
-    game: GAME.id,
-    name: b.name || '',
-    description: b.description || '',
-    class: klass,
-    patch: null,
-    activeSet: 'main',
-    captures,
-    activeCapture: captures.length - 1,
+    plan: projectPlanV3ToV2(result.plan),
+    report: result.report,
   };
 }
 
-// Reverse run-collapse: derive capture ranges from the distinct
-// boundary points in the entries' level_intervals, then populate
-// each capture's cumulative content via per-section presence check.
-// See docs/captures_data_model.md "Slider behavior" for the
-// entry-is-present-at-level rule.
-//
-// Three sections take separate parameters now (was a 3-tuple array)
-// so each entry carries its own type and stays narrowed downstream.
-// Local-only counter for the per-capture stable id; reset on each
-// call so re-imports produce deterministic ids.
-let _capIdCounter = 0;
-function genCapId(): string {
-  _capIdCounter += 1;
-  return 'imp_' + _capIdCounter;
+export function gggBuildToPlan(
+  b: GGGBuild,
+  catalogue: OfficialBuildCatalogueData,
+): Plan {
+  return gggBuildToPlanWithReport(b, catalogue).plan;
 }
-export function reconstructCaptures(
-  passives: Allocation[],
-  skills: Skill[],
-  items: Item[],
-  ascendancy: string | null,
-): Capture[] {
-  _capIdCounter = 0;
-  let maxHi = -1;  // sentinel — when no level_intervals exist we fall back to 100
-  const boundaries = new Set([1]);
-  const collectBoundaries = (li: [number, number] | undefined): void => {
-    if (!li) return;
-    const lo = li[0], hi = li[1];
-    boundaries.add(lo);
-    boundaries.add(hi + 1);
-    if (hi > maxHi) maxHi = hi;
-  };
-  for (const e of passives) collectBoundaries(e.level_interval);
-  for (const e of skills)   collectBoundaries(e.level_interval);
-  for (const e of items)    collectBoundaries(e.level_interval);
-  if (maxHi < 0) maxHi = 100;  // no explicit level_intervals → default end
-  boundaries.add(maxHi + 1);
-  const points = [...boundaries].sort((a, b) => a - b);
 
-  const captures: Capture[] = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const lo = points[i]!;
-    const hi = points[i + 1]! - 1;
-    if (hi < lo) continue;
-    captures.push({
-      id: genCapId(),
-      levelRange: [lo, hi],
-      name: null,
-      description: '',
-      ascendancy,
-      passives: entriesAtLevel(passives, hi).map((e) => {
-        const o: Allocation = { id: e.id, set: e.set || 'main' };
-        if (e.note) o.note = e.note;
-        if (e.attrVariantId) o.attrVariantId = e.attrVariantId;
-        if (typeof e.level === 'number') o.level = e.level;
-        return o;
-      }),
-      skills: entriesAtLevel(skills, hi).map((e) => {
-        const o: Skill = {
-          id: e.id, level: e.level, quality: e.quality, set: e.set || 'main',
-          supports: (e.supports || []).map((s) => ({ ...s })),
-        };
-        if (e.note) o.note = e.note;
-        return o;
-      }),
-      items: entriesAtLevel(items, hi).map((e) => {
-        const o: Item = { inventoryId: e.inventoryId, slotX: e.slotX, slotY: e.slotY };
-        if (e.uniqueName) o.uniqueName = e.uniqueName;
-        if (e.note) o.note = e.note;
-        return o;
-      }),
+export function importCompatibilityReport(
+  report: GGGBuildImportReport,
+): GGGBuildCompatibilityReport {
+  const issues: GGGBuildCompatibilityIssue[] = [];
+  const addList = (
+    severity: GGGBuildCompatibilityIssue["severity"],
+    code: string,
+    values: string[],
+    message: (values: string[]) => string,
+  ): void => {
+    if (values.length) issues.push({ severity, code, message: message(values) });
+  };
+  addList("warning", "unresolved-passives", report.unresolvedPassiveIds, values =>
+    `${values.length} passive id(s) are unavailable in this patch and will ` +
+    "remain only in the retained source record: " + values.join(", "));
+  addList("warning", "invalid-inventories", report.invalidInventoryIds, values =>
+    `${values.length} inventory id(s) are neither current GGG table rows nor ` +
+    "known Build Planner targets: " + values.join(", "));
+  const opaqueInventories = report.unknownInventoryIds.filter(
+    id => !report.invalidInventoryIds.includes(id),
+  );
+  addList("warning", "opaque-inventories", opaqueInventories, values =>
+    `${values.length} valid inventory target(s) have no Buildwright editor ` +
+    "slot and will remain only in the retained source record: " +
+    values.join(", "));
+  addList("warning", "unknown-active-skills", report.unknownActiveSkillIds, values =>
+    `${values.length} active skill id(s) are not in this patch’s GGG gem ` +
+    "catalogue: " + values.join(", "));
+  addList("warning", "meta-skills", report.metaSkillIds, values =>
+    `${values.length} meta gem id(s) are unsupported by the official Build ` +
+    "Planner and will be retained without official guarantees: " +
+    values.join(", "));
+  addList("warning", "unknown-support-skills", report.unknownSupportSkillIds, values =>
+    `${values.length} support id(s) are not in this patch’s GGG support ` +
+    "catalogue: " + values.join(", "));
+  addList("warning", "unknown-unique-names", report.unknownUniqueNames, values =>
+    `${values.length} unique name(s) are not exact Words entries in this ` +
+    "patch and cannot be safely re-exported: " + values.join(", "));
+  if (report.unknownAscendancyId) {
+    issues.push({
+      severity: "warning",
+      code: "unknown-ascendancy",
+      message: `Ascendancy id "${report.unknownAscendancyId}" is unavailable ` +
+        "in this patch and will remain only in the retained source record.",
     });
   }
-  return captures.length > 0 ? captures : [{
-    id: genCapId(),
-    levelRange: [1, maxHi],
-    name: null,
-    description: '',
-    ascendancy,
-    passives: [], skills: [], items: [],
-  }];
-}
-
-// An entry is present at level L iff:
-//   * it has no level_interval (bare string ⇒ always present), OR
-//   * level_interval[0] <= L <= level_interval[1].
-export function entriesAtLevel<E extends { level_interval?: [number, number] }>(
-  entries: E[], level: number,
-): E[] {
-  return entries.filter((e) => {
-    if (!e.level_interval) return true;
-    return level >= e.level_interval[0] && level <= e.level_interval[1];
-  });
+  addList("info", "legacy-passive-ids", report.legacyGraphIds, values =>
+    `${values.length} legacy numeric passive graph id(s) were migrated to ` +
+    "current native allocations: " + values.join(", "));
+  return { canExport: true, projection: "route", issues };
 }
 
 // -------- File I/O helpers --------
@@ -788,22 +1149,33 @@ export function pickFile(accept?: string): Promise<File | null> {
   return new Promise(resolve => {
     const inp = document.createElement('input');
     inp.type = 'file';
+    inp.hidden = true;
+    inp.dataset.buildwrightFilePicker = "true";
     if (accept) inp.accept = accept;
-    inp.onchange = () => { resolve((inp.files && inp.files[0]) || null); };
+    const finish = (file: File | null): void => {
+      inp.remove();
+      resolve(file);
+    };
+    inp.onchange = () => finish((inp.files && inp.files[0]) || null);
+    document.body.appendChild(inp);
     inp.click();
   });
 }
 
-export function readJsonFile(file: File): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try { resolve(JSON.parse(reader.result as string)); }
-      catch (e) { reject(new Error('Invalid JSON: ' + (e as Error).message)); }
-    };
-    reader.onerror = () => reject(new Error('Read failed'));
-    reader.readAsText(file);
-  });
+export async function readJsonFile(file: File): Promise<unknown> {
+  let text: string;
+  try {
+    text = await file.text();
+  } catch (error) {
+    throw new Error("Read failed: " +
+      (error instanceof Error ? error.message : String(error)));
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error("Invalid JSON: " +
+      (error instanceof Error ? error.message : String(error)));
+  }
 }
 
 // -------- Public actions (called from cmd-k + Export button) --------
@@ -822,7 +1194,7 @@ export function readBuildMeta(): SnapshotMeta {
   };
 }
 
-export function doExportBuild(): void {
+export async function doExportBuild(): Promise<void> {
   const meta = readBuildMeta();
   if (!meta.name) {
     alert('Set a build name in the sidebar (section 1 — Identity) before exporting.');
@@ -832,19 +1204,31 @@ export function doExportBuild(): void {
   // Push pending sidebar edits + tree state into the chrome plan
   // so the export sees the freshest in-memory state.
   flushPersistNow();  // sync — wait until typed notes have landed in the plan before reading
+  window.BuildwrightPlan?.native.sync();
   // The chrome's PoE2Plan.get() returns the canonical Plan; the
   // standalone fallback returns the LegacyPlanSnapshot shape. Cast
   // to Plan at the export-pipeline boundary — planToGGGBuild reads
   // `captures`/`patch`, both absent on the legacy shape, so without
   // the chrome the legacy snapshot path will only emit name + desc.
-  const plan = window.PoE2Plan
-    ? window.PoE2Plan.get()
+  const nativePlanSource = window.BuildwrightPlan
+    ? window.BuildwrightPlan.get()
     : (snapshotPlan(meta) as unknown as Plan);
-  // (Pre-export connectivity check was tied to the old delta-captures
-  // shape and is currently dead. Step 3 re-introduces a captures-aware
-  // validator that walks each capture's passives via the connectivity
-  // BFS already used in the live planner.)
-  const build = planToGGGBuild(plan, meta);
+  let catalogue: OfficialBuildCatalogueData;
+  try {
+    catalogue = await loadOfficialBuildCatalogueData();
+  } catch (error) {
+    alert("Cannot verify official identifiers for this patch:\n\n" +
+      (error as Error).message);
+    return;
+  }
+  const plan = enrichPlanForOfficialBuild(nativePlanSource, catalogue);
+  const nativePlan = window.BuildwrightPlan?.native.get();
+  const report = inspectGGGBuildCompatibility(plan, nativePlan, catalogue);
+  if (!await showGGGBuildCompatibility(report)) {
+    return;
+  }
+  const prepared = preparePlanForGGGBuild(plan, nativePlan);
+  const build = planToGGGBuild(prepared.plan, meta, catalogue);
   const err = validateGGGBuild(build);
   if (err) { alert('Refusing to export — output failed validation: ' + err); return; }
   downloadJsonFile(safeFilename(meta.name) + '.build', build);
@@ -854,14 +1238,20 @@ export function doExportPlan(): void {
   const meta = readBuildMeta();
   const name = meta.name || 'untitled';
   flushPersistNow();  // sync — wait until typed notes have landed in the plan before reading
-  const plan = window.PoE2Plan
-    ? JSON.parse(JSON.stringify(window.PoE2Plan.get()))
+  window.BuildwrightPlan?.native.sync();
+  const plan = window.BuildwrightPlan
+    ? window.BuildwrightPlan.native.get()
     : snapshotPlan({ name, description: meta.description });
-  // Stamp identity meta in case the user typed it but persist hasn't
-  // flushed yet (debounced 300ms).
-  plan.name = meta.name || plan.name || '';
-  plan.description = meta.description || plan.description || '';
-  downloadJsonFile(safeFilename(name) + '.poe2plan.json', plan);
+  // Native backups are v3 when the shared chrome is available. The
+  // standalone fallback retains the legacy snapshot shape.
+  if ("identity" in plan) {
+    plan.identity.name = meta.name || plan.identity.name || '';
+    plan.identity.description = meta.description || plan.identity.description || '';
+  } else {
+    plan.name = meta.name || plan.name || '';
+    plan.description = meta.description || plan.description || '';
+  }
+  downloadJsonFile(safeFilename(name) + '.buildwright.json', plan);
 }
 
 export async function doImportBuild(): Promise<void> {
@@ -871,8 +1261,25 @@ export async function doImportBuild(): Promise<void> {
     const data = await readJsonFile(file);
     const err = validateGGGBuild(data);
     if (err) { alert('Not a valid .build file: ' + err); return; }
+    let catalogue: OfficialBuildCatalogueData;
+    try {
+      catalogue = await loadOfficialBuildCatalogueData();
+    } catch (error) {
+      alert("Cannot verify imported identifiers for this patch:\n\n" +
+        (error as Error).message);
+      return;
+    }
     // validateGGGBuild succeeded, so `data` matches GGGBuild's shape.
-    const plan = gggBuildToPlan(data as GGGBuild);
+    const { plan, report } = gggBuildToNativePlanWithReport(
+      data as GGGBuild,
+      catalogue,
+    );
+    if (!await showGGGBuildCompatibility(
+      importCompatibilityReport(report),
+      { mode: "import" },
+    )) {
+      return;
+    }
     loadPlanData(plan);
   } catch (e) { alert((e as Error).message); }
 }
@@ -884,6 +1291,9 @@ window.PoE2BuildIO = {
   planToGGGBuild,
   validateGGGBuild,
   gggBuildToPlan,
+  gggBuildToPlanWithReport,
+  gggBuildToNativePlanWithReport,
+  inspectGGGBuildCompatibility,
 };
 
 export async function doImportPlan(): Promise<void> {
@@ -891,7 +1301,23 @@ export async function doImportPlan(): Promise<void> {
   if (!file) return;
   try {
     const data = await readJsonFile(file);
-    const err = validatePlan(data);
+    const record = data && typeof data === "object"
+      ? data as Record<string, unknown>
+      : null;
+    const isNativeV3 = record?.format === PLAN_FORMAT &&
+      record.version === 3 &&
+      Array.isArray(record.states);
+    const err = isNativeV3
+      ? (() => {
+        const candidate = data as PlanV3;
+        if (candidate.game !== GAME.id) {
+          return `plan belongs to ${JSON.stringify(candidate.game)}, ` +
+            `current planner is ${GAME.id}`;
+        }
+        const errors = validatePlanForSelectedGame(candidate, PROFILE);
+        return errors.length ? errors.join("; ") : null;
+      })()
+      : validatePlan(data);
     if (err) { alert('Not a valid plan file: ' + err); return; }
     // validatePlan succeeded, so `data` matches one of the
     // ImportedPlan shapes (canonical Plan or legacy flat-allocations).

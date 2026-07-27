@@ -844,7 +844,7 @@ export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; al
       updatePreview();
       requestRender();
     } else {
-      window.PoE2Plan?.flash?.('Pick an ascendancy in the sidebar to open its circle');
+      window.BuildwrightPlan?.flash?.('Pick an ascendancy in the sidebar to open its circle');
       ascSel?.focus();
     }
     return;
@@ -884,13 +884,13 @@ export function handleClick(cx: number, cy: number, mods?: { shift?: boolean; al
   // snapshot. setActive fires capture-change synchronously, which
   // re-hydrates state.selected from the working cap before the
   // rest of this handler runs.
-  if (window.PoE2Plan && window.PoE2Plan.captures) {
-    const caps = window.PoE2Plan.captures;
+  if (window.BuildwrightPlan && window.BuildwrightPlan.captures) {
+    const caps = window.BuildwrightPlan.captures;
     if (!caps.isWorking()) {
       const lastIdx = caps.count() - 1;
       caps.setActive(lastIdx);
-      if (window.PoE2Plan.flash) {
-        window.PoE2Plan.flash('Switched to current snapshot — allocations land here');
+      if (window.BuildwrightPlan.flash) {
+        window.BuildwrightPlan.flash('Switched to current snapshot — allocations land here');
       }
     }
   }

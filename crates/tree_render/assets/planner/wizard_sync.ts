@@ -4,7 +4,7 @@
 // Plan / Capture sync — the chrome (wizard_chrome.ts) owns the plan
 // record and the per-section capture lists. The planner hydrates its
 // tree state from the active passives capture on boot + on capture
-// switches, and pushes diffs back through window.PoE2Plan.captures on
+// switches, and pushes diffs back through window.BuildwrightPlan.captures on
 // every edit. All localStorage I/O lives in the chrome.
 // ============================================================================
 
@@ -12,10 +12,26 @@
 // Mirrors viewer/assets/wizard_chrome.ts's CommitMeta. Kept local to
 // avoid an import cycle through the closure-IIFE bundling.
 
-import { allocModeSel, ascSel, buildDescInput, buildNameInput, classSel, state , ascDisplayName, resolveAscName} from "./state.ts";
+import {
+  allocModeSel,
+  ascDisplayName,
+  ascSel,
+  buildAuthorInput,
+  buildDescInput,
+  buildLinkInput,
+  buildNameInput,
+  classSel,
+  resolveAscName,
+  state,
+} from "./state.ts";
 import { requestRender } from "./render.ts";
 import { updatePreview } from "./pathfind.ts";
-import { applyAsc, refreshAscOptions, syncModeBadge, updateSelectionUI } from "./sidebar.ts";
+import {
+  applyAsc,
+  refreshAscOptions,
+  syncModeBadge,
+  updateSelectionUI,
+} from "./sidebar.ts";
 import type { Capture, Item, Plan, Skill } from "../../../../types/shared.d.ts";
 
 export interface CommitMeta {
@@ -28,14 +44,22 @@ export let wizardBuildId: string | null = null;
 export let wizardSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function syncFromWizardStore(): void {
-  if (!window.PoE2Plan) return;
-  wizardBuildId = window.PoE2Plan.buildId();
-  const data = window.PoE2Plan.get();
+  if (!window.BuildwrightPlan) return;
+  wizardBuildId = window.BuildwrightPlan.buildId();
+  const data = window.BuildwrightPlan.get();
   if (!data) return;
   // Identity / class / asc / activeSet are global on the plan —
   // hydrate the sidebar inputs and tree state from them.
   if (buildNameInput) buildNameInput.value = data.name || "";
   if (buildDescInput) buildDescInput.value = data.description || "";
+  if (buildAuthorInput) buildAuthorInput.value = data.author || "";
+  if (buildLinkInput) buildLinkInput.value = data.links?.[0]?.url || "";
+  if (data.author || data.links?.[0]?.url) {
+    const extras = buildLinkInput?.closest("details") as
+      | HTMLDetailsElement
+      | null;
+    if (extras) extras.open = true;
+  }
   // Default to the first alphabetical class when the plan has none —
   // the user always lands on a populated tree instead of an empty
   // "pick a class" prompt. The dropdown is already sorted
@@ -43,7 +67,9 @@ export function syncFromWizardStore(): void {
   // default.
   if (!data.class && classSel && classSel.options.length > 0) {
     data.class = classSel.options[0]!.value;
-    window.PoE2Plan.save();
+    // This is a presentation default, not an authored edit. In particular,
+    // opening a v2 plan must stay read-only until the user changes something;
+    // the transactional v3 migration is committed on the first real save.
   }
   if (data.class && data.class !== state.klass) {
     classSel.value = data.class;
@@ -54,11 +80,14 @@ export function syncFromWizardStore(): void {
   // top-level plan field (the captures-era spec moved asc per-capture
   // so the build can level as one asc and respec into another at a
   // snapshot boundary).
-  const activeCap = window.PoE2Plan.captures.active();
+  const activeCap = window.BuildwrightPlan.captures.active();
   const ascendancyValue = activeCap && activeCap.ascendancy;
   if (ascendancyValue) {
-    const opt = [...ascSel.options].find(o => o.value === ascendancyValue);
-    if (opt) { ascSel.value = ascendancyValue; applyAsc(); }
+    const opt = [...ascSel.options].find((o) => o.value === ascendancyValue);
+    if (opt) {
+      ascSel.value = ascendancyValue;
+      applyAsc();
+    }
   }
   {
     const r = resolveAscName(ascendancyValue || null);
@@ -94,8 +123,8 @@ export function applyEffectiveAlloc(eff: Map<string, string> | null): void {
   //   * note          → state.allocationMeta[id].notes
   //   * attrVariantId → state.pickedAttrs[id] (mapped back to name)
   //   * level         → state.allocationMeta[id].level (asc + set only)
-  if (window.PoE2Plan) {
-    const active = window.PoE2Plan.captures.active();
+  if (window.BuildwrightPlan) {
+    const active = window.BuildwrightPlan.captures.active();
     for (const a of (active && active.passives) || []) {
       if (!a || a.id == null) continue;
       const sid = String(a.id);
@@ -109,7 +138,9 @@ export function applyEffectiveAlloc(eff: Map<string, string> | null): void {
       if (a.attrVariantId) {
         const parent = TREE.nodes[sid];
         if (parent && parent.o) {
-          const opt = parent.o.find(o => String(o.id) === String(a.attrVariantId));
+          const opt = parent.o.find((o) =>
+            String(o.id) === String(a.attrVariantId)
+          );
           if (opt) state.pickedAttrs.set(sid, opt.n);
         }
       }
@@ -121,15 +152,15 @@ export function applyEffectiveAlloc(eff: Map<string, string> | null): void {
   updateSelectionUI();
 }
 export function hydrateFromActiveCapture(): void {
-  if (!window.PoE2Plan) return;
-  const eff = window.PoE2Plan.data.effective("passives");
+  if (!window.BuildwrightPlan) return;
+  const eff = window.BuildwrightPlan.data.effective("passives");
   // effective() can return Map (passives) | Skill[] | Item[] | null;
   // narrow to the passives Map shape here at the boundary.
   if (eff instanceof Map) applyEffectiveAlloc(eff);
 }
 
 export function flushPersistNow(): void {
-  if (!window.PoE2Plan) return;
+  if (!window.BuildwrightPlan) return;
   // Belt-and-suspenders: replay mode means state.selected holds a
   // slider-derived view, NOT authored content. Committing it to the
   // active capture would overwrite real authored data. The autosave
@@ -137,15 +168,26 @@ export function flushPersistNow(): void {
   // sites (chip click, snapshot button, export) that flush
   // synchronously before checking replay state.
   if (state.replayActive) return;
-  if (wizardSaveTimer) { clearTimeout(wizardSaveTimer); wizardSaveTimer = null; }
-  const plan = window.PoE2Plan.get();
-  plan.name        = buildNameInput ? buildNameInput.value.trim() : (plan.name || "");
-  plan.description = buildDescInput ? buildDescInput.value.trim() : (plan.description || "");
-  plan.class       = state.klass || null;
-  plan.activeSet   = state.activeSet || "main";
+  if (wizardSaveTimer) {
+    clearTimeout(wizardSaveTimer);
+    wizardSaveTimer = null;
+  }
+  const plan = window.BuildwrightPlan.get();
+  plan.name = buildNameInput ? buildNameInput.value.trim() : (plan.name || "");
+  plan.description = buildDescInput
+    ? buildDescInput.value.trim()
+    : (plan.description || "");
+  const author = buildAuthorInput?.value.trim();
+  if (author) plan.author = author;
+  else delete plan.author;
+  const link = buildLinkInput?.value.trim();
+  if (link) plan.links = [{ url: link }];
+  else delete plan.links;
+  plan.class = state.klass || null;
+  plan.activeSet = state.activeSet || "main";
   // Ascendancy is per-capture — set on the active capture.
-  window.PoE2Plan.captures.setAscendancy(
-    window.PoE2Plan.captures.activeIndex(),
+  window.BuildwrightPlan.captures.setAscendancy(
+    window.BuildwrightPlan.captures.activeIndex(),
     ascDisplayName() || null,
   );
   // state.selected preserves INSERTION ORDER. That order is what the
@@ -167,7 +209,9 @@ export function flushPersistNow(): void {
     // set entries (mains derive level from position in the capture's
     // main-subset). Off-curve allocations would otherwise lose their
     // "taken at level X" timing inside a wide capture range.
-    if (userMeta && typeof userMeta.level === "number") m.level = userMeta.level;
+    if (userMeta && typeof userMeta.level === "number") {
+      m.level = userMeta.level;
+    }
     // Resolve the picked attribute variant (Str/Dex/Int) to its own
     // passive id — that's what GGG's .build references when an
     // attribute node is allocated with a specific variant.
@@ -175,18 +219,18 @@ export function flushPersistNow(): void {
     if (pickName) {
       const parent = TREE.nodes[sid];
       if (parent && parent.o) {
-        const opt = parent.o.find(o => o.n === pickName);
+        const opt = parent.o.find((o) => o.n === pickName);
         if (opt && opt.id != null) m.attrVariantId = String(opt.id);
       }
     }
     if (Object.keys(m).length > 0) metaForCommit.set(sid, m);
   }
-  window.PoE2Plan.data.commit(eff, "passives", metaForCommit);
+  window.BuildwrightPlan.data.commit(eff, "passives", metaForCommit);
   // The commit only persists when PASSIVES changed — but this flush
   // also carries name/description/class mutations. Save explicitly so
   // "type a name, allocate nothing yet" still persists and the chrome
   // refreshes its top-bar name (the Summary step gates on plan.name).
-  window.PoE2Plan.save();
+  window.BuildwrightPlan.save();
   // Dynamic graph owners (currently PoE1 cluster jewels) need the
   // committed allocation map, not the pre-save snapshot. A generated
   // child socket becoming allocated can materialise another nested
@@ -194,7 +238,7 @@ export function flushPersistNow(): void {
   window.dispatchEvent(new CustomEvent("buildwright-passives-change"));
 }
 export function persistToWizardStore(): void {
-  if (!window.PoE2Plan) return;
+  if (!window.BuildwrightPlan) return;
   if (wizardSaveTimer) clearTimeout(wizardSaveTimer);
   wizardSaveTimer = setTimeout(flushPersistNow, 300);
 }
@@ -209,7 +253,10 @@ setTimeout(function start() {
   // tree edits still persisted through direct commit paths, but
   // input-only changes (build name, description) were silently lost.
   // Retry until the sync has happened instead.
-  if (!wizardBuildId) { setTimeout(start, 120); return; }
+  if (!wizardBuildId) {
+    setTimeout(start, 120);
+    return;
+  }
   // Selection / picked-attribute / allocation-meta change touches
   // state.selDirty. Watch that as a coarse trigger.
   //
@@ -245,9 +292,12 @@ setTimeout(function start() {
 // the auto-save tick can detect mutations without re-snapshotting
 // every frame. Just concatenates ids+sets and picks counts.
 export function quickPlanHash(): string {
-  let s = (state.klass || "") + "|" + (state.asc || "") + "|" + state.activeSet + "|";
+  let s = (state.klass || "") + "|" + (state.asc || "") + "|" +
+    state.activeSet + "|";
   s += (buildNameInput ? buildNameInput.value : "") + "|";
   s += (buildDescInput ? buildDescInput.value : "") + "|";
+  s += (buildAuthorInput ? buildAuthorInput.value : "") + "|";
+  s += (buildLinkInput ? buildLinkInput.value : "") + "|";
   s += state.selected.size + ",";
   // Sort keys so order changes don't trip the diff
   const ids = [...state.selected.keys()].sort();

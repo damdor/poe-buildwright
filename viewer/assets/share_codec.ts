@@ -1,6 +1,6 @@
 // Share-code encoder / decoder.
 //
-// Encodes a `poe2-planner-plan` JSON object into a compact URL-safe
+// Encodes a Buildwright plan for either game into a compact URL-safe
 // string by gzipping it and base64url-encoding the bytes. Decoders
 // reverse the process. Native CompressionStream / DecompressionStream
 // — no third-party libs.
@@ -9,9 +9,9 @@
 // `format` + `version` fields before installing. Schema version
 // mismatches refuse cleanly rather than corrupting state.
 
-import type { Plan } from "../../types/shared.d.ts";
+import type { AnyPersistedPlan } from "../../types/shared.d.ts";
 
-async function encode(plan: Plan): Promise<string> {
+async function encode(plan: AnyPersistedPlan): Promise<string> {
   const json = JSON.stringify(plan);
   const blob = new Blob([json]);
   const stream = blob.stream().pipeThrough(new CompressionStream("gzip"));
@@ -19,7 +19,7 @@ async function encode(plan: Plan): Promise<string> {
   return base64UrlEncode(new Uint8Array(buf));
 }
 
-async function decode(code: string): Promise<Plan> {
+async function decode(code: string): Promise<AnyPersistedPlan> {
   if (typeof code !== "string" || code.length === 0) {
     throw new Error("empty share code");
   }
@@ -27,7 +27,7 @@ async function decode(code: string): Promise<Plan> {
   const blob = new Blob([bytes]);
   const stream = blob.stream().pipeThrough(new DecompressionStream("gzip"));
   const text = await new Response(stream).text();
-  return JSON.parse(text) as Plan;
+  return JSON.parse(text) as AnyPersistedPlan;
 }
 
 // Standard base64url alphabet — `-` and `_` instead of `+` and `/`,
@@ -59,15 +59,16 @@ function base64UrlDecode(str: string): Uint8Array<ArrayBuffer> {
 
 // Build a full share URL (origin + /share + #code=...). Caller can
 // override `origin` for testing.
-async function buildUrl(plan: Plan, origin?: string): Promise<string> {
+async function buildUrl(plan: AnyPersistedPlan, origin?: string): Promise<string> {
   const code = await encode(plan);
   return (origin || location.origin) + "/share.html#code=" + code;
 }
 
-// Expose to the global namespace for the classic-<script> wizard pages
-// that consume this. window.PoE2Share is typed via types/poe2.d.ts
-// (PoE2-only surface; the Plan payload types live in types/shared.d.ts).
-window.PoE2Share = { encode, decode, buildUrl };
+// BuildwrightShare is the game-neutral surface. Keep PoE2Share as a
+// compatibility alias while old generated planner bundles still read it.
+const api = { encode, decode, buildUrl };
+window.BuildwrightShare = api;
+window.PoE2Share = api;
 // Module consumers (wizard_chrome's share-recipient path) import
 // directly; the window global stays for the planner bundle.
 export { encode, decode, buildUrl };

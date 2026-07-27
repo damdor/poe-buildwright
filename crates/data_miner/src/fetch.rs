@@ -118,7 +118,15 @@ impl std::error::Error for FetchError {}
 
 /// Ask the patch server for the current CDN base URL + version.
 pub fn patch_info() -> Result<PatchInfo, FetchError> {
-    patch_info_from(PATCH_SERVER)
+    patch_info_for(Game::Poe2)
+}
+
+/// Ask the selected game's patch server for the current CDN version.
+///
+/// Keeping this game-parameterized is important at league launch: PoE1
+/// and PoE2 roll independently even though their bundle protocol is shared.
+pub fn patch_info_for(game: Game) -> Result<PatchInfo, FetchError> {
+    patch_info_from(game.patch_server())
 }
 
 /// As [`patch_info`] against an explicit `host:port` (tests, TW realm).

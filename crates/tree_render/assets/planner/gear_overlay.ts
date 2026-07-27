@@ -5,16 +5,27 @@
 // carries an item NAME (a unique picked from item_catalogue.json, or
 // any freetext base/rare description) plus a note ("any rare with
 // +life and lightning res"). Persists as Capture.items via
-// window.PoE2Plan.data.commit(items, 'items') — the plan
+// window.BuildwrightPlan.data.commit(items, 'items') — the plan
 // schema/plumbing already existed (wizard_sync round-trips it).
 // Rows carry first-party inventory art (unique art via
 // UniqueStashLayout, base art via BaseItemTypes→ItemVisualIdentity)
 // and GGG rarity colors; hover shows the unique's stats or the note.
 // ============================================================================
 import {
-  CHARM_SLOTS, FLASK_SLOTS, GAME, GEAR_SLOTS, ITEM_SLOTS,
-  baseAllowedForPlannerSlot, featureOn, groundingSlot, jewelAllowedInSocket,
-  jewelLocateArtFor, jewelRadiusArtFor, jewelSocketArtForBase, plannerSlot,
+  baseAllowedForPlannerSlot,
+  CHARM_SLOTS,
+  featureOn,
+  FLASK_SLOTS,
+  GAME,
+  GEAR_SLOTS,
+  groundingSlot,
+  ITEM_SLOTS,
+  jewelAllowedInSocket,
+  jewelLocateArtFor,
+  jewelRadiusArtFor,
+  jewelSocketArtForBase,
+  plannerSlot,
+  PROFILE,
 } from "./game.ts";
 import { loadGameAsset } from "./asset_loader.ts";
 import { canRollFamily, itemDomain } from "./item_rules.ts";
@@ -22,12 +33,26 @@ import { state, viewport } from "./state.ts";
 import { requestRender } from "./render.ts";
 import { cascadeJewelOrphans } from "./pathfind.ts";
 import { flushPersistNow } from "./wizard_sync.ts";
+import { emitStateChange, PLANNER_EVENTS } from "./runtime_contract.ts";
 import {
-  clusterSizeForItem, clusterSkillsForSize, clusterTemplateForSize,
-  configureClusterJewels, defaultClusterConfig, syncClusterJewelTrees,
+  clusterSizeForItem,
+  clusterSkillsForSize,
+  clusterTemplateForSize,
+  configureClusterJewels,
+  defaultClusterConfig,
+  syncClusterJewelTrees,
 } from "./cluster_jewels.ts";
+import {
+  migrateItemV2ToV3,
+  projectEquippedItemV3ToV2,
+} from "../../../../viewer/assets/plan_v3.ts";
 import type { ClusterData } from "./cluster_jewels.ts";
-import type { Item } from "../../../../types/shared.d.ts";
+import type {
+  ActorLoadoutV3,
+  InventoryOwnerV3,
+  Item,
+  ItemSocketV3,
+} from "../../../../types/shared.d.ts";
 
 // Games may independently gate gear and jewels. Pull the gear UI out
 // only when gear itself is disabled. Jewel behavior is independently
@@ -38,20 +63,52 @@ if (!GEAR_ON) {
   document.getElementById("gear-strip")?.remove();
   document.getElementById("flask-strip")?.remove();
   document.getElementById("charm-strip")?.remove();
+  document.getElementById("actors-strip")?.remove();
   document.getElementById("guide-open")?.remove();
   document.getElementById("gear-popover")?.remove();
+  document.getElementById("actor-popover")?.remove();
 }
 if (GEAR_ON) {
-  interface UniqueEntry { name: string; base?: string; slot?: string; allowed_slots?: string[]; icon?: string | null; latest_stats?: string; radius?: string; req_level?: number; variants?: { label: string; stats: string }[]; }
-  interface ItemCatalogue { uniques: UniqueEntry[]; }
+  interface UniqueEntry {
+    name: string;
+    /** Exact GGG Words.Text entry; absent for unresolved/fuzzy PoB names. */
+    official_name?: string;
+    base?: string;
+    slot?: string;
+    allowed_slots?: string[];
+    icon?: string | null;
+    latest_stats?: string;
+    radius?: string;
+    req_level?: number;
+    variants?: { label: string; stats: string }[];
+  }
+  interface ItemCatalogue {
+    uniques: UniqueEntry[];
+  }
   interface BaseEntry {
-    name: string; slot?: string; class?: string; lvl?: number; icon?: string;
-    str?: number; dex?: number; int?: number;
-    ar?: number; ev?: number; es?: number; ward?: number; block?: number;
-    ar_range?: [number, number]; ev_range?: [number, number];
-    es_range?: [number, number]; ward_range?: [number, number];
-    dmg?: [number, number]; aps?: number; crit?: number;
-    life_recovery?: number; mana_recovery?: number; recovery_seconds?: number;
+    name: string;
+    slot?: string;
+    class?: string;
+    lvl?: number;
+    icon?: string;
+    str?: number;
+    dex?: number;
+    int?: number;
+    ar?: number;
+    ev?: number;
+    es?: number;
+    ward?: number;
+    block?: number;
+    ar_range?: [number, number];
+    ev_range?: [number, number];
+    es_range?: [number, number];
+    ward_range?: [number, number];
+    dmg?: [number, number];
+    aps?: number;
+    crit?: number;
+    life_recovery?: number;
+    mana_recovery?: number;
+    recovery_seconds?: number;
     implicits?: string[];
     allowed_slots?: string[];
     tags?: string[];
@@ -61,50 +118,108 @@ if (GEAR_ON) {
     grants?: string[];
   }
   interface ModFamily {
-    type: string; kind: string; domains?: string[]; slots: string[];
-    text?: string; stats?: string[]; gates?: [string, number][][];
+    type: string;
+    kind: string;
+    domains?: string[];
+    slots: string[];
+    text?: string;
+    stats?: string[];
+    gates?: [string, number][][];
   }
 
   // Slot board. `cat` = item_catalogue slot families the picker offers
   // for that slot; freetext is always allowed on top.
   const SLOTS = ITEM_SLOTS;
-  const slotByKey = new Map(SLOTS.map(s => [s.key, s]));
-  const flaskKeys = new Set(FLASK_SLOTS.map(s => s.key));
-  const charmKeys = new Set(CHARM_SLOTS.map(s => s.key));
-  const isFlaskSlot = (slot: string): boolean => flaskKeys.has(plannerSlot(slot));
-  const isCharmSlot = (slot: string): boolean => charmKeys.has(plannerSlot(slot));
+  const slotByKey = new Map(SLOTS.map((s) => [s.key, s]));
+  const flaskKeys = new Set(FLASK_SLOTS.map((s) => s.key));
+  const charmKeys = new Set(CHARM_SLOTS.map((s) => s.key));
+  const isFlaskSlot = (slot: string): boolean =>
+    flaskKeys.has(plannerSlot(slot));
+  const isCharmSlot = (slot: string): boolean =>
+    charmKeys.has(plannerSlot(slot));
 
-  const stripEl  = document.getElementById("gear-strip")   as HTMLElement;
-  const listEl   = document.getElementById("gs-list")      as HTMLElement;
+  const stripEl = document.getElementById("gear-strip") as HTMLElement;
+  const listEl = document.getElementById("gs-list") as HTMLElement;
   const capLabel = document.getElementById("gs-cap-label") as HTMLElement;
-  const addBtn   = document.getElementById("gs-add")       as HTMLElement;
+  const addBtn = document.getElementById("gs-add") as HTMLElement;
   const flaskStripEl = document.getElementById("flask-strip") as HTMLElement;
-  const flaskListEl  = document.getElementById("fs-list") as HTMLElement;
+  const flaskListEl = document.getElementById("fs-list") as HTMLElement;
   const flaskCapLabel = document.getElementById("fs-cap-label") as HTMLElement;
   const flaskAddBtn = document.getElementById("fs-add") as HTMLElement;
   const charmStripEl = document.getElementById("charm-strip") as HTMLElement;
   const charmListEl = document.getElementById("cs-list") as HTMLElement;
   const charmCapLabel = document.getElementById("cs-cap-label") as HTMLElement;
   const charmAddBtn = document.getElementById("cs-add") as HTMLElement;
-  const popEl    = document.getElementById("gear-popover") as HTMLElement;
+  const actorStripEl = document.getElementById("actors-strip") as HTMLElement;
+  const actorListEl = document.getElementById("as-list") as HTMLElement;
+  const actorCapLabel = document.getElementById("as-cap-label") as HTMLElement;
+  const actorAddBtn = document.getElementById("as-add") as HTMLButtonElement;
+  const popEl = document.getElementById("gear-popover") as HTMLElement;
   const popTitle = document.getElementById("gp-title") as HTMLElement;
-  const popClose = document.getElementById("gp-close")     as HTMLElement;
-  const popCancel = document.getElementById("gp-cancel")   as HTMLElement;
-  const popApply = document.getElementById("gp-apply")     as HTMLElement;
-  const popRemove = document.getElementById("gp-remove")   as HTMLElement;
-  const popSlot  = document.getElementById("gp-slot")      as HTMLSelectElement;
+  const popClose = document.getElementById("gp-close") as HTMLElement;
+  const popCancel = document.getElementById("gp-cancel") as HTMLElement;
+  const popApply = document.getElementById("gp-apply") as HTMLElement;
+  const popRemove = document.getElementById("gp-remove") as HTMLElement;
+  const popSlot = document.getElementById("gp-slot") as HTMLSelectElement;
   const popInput = document.getElementById("gp-item-input") as HTMLInputElement;
-  const popList  = document.getElementById("gp-item-list") as HTMLElement;
-  const popNote  = document.getElementById("gp-note")      as HTMLTextAreaElement;
-  const baseOpts   = document.getElementById("gp-base-opts")   as HTMLElement;
-  const rarityTabs = document.getElementById("gp-rarity")      as HTMLElement;
-  const statsInput = document.getElementById("gp-stats")       as HTMLInputElement;
-  const statChips  = document.getElementById("gp-stat-chips")  as HTMLElement;
-  if (!stripEl || !listEl || !capLabel || !addBtn || !flaskStripEl ||
-      !flaskListEl || !flaskCapLabel || !flaskAddBtn || !charmStripEl || !charmListEl ||
-      !charmCapLabel || !charmAddBtn || !popEl || !popTitle || !popClose ||
-      !popCancel || !popApply || !popRemove || !popSlot || !popInput ||
-      !popList || !popNote || !baseOpts || !rarityTabs || !statsInput || !statChips) {
+  const popList = document.getElementById("gp-item-list") as HTMLElement;
+  const popNote = document.getElementById("gp-note") as HTMLTextAreaElement;
+  const baseOpts = document.getElementById("gp-base-opts") as HTMLElement;
+  const rarityTabs = document.getElementById("gp-rarity") as HTMLElement;
+  const statsInput = document.getElementById("gp-stats") as HTMLInputElement;
+  const statChips = document.getElementById("gp-stat-chips") as HTMLElement;
+  const itemLevelInput = document.getElementById(
+    "gp-item-level",
+  ) as HTMLInputElement;
+  const qualityInput = document.getElementById(
+    "gp-quality",
+  ) as HTMLInputElement;
+  const corruptedInput = document.getElementById(
+    "gp-corrupted",
+  ) as HTMLInputElement;
+  const socketAdd = document.getElementById(
+    "gp-socket-add",
+  ) as HTMLButtonElement;
+  const socketList = document.getElementById("gp-socket-list") as HTMLElement;
+  const sourceTextInput = document.getElementById(
+    "gp-source-text",
+  ) as HTMLTextAreaElement;
+  const actorPopEl = document.getElementById("actor-popover") as HTMLElement;
+  const actorPopTitle = document.getElementById("ap-title") as HTMLElement;
+  const actorPopClose = document.getElementById(
+    "ap-close",
+  ) as HTMLButtonElement;
+  const actorKindInput = document.getElementById(
+    "ap-kind",
+  ) as HTMLSelectElement;
+  const actorNameInput = document.getElementById("ap-name") as HTMLInputElement;
+  const actorInventoryHelp = document.getElementById(
+    "ap-inventory-help",
+  ) as HTMLElement;
+  const actorInventoryEl = document.getElementById(
+    "ap-inventory",
+  ) as HTMLElement;
+  const actorNotesInput = document.getElementById(
+    "ap-notes",
+  ) as HTMLTextAreaElement;
+  const actorRemove = document.getElementById("ap-remove") as HTMLButtonElement;
+  const actorCancel = document.getElementById("ap-cancel") as HTMLButtonElement;
+  const actorApply = document.getElementById("ap-apply") as HTMLButtonElement;
+  if (
+    !stripEl || !listEl || !capLabel || !addBtn || !flaskStripEl ||
+    !flaskListEl || !flaskCapLabel || !flaskAddBtn || !charmStripEl ||
+    !charmListEl ||
+    !charmCapLabel || !charmAddBtn || !actorStripEl || !actorListEl ||
+    !actorCapLabel || !actorAddBtn || !popEl || !popTitle || !popClose ||
+    !popCancel || !popApply || !popRemove || !popSlot || !popInput ||
+    !popList || !popNote || !baseOpts || !rarityTabs || !statsInput ||
+    !statChips ||
+    !itemLevelInput || !qualityInput || !corruptedInput || !socketAdd ||
+    !socketList || !sourceTextInput || !actorPopEl || !actorPopTitle ||
+    !actorPopClose || !actorKindInput || !actorNameInput ||
+    !actorInventoryHelp || !actorInventoryEl || !actorNotesInput ||
+    !actorRemove || !actorCancel || !actorApply
+  ) {
     throw new Error("gear overlay: missing required DOM element");
   }
   if (!CHARM_SLOTS.length) charmStripEl.remove();
@@ -121,7 +236,7 @@ if (GEAR_ON) {
         renderStrip();
       }
     })
-    .catch(() => { /* freetext-only mode */ });
+    .catch(() => {/* freetext-only mode */});
 
   // Base catalogue (the agent grounding file doubles as the player's
   // base picker + art source for composed "Rare <Base>" items).
@@ -142,22 +257,30 @@ if (GEAR_ON) {
       // agent file (bases.json won't carry spirit/grants until the
       // full bake pipeline decodes the current patch again) — merged
       // after the base map exists; absent locally → no badges.
-      return loadGameAsset<{ bases?: Record<string, { grants?: string[]; spirit?: number }> }>("grantedSkills")
-        .then((g: { bases?: Record<string, { grants?: string[]; spirit?: number }> } | null) => {
-          const gb = g?.bases ?? {};
-          let hit = false;
-          for (const name in gb) {
-            const be = baseByName.get(name.toLowerCase());
-            const entry = gb[name];
-            if (!be || !entry) continue;
-            if (entry.grants?.length && !be.grants) be.grants = entry.grants;
-            if (entry.spirit && !be.spirit) be.spirit = entry.spirit;
-            hit = true;
-          }
-          if (hit) renderStrip();
-        });
+      return loadGameAsset<
+        { bases?: Record<string, { grants?: string[]; spirit?: number }> }
+      >("grantedSkills")
+        .then(
+          (
+            g: {
+              bases?: Record<string, { grants?: string[]; spirit?: number }>;
+            } | null,
+          ) => {
+            const gb = g?.bases ?? {};
+            let hit = false;
+            for (const name in gb) {
+              const be = baseByName.get(name.toLowerCase());
+              const entry = gb[name];
+              if (!be || !entry) continue;
+              if (entry.grants?.length && !be.grants) be.grants = entry.grants;
+              if (entry.spirit && !be.spirit) be.spirit = entry.spirit;
+              hit = true;
+            }
+            if (hit) renderStrip();
+          },
+        );
     })
-    .catch(() => { /* text-only rows */ });
+    .catch(() => {/* text-only rows */});
 
   // Real rollable-mod vocabulary (176 families with CSD-rendered text
   // and the spawn tags that gate where each can roll). Optional — the
@@ -166,49 +289,93 @@ if (GEAR_ON) {
   loadGameAsset<{ mods?: ModFamily[] }>("mods")
     .then((d: { mods?: ModFamily[] } | null) => {
       modFams = d?.mods ?? [];
-      if (GAME.id === "poe1") syncClusterJewelTrees(shownItems(), modFams);
+      if (PROFILE.definition.jewels.clusterExpansion) {
+        syncClusterJewelTrees(shownItems(), modFams);
+      }
     })
-    .catch(() => { /* freetext-only stats */ });
+    .catch(() => {/* freetext-only stats */});
 
-  const esc = (s: unknown): string => String(s ?? "").replace(/[&<>"']/g, c => (
-    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] ?? c
-  ));
+  const esc = (s: unknown): string =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => (
+      {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[c] ?? c
+    ));
 
   // Rarity + art resolution for a strip row. Uniques win (exact
   // catalogue name), then the item's grounded base/rarity fields, then
   // a "Rare <Base>" name-prefix parse for freetext/agent items.
   const RARITY_RE = /^(rare|magic|normal)\s+(.+)$/i;
   const uniqueIcon = (u: UniqueEntry): string | null =>
-    u.icon ?? (u.base ? (baseIconByName.get(u.base.toLowerCase()) ?? null) : null);
+    u.icon ??
+      (u.base ? (baseIconByName.get(u.base.toLowerCase()) ?? null) : null);
+  const itemDisplayName = (it: Item): string =>
+    (it.name || it.uniqueName || it.base || "").trim();
   function displayMods(it: Item): string[] {
     const lines: string[] = [];
     if (it.cluster) {
       lines.push("Adds " + it.cluster.nodeCount + " Passive Skills");
-      const skill = clusterSkillsForSize(it.cluster.size).find(s => s.id === it.cluster!.skill);
+      const skill = clusterSkillsForSize(it.cluster.size).find((s) =>
+        s.id === it.cluster!.skill
+      );
       if (skill) lines.push("Added Small Passive Skills grant: " + skill.stats);
       if (it.cluster.sockets > 0) {
-        lines.push(it.cluster.sockets === 1
-          ? "1 Added Passive Skill is a Jewel Socket"
-          : it.cluster.sockets + " Added Passive Skills are Jewel Sockets");
+        lines.push(
+          it.cluster.sockets === 1
+            ? "1 Added Passive Skill is a Jewel Socket"
+            : it.cluster.sockets + " Added Passive Skills are Jewel Sockets",
+        );
       }
     }
     lines.push(...(it.mods ?? []));
     return lines;
   }
-  function resolveRow(it: Item): { rarity: string; icon: string | null; hover: string } {
-    const nm = (it.name || it.uniqueName || "").trim();
+  function richItemMeta(it: Item): string[] {
+    const meta: string[] = [];
+    if (it.itemLevel != null) meta.push("Item level " + it.itemLevel);
+    if (it.quality != null) meta.push("Quality " + it.quality + "%");
+    if (it.sockets?.length) {
+      const linked = new Map<number, number>();
+      for (const socket of it.sockets) {
+        linked.set(socket.group, (linked.get(socket.group) ?? 0) + 1);
+      }
+      const largestLink = Math.max(...linked.values());
+      meta.push(
+        it.sockets.length + (it.sockets.length === 1 ? " socket" : " sockets") +
+          (largestLink > 1 ? " · " + largestLink + "-linked" : ""),
+      );
+    }
+    if (it.corrupted) meta.push("Corrupted");
+    return meta;
+  }
+  function resolveRow(
+    it: Item,
+  ): { rarity: string; icon: string | null; hover: string } {
+    const nm = itemDisplayName(it);
     const uq = uniqueByName.get((it.uniqueName || nm).toLowerCase());
     if (uq) {
-      return { rarity: "unique", icon: uniqueIcon(uq), hover: uq.latest_stats || it.note || "" };
+      return {
+        rarity: "unique",
+        icon: uniqueIcon(uq),
+        hover: uq.latest_stats || it.note || "",
+      };
     }
     let rarity = (it.rarity || "").toLowerCase();
     let base = it.base || "";
     if (!base) {
       const m = RARITY_RE.exec(nm);
-      if (m) { rarity = rarity || m[1]!.toLowerCase(); base = m[2]!; }
+      if (m) {
+        rarity = rarity || m[1]!.toLowerCase();
+        base = m[2]!;
+      }
     }
-    const icon = base ? (baseIconByName.get(base.toLowerCase()) ?? null)
-                      : (baseIconByName.get(nm.toLowerCase()) ?? null);
+    const icon = base
+      ? (baseIconByName.get(base.toLowerCase()) ?? null)
+      : (baseIconByName.get(nm.toLowerCase()) ?? null);
     const shownMods = displayMods(it);
     const hover = [shownMods.length ? shownMods.join(" · ") : "", it.note || ""]
       .filter(Boolean).join(" — ");
@@ -219,15 +386,10 @@ if (GEAR_ON) {
   // `slot: "flask"`. Use the item's grounded base to display legacy
   // Charms in Charm 1; editing naturally rewrites the explicit slot.
   function itemPlannerSlot(it: Item): string {
-    const slot = plannerSlot(it.slot ?? "");
-    if (GAME.id !== "poe2" || it.slot !== "flask") return slot;
-    const nm = (it.name || it.uniqueName || "").trim();
+    const nm = itemDisplayName(it);
     const uq = uniqueByName.get((it.uniqueName || nm).toLowerCase());
     const baseName = it.base || uq?.base || nm;
-    const b = baseByName.get(baseName.toLowerCase());
-    return baseAllowedForPlannerSlot(GAME.id, "charm1", b?.class, baseName)
-      ? "charm1"
-      : "flask1";
+    return plannerSlot(it.slot ?? "", GAME.id, baseName);
   }
 
   // ---------------------------------------------------------------
@@ -243,21 +405,34 @@ if (GEAR_ON) {
   function baseStatsHtml(b: BaseEntry | undefined, reqLevel?: number): string {
     if (!b && !reqLevel) return "";
     const rows: [string, string][] = [];
-    const ranged = (range: [number, number] | undefined, scalar: number | undefined): string => {
-      if (range && range[1] > 0) return range[0] === range[1] ? String(range[0]) : range[0] + "–" + range[1];
+    const ranged = (
+      range: [number, number] | undefined,
+      scalar: number | undefined,
+    ): string => {
+      if (range && range[1] > 0) {
+        return range[0] === range[1]
+          ? String(range[0])
+          : range[0] + "–" + range[1];
+      }
       return scalar ? String(scalar) : "";
     };
     if (b?.dmg) rows.push(["Physical Damage", b.dmg[0] + "–" + b.dmg[1]]);
     if (b?.crit) rows.push(["Critical Hit Chance", b.crit + "%"]);
     if (b?.aps) rows.push(["Attacks per Second", String(b.aps)]);
-    const ar = ranged(b?.ar_range, b?.ar); if (ar) rows.push(["Armour", ar]);
-    const ev = ranged(b?.ev_range, b?.ev); if (ev) rows.push(["Evasion Rating", ev]);
-    const es = ranged(b?.es_range, b?.es); if (es) rows.push(["Energy Shield", es]);
-    const ward = ranged(b?.ward_range, b?.ward); if (ward) rows.push(["Ward", ward]);
+    const ar = ranged(b?.ar_range, b?.ar);
+    if (ar) rows.push(["Armour", ar]);
+    const ev = ranged(b?.ev_range, b?.ev);
+    if (ev) rows.push(["Evasion Rating", ev]);
+    const es = ranged(b?.es_range, b?.es);
+    if (es) rows.push(["Energy Shield", es]);
+    const ward = ranged(b?.ward_range, b?.ward);
+    if (ward) rows.push(["Ward", ward]);
     if (b?.block) rows.push(["Block Chance", b.block + "%"]);
     if (b?.life_recovery) rows.push(["Recovers", b.life_recovery + " Life"]);
     if (b?.mana_recovery) rows.push(["Recovers", b.mana_recovery + " Mana"]);
-    if (b?.recovery_seconds) rows.push(["Recovery Time", b.recovery_seconds + " sec"]);
+    if (b?.recovery_seconds) {
+      rows.push(["Recovery Time", b.recovery_seconds + " sec"]);
+    }
     const reqs: string[] = [];
     const lvl = reqLevel ?? b?.lvl;
     if (lvl && lvl > 1) reqs.push("Level " + lvl);
@@ -267,30 +442,42 @@ if (GEAR_ON) {
     if (reqs.length) rows.push(["Requires", reqs.join(", ")]);
     if (!rows.length) return "";
     return '<div class="tt-base">' + rows.map(([l, v]) =>
-      '<div class="tt-baseline"><span class="lbl">' + esc(l) + '</span><span class="val">' + esc(v) + "</span></div>"
+      '<div class="tt-baseline"><span class="lbl">' + esc(l) +
+      '</span><span class="val">' + esc(v) + "</span></div>"
     ).join("") + "</div>";
   }
 
   function itemTipHtml(
-    name: string, rarity: string, icon: string | null, metaLine: string,
-    base: BaseEntry | undefined, reqLevel: number | undefined,
-    mods: string[], note: string,
+    name: string,
+    rarity: string,
+    icon: string | null,
+    metaLine: string,
+    base: BaseEntry | undefined,
+    reqLevel: number | undefined,
+    mods: string[],
+    note: string,
   ): string {
-    const art = icon ? '<img class="tt-gem-ic" src="' + esc(icon) + '" alt="">' : "";
+    const art = icon
+      ? '<img class="tt-gem-ic" src="' + esc(icon) + '" alt="">'
+      : "";
     let html = '<div class="tt-head"><div class="tt-headrow">' + art +
-      '<div><div class="tt-name r-' + esc(rarity) + '">' + esc(name) + "</div>" +
+      '<div><div class="tt-name r-' + esc(rarity) + '">' + esc(name) +
+      "</div>" +
       '<div class="tt-meta">' + esc(metaLine) + "</div></div></div></div>";
     html += baseStatsHtml(base, reqLevel);
     if (base?.implicits?.length) {
-      html += '<div class="tt-modlist tt-implicit">' + base.implicits.map(m =>
-        '<div class="tt-modline">' + esc(m) + "</div>").join("") + "</div>";
+      html += '<div class="tt-modlist tt-implicit">' + base.implicits.map((m) =>
+        '<div class="tt-modline">' + esc(m) + "</div>"
+      ).join("") + "</div>";
     }
     if (mods.length) {
-      html += '<div class="tt-modlist">' + mods.map(m =>
-        '<div class="tt-modline">' + esc(m) + "</div>").join("") + "</div>";
+      html += '<div class="tt-modlist">' + mods.map((m) =>
+        '<div class="tt-modline">' + esc(m) + "</div>"
+      ).join("") + "</div>";
     }
     if (note) {
-      html += '<div class="tt-note-section"><div class="tt-note-head">Note</div>' +
+      html +=
+        '<div class="tt-note-section"><div class="tt-note-head">Note</div>' +
         '<div class="ls-tt-note">' + esc(note) + "</div></div>";
     }
     return html;
@@ -299,46 +486,91 @@ if (GEAR_ON) {
   // Resolve a tip key: "unique:<name>" | "base:<name>" | "slot:<slotkey>".
   function tipHtmlFor(key: string): string | null {
     const sep = key.indexOf(":");
-    if (sep < 0) return null;
+    if (sep < 0) {
+      return null;
+    }
     const kind = key.slice(0, sep), ref = key.slice(sep + 1);
     if (kind === "unique") {
       const u = uniqueByName.get(ref.toLowerCase());
-      if (!u) return null;
+      if (!u) {
+        return null;
+      }
       const b = u.base ? baseByName.get(u.base.toLowerCase()) : undefined;
       const mods = (u.latest_stats || "").split(" · ").filter(Boolean);
-      return itemTipHtml(u.name, "unique", uniqueIcon(u),
+      return itemTipHtml(
+        u.name,
+        "unique",
+        uniqueIcon(u),
         ["Unique", u.base || "", u.slot || ""].filter(Boolean).join(" · "),
-        b, u.req_level, mods, "");
+        b,
+        u.req_level,
+        mods,
+        "",
+      );
     }
     if (kind === "base") {
       const b = baseByName.get(ref.toLowerCase());
-      if (!b) return null;
-      return itemTipHtml(b.name, "normal", b.icon ?? null,
-        [b.class || "", "drop level " + (b.lvl || 1)].filter(Boolean).join(" · "),
-        b, undefined, [], "");
+      if (!b) {
+        return null;
+      }
+      return itemTipHtml(
+        b.name,
+        "normal",
+        b.icon ?? null,
+        [b.class || "", "drop level " + (b.lvl || 1)].filter(Boolean).join(
+          " · ",
+        ),
+        b,
+        undefined,
+        [],
+        "",
+      );
     }
     if (kind === "slot") {
       // Jewels are multi-instance: "slot:jewel#<idx>" targets one.
       const hash = ref.indexOf("#");
       const it = hash >= 0
-        ? shownItems().filter(x => (x.slot ?? "") === ref.slice(0, hash))[Number(ref.slice(hash + 1))]
-        : shownItems().find(x => itemPlannerSlot(x) === plannerSlot(ref));
+        ? shownItems().filter((x) =>
+          (x.slot ?? "") === ref.slice(0, hash)
+        )[Number(ref.slice(hash + 1))]
+        : shownItems().find((x) =>
+          itemPlannerSlot(x) === plannerSlot(ref)
+        );
       if (!it) return null;
-      const nm = (it.name || it.uniqueName || "").trim();
+      const nm = itemDisplayName(it);
       const uq = uniqueByName.get((it.uniqueName || nm).toLowerCase());
       if (uq) {
         const b = uq.base ? baseByName.get(uq.base.toLowerCase()) : undefined;
-        const mods = (uq.latest_stats || "").split(" · ").filter(Boolean);
-        return itemTipHtml(uq.name, "unique", uniqueIcon(uq),
-          ["Unique", uq.base || "", it.slot || ""].filter(Boolean).join(" · "),
-          b, uq.req_level, mods, it.note || "");
+        const mods = [...new Set([
+          ...(uq.latest_stats || "").split(" · ").filter(Boolean),
+          ...(it.mods ?? []),
+        ])];
+        return itemTipHtml(
+          uq.name,
+          "unique",
+          uniqueIcon(uq),
+          ["Unique", uq.base || "", it.slot || "", ...richItemMeta(it)]
+            .filter(Boolean).join(" · "),
+          b,
+          uq.req_level,
+          mods,
+          it.note || "",
+        );
       }
       const rv = resolveRow(it);
       const baseName = it.base || RARITY_RE.exec(nm)?.[2] || nm;
       const b = baseByName.get(baseName.toLowerCase());
-      return itemTipHtml(nm, rv.rarity, rv.icon,
-        [b?.class || "", it.slot || ""].filter(Boolean).join(" · "),
-        b, undefined, displayMods(it), it.note || "");
+      return itemTipHtml(
+        nm,
+        rv.rarity,
+        rv.icon,
+        [b?.class || "", it.slot || "", ...richItemMeta(it)]
+          .filter(Boolean).join(" · "),
+        b,
+        undefined,
+        displayMods(it),
+        it.note || "",
+      );
     }
     return null;
   }
@@ -358,9 +590,13 @@ if (GEAR_ON) {
     itemTip.style.left = x + "px";
     itemTip.style.top = y + "px";
   }
-  function hideItemTip(): void { itemTip.classList.remove("show"); }
-  document.addEventListener("mouseover", e => {
-    const el = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-item-tip]");
+  function hideItemTip(): void {
+    itemTip.classList.remove("show");
+  }
+  document.addEventListener("mouseover", (e) => {
+    const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+      "[data-item-tip]",
+    );
     if (el && el.dataset.itemTip) showItemTip(el.dataset.itemTip, el);
     else hideItemTip();
   });
@@ -371,21 +607,63 @@ if (GEAR_ON) {
   // EDITS always target the active capture — the popover paths exit
   // replay first so what you see is what you edit.
   function shownCapIdx(): number {
-    if (!window.PoE2Plan) return -1;
+    if (!window.BuildwrightPlan) return -1;
     return (state.replayActive && state.replayCapIdx >= 0)
       ? state.replayCapIdx
-      : window.PoE2Plan.captures.activeIndex();
+      : window.BuildwrightPlan.captures.activeIndex();
   }
   function shownItems(): Item[] {
-    if (!window.PoE2Plan) return [];
-    const cap = window.PoE2Plan.captures.list()[shownCapIdx()]
-      ?? window.PoE2Plan.captures.active();
+    if (!window.BuildwrightPlan) return [];
+    const cap = window.BuildwrightPlan.captures.list()[shownCapIdx()] ??
+      window.BuildwrightPlan.captures.active();
     return (cap && cap.items) ? cap.items.slice() : [];
   }
   function activeItems(): Item[] {
-    if (!window.PoE2Plan) return [];
-    const cap = window.PoE2Plan.captures.active();
+    if (!window.BuildwrightPlan) return [];
+    const cap = window.BuildwrightPlan.captures.active();
     return (cap && cap.items) ? cap.items.slice() : [];
+  }
+  function shownActors(): ActorLoadoutV3[] {
+    if (!window.BuildwrightPlan) return [];
+    const route = window.BuildwrightPlan.native.route();
+    return structuredClone(
+      route[shownCapIdx()]?.actors ??
+        route.find((candidate) =>
+          candidate.id === window.BuildwrightPlan!.native.get().activeStateId
+        )?.actors ??
+        [],
+    );
+  }
+  function activeNativeStateId(): string | null {
+    return window.BuildwrightPlan?.native.get().activeStateId ?? null;
+  }
+  const actorKindLabel = (kind: ActorLoadoutV3["kind"]): string =>
+    PROFILE.definition.actorKinds.find((candidate) => candidate.kind === kind)
+      ?.label ?? kind;
+
+  function renderActorStrip(captureText: string): void {
+    actorStripEl.hidden = false;
+    actorCapLabel.textContent = captureText;
+    actorListEl.innerHTML = "";
+    const actors = shownActors();
+    if (!actors.length) {
+      const empty = document.createElement("li");
+      empty.className = "ss-empty";
+      empty.textContent = "No actor loadouts in this state.";
+      actorListEl.appendChild(empty);
+      return;
+    }
+    for (const actor of actors) {
+      const row = document.createElement("li");
+      row.className = "ss-row as-row";
+      row.dataset.actorId = actor.id;
+      const count = actor.inventory?.items.length ?? 0;
+      row.innerHTML = '<span class="as-name">' + esc(actor.name) + "</span>" +
+        '<span class="as-items">' + count + (count === 1 ? " item" : " items") +
+        "</span>" +
+        '<span class="as-kind">' + esc(actorKindLabel(actor.kind)) + "</span>";
+      actorListEl.appendChild(row);
+    }
   }
 
   // ---------------------------------------------------------------
@@ -402,21 +680,29 @@ if (GEAR_ON) {
       const li = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "fs-slot" + (!it ? " is-empty" : "") + (it?.note ? " has-note" : "");
+      button.className = "fs-slot" + (!it ? " is-empty" : "") +
+        (it?.note ? " has-note" : "");
       button.dataset.slot = s.key;
-      button.setAttribute("aria-label", s.label + (it ? ": " + (it.name || it.uniqueName || "item") : ": empty"));
+      button.setAttribute(
+        "aria-label",
+        s.label +
+          (it ? ": " + (itemDisplayName(it) || "item") : ": empty"),
+      );
       const num = '<span class="fs-slot-num">' + (i + 1) + "</span>";
       if (it) {
         const rv = resolveRow(it);
         button.dataset.itemTip = "slot:" + s.key;
         const art = rv.icon
-          ? '<img class="fs-item-ic" src="' + esc(rv.icon) + '" alt="" loading="lazy">'
-          : '<span class="fs-item-ic fs-empty-ic r-' + esc(rv.rarity) + '"></span>';
+          ? '<img class="fs-item-ic" src="' + esc(rv.icon) +
+            '" alt="" loading="lazy">'
+          : '<span class="fs-item-ic fs-empty-ic r-' + esc(rv.rarity) +
+            '"></span>';
         // Art-only in the in-tree belt. The accessible label and hover
         // card still expose the complete name, rarity, mods and notes.
         button.innerHTML = num + art;
       } else {
-        button.innerHTML = num + '<span class="fs-empty-ic" aria-hidden="true"></span>';
+        button.innerHTML = num +
+          '<span class="fs-empty-ic" aria-hidden="true"></span>';
       }
       li.appendChild(button);
       target.appendChild(li);
@@ -424,35 +710,45 @@ if (GEAR_ON) {
   }
 
   function renderStrip(): void {
-    if (!window.PoE2Plan) return;
+    if (!window.BuildwrightPlan) return;
     stripEl.hidden = false;
     flaskStripEl.hidden = false;
     if (CHARM_SLOTS.length) charmStripEl.hidden = false;
-    const list = window.PoE2Plan.captures.list();
-    const idx  = shownCapIdx();
+    const list = window.BuildwrightPlan.captures.list();
+    const idx = shownCapIdx();
     const replaying = state.replayActive && state.replayCapIdx >= 0;
+    const shown = list[idx];
     const captureText = list.length > 1
-      ? (replaying ? "replay · " : "") + "snap " + (idx + 1) + "/" + list.length
+      ? (replaying ? "replay · " : "") +
+        (shown?.name || "state " + (idx + 1)) + " · " + (idx + 1) + "/" +
+        list.length
       : "";
     capLabel.textContent = captureText;
     flaskCapLabel.textContent = captureText;
     if (CHARM_SLOTS.length) charmCapLabel.textContent = captureText;
+    renderActorStrip(captureText);
     const items = shownItems();
     listEl.innerHTML = "";
-    const gearKeys = new Set(GEAR_SLOTS.map(s => s.key));
-    const hasGear = items.some(it => gearKeys.has(itemPlannerSlot(it)));
+    const gearKeys = new Set(GEAR_SLOTS.map((s) => s.key));
+    const hasGear = items.some((it) => gearKeys.has(itemPlannerSlot(it)));
     if (!hasGear) {
       const li = document.createElement("li");
       li.className = "ss-empty";
-      li.textContent = "No gear in this snapshot yet.";
+      li.textContent = "No gear in this state yet.";
       listEl.appendChild(li);
     }
     // Board order, not insertion order. Jewels are multi-instance
     // (one per tree socket) — every jewel renders its own row.
-    const bySlot = new Map(items.filter(it => (it.slot ?? "") !== "jewel")
-      .map(it => [itemPlannerSlot(it), it]));
-    const jewels = items.filter(it => (it.slot ?? "") === "jewel");
-    const rowPlan: { s: { key: string; label: string }; it: Item; ji: number | null }[] = [];
+    const bySlot = new Map(
+      items.filter((it) => (it.slot ?? "") !== "jewel")
+        .map((it) => [itemPlannerSlot(it), it]),
+    );
+    const jewels = items.filter((it) => (it.slot ?? "") === "jewel");
+    const rowPlan: {
+      s: { key: string; label: string };
+      it: Item;
+      ji: number | null;
+    }[] = [];
     for (const s of GEAR_SLOTS) {
       if (s.key === "jewel") {
         jewels.forEach((it, ji) => rowPlan.push({ s, it, ji }));
@@ -469,8 +765,10 @@ if (GEAR_ON) {
       const rv = resolveRow(it);
       li.dataset.itemTip = "slot:" + s.key + (ji !== null ? "#" + ji : "");
       const art = rv.icon
-        ? '<img class="gs-item-ic" src="' + esc(rv.icon) + '" alt="" loading="lazy">'
-        : '<span class="gs-item-ic gs-ic-blank r-' + esc(rv.rarity) + '"></span>';
+        ? '<img class="gs-item-ic" src="' + esc(rv.icon) +
+          '" alt="" loading="lazy">'
+        : '<span class="gs-item-ic gs-ic-blank r-' + esc(rv.rarity) +
+          '"></span>';
       // Granted-while-equipped badge: base spirit and/or item-granted
       // skills (from the mined grants data on bases.json). The skill
       // is free — no gem slot; supports attach in-game.
@@ -478,9 +776,12 @@ if (GEAR_ON) {
       let grantHtml = "";
       if (be && (be.spirit || (be.grants && be.grants.length))) {
         const bits: string[] = [];
-        if (be.grants && be.grants.length) bits.push("grants " + be.grants.join(", "));
+        if (be.grants && be.grants.length) {
+          bits.push("grants " + be.grants.join(", "));
+        }
         if (be.spirit) bits.push("+" + be.spirit + " spirit");
-        grantHtml = '<span class="gs-grant" title="Granted while this item is equipped — the skill needs no gem slot; supports attach in-game.">' +
+        grantHtml =
+          '<span class="gs-grant" title="Granted while this item is equipped — the skill needs no gem slot; supports attach in-game.">' +
           esc(bits.join(" · ")) + "</span>";
       }
       // Jewel rows: socket state badge. Socketed = where + how many
@@ -490,17 +791,18 @@ if (GEAR_ON) {
       // jewel socket and pick from the menu, like in-game.
       let socketHtml = "";
       if (ji !== null && it.socket != null) {
-        socketHtml = '<button type="button" class="gs-locate" data-jewel-locate="' + ji +
+        socketHtml =
+          '<button type="button" class="gs-locate" data-jewel-locate="' + ji +
           '" title="Show on tree">◎</button>';
       } else if (ji !== null) {
-        li.title = "Unsocketed — click an allocated jewel socket on the tree to place it";
+        li.title =
+          "Unsocketed — click an allocated jewel socket on the tree to place it";
         li.classList.add("jewel-unsocketed");
       }
-      li.innerHTML =
-        art +
+      li.innerHTML = art +
         '<span class="gs-slot-label">' + esc(s.label) + "</span>" +
         '<span class="gs-item-name r-' + esc(rv.rarity) + '">' +
-          esc(it.name || it.uniqueName || "—") + "</span>" +
+        esc(itemDisplayName(it) || "—") + "</span>" +
         socketHtml +
         grantHtml +
         (it.note ? '<span class="ss-note-dot" title="has note">✎</span>' : "");
@@ -529,23 +831,46 @@ if (GEAR_ON) {
   //   - a socketed radius jewel always shows its (subtle) ring
   //   - clicking an allocated socket opens the jewel picker
   interface JewelSocket {
-    id: number; x: number; y: number; name?: string;
-    sinister?: boolean; special?: boolean;
-    cluster_size?: number; cluster_parent?: number; cluster_outer?: boolean;
+    id: number;
+    x: number;
+    y: number;
+    name?: string;
+    sinister?: boolean;
+    special?: boolean;
+    cluster_size?: number;
+    cluster_parent?: number;
+    cluster_outer?: boolean;
     in_radius: Record<string, number[]>;
   }
   interface JewelData {
     rings: Record<string, { outer: number; inner: number; radius: number }>;
     bases: Record<string, { radius: number }>;
     radius_rolls: Record<string, number>;
-    uniques?: Record<string, { radius?: number; ring?: string; faction?: string; conquerors?: Record<string, number> }>;
+    uniques?: Record<
+      string,
+      {
+        radius?: number;
+        ring?: string;
+        faction?: string;
+        conquerors?: Record<string, number>;
+      }
+    >;
     sockets: JewelSocket[];
     /** Keystone-proximity lists (From Nothing): nodes within radius
      *  1000 of each keystone, the keystone itself excluded. */
-    keystones?: Record<string, { id: number; x: number; y: number; in_radius: number[] }>;
+    keystones?: Record<
+      string,
+      { id: number; x: number; y: number; in_radius: number[] }
+    >;
     /** Timeless conversions: faction + conqueror_index → replacement
      *  keystone (name, csd-rendered stats, icon). */
-    timeless_keystones?: { name: string; faction: string; conqueror_index: number; stats: string; icon: string }[];
+    timeless_keystones?: {
+      name: string;
+      faction: string;
+      conqueror_index: number;
+      stats: string;
+      icon: string;
+    }[];
     cluster?: ClusterData;
   }
   let jewelData: JewelData | null = null;
@@ -562,7 +887,7 @@ if (GEAR_ON) {
         if (!d) return;
         jewelData = d;
         for (const sk of d.sockets) socketById.set(sk.id, sk);
-        if (GAME.id === "poe1" && d.cluster) {
+        if (PROFILE.definition.jewels.clusterExpansion && d.cluster) {
           configureClusterJewels(d.cluster);
           syncClusterJewelTrees(shownItems(), modFams);
         }
@@ -575,7 +900,7 @@ if (GEAR_ON) {
         syncJewelOverlays();
         publishJewelRules();
       })
-      .catch(() => { /* optional */ });
+      .catch(() => {/* optional */});
   }
 
   const sanitizeArt = (n: string): string => n.replace(/[^A-Za-z0-9]/g, "_");
@@ -598,7 +923,7 @@ if (GEAR_ON) {
     const baseName = jewelBaseName(it);
     const native = jewelSocketArtForBase(GAME.id, baseName);
     if (native) chain.push(native);
-    if (GAME.id === "poe1") {
+    if (PROFILE.definition.jewels.nativeSocketArt) {
       const u = uname ? uniqueByName.get(uname.toLowerCase()) : undefined;
       if (u?.icon) chain.push(u.icon);
       else {
@@ -610,7 +935,9 @@ if (GEAR_ON) {
     if (uname) {
       chain.push("/assets/sprites/Jewel_U_" + sanitizeArt(uname) + ".png");
       const u = uniqueByName.get(uname.toLowerCase());
-      if (u?.base) chain.push("/assets/sprites/Jewel_" + sanitizeArt(u.base) + ".png");
+      if (u?.base) {
+        chain.push("/assets/sprites/Jewel_" + sanitizeArt(u.base) + ".png");
+      }
       if (u?.icon) chain.push(u.icon);
     } else if (it.base) {
       chain.push("/assets/sprites/Jewel_" + sanitizeArt(it.base) + ".png");
@@ -646,8 +973,12 @@ if (GEAR_ON) {
       return jewelData?.rings[compact] ? compact : null;
     };
     const lines = (it.mods ?? []).slice();
-    const catalogue = uniqueByName.get((it.uniqueName || it.name || "").toLowerCase());
-    if (catalogue?.latest_stats) lines.push(...catalogue.latest_stats.split(" · "));
+    const catalogue = uniqueByName.get(
+      (it.uniqueName || it.name || "").toLowerCase(),
+    );
+    if (catalogue?.latest_stats) {
+      lines.push(...catalogue.latest_stats.split(" · "));
+    }
     for (const m of lines) {
       const mm = /in (.+?) Ring/i.exec(m);
       const key = mm ? ringKey(mm[1]!) : null;
@@ -697,7 +1028,10 @@ if (GEAR_ON) {
         const up = /Upgrades\s+Radius\s+to\s+(\w+)/i.exec(m);
         if (up) {
           const add = jewelData.radius_rolls[up[1]!] ?? 0;
-          if (add > 0) { r += add; continue; }
+          if (add > 0) {
+            r += add;
+            continue;
+          }
         }
         const mm = /\+\s*\(?(\d+)\)?\s*to\s+Radius/i.exec(m);
         if (mm) r += Number(mm[1]);
@@ -709,9 +1043,14 @@ if (GEAR_ON) {
     const rn = ringNameForJewel(it);
     return rn && jewelData ? (jewelData.rings[rn]?.inner ?? 0) : 0;
   }
-  function nodesInRadius(sock: JewelSocket, radius: number, inner = 0): number[] | null {
+  function nodesInRadius(
+    sock: JewelSocket,
+    radius: number,
+    inner = 0,
+  ): number[] | null {
     if (inner > 0) return sock.in_radius[inner + "-" + radius] ?? null;
-    const keys = Object.keys(sock.in_radius).filter(k => !k.includes("-")).map(Number).sort((a, b) => a - b);
+    const keys = Object.keys(sock.in_radius).filter((k) => !k.includes("-"))
+      .map(Number).sort((a, b) => a - b);
     let best: number | null = null;
     for (const k of keys) if (k <= radius) best = k;
     const key = sock.in_radius[String(radius)] ? radius : best;
@@ -725,13 +1064,17 @@ if (GEAR_ON) {
     return !!(sk?.sinister && activeSinisterIds().has(id));
   };
   function voicesItem(): Item | undefined {
-    return shownItems().find(it => (it.slot ?? "") === "jewel"
-      && (it.name || it.uniqueName) === "Voices"
-      && it.socket != null
-      && jewelFitsSocket(it, socketById.get(it.socket))
-      && state.selected.has(String(it.socket)));
+    return shownItems().find((it) =>
+      (it.slot ?? "") === "jewel" &&
+      (it.name || it.uniqueName) === "Voices" &&
+      it.socket != null &&
+      jewelFitsSocket(it, socketById.get(it.socket)) &&
+      state.selected.has(String(it.socket))
+    );
   }
-  function voicesActive(): boolean { return !!voicesItem(); }
+  function voicesActive(): boolean {
+    return !!voicesItem();
+  }
   // The roll decides HOW MANY sinister sockets activate (2/3/4).
   // Which ones: the N nearest to the Voices socket — deterministic;
   // the game data carries no explicit mapping (assumption, noted).
@@ -740,7 +1083,7 @@ if (GEAR_ON) {
       const mm = /Allocates (\d+) Sinister/i.exec(m);
       if (mm) return Number(mm[1]);
     }
-    const u = uniques.find(x => x.name === "Voices");
+    const u = uniques.find((x) => x.name === "Voices");
     const mm = /Allocates (\d+) Sinister/i.exec(u?.latest_stats || "");
     return mm ? Number(mm[1]) : 0;
   }
@@ -751,11 +1094,14 @@ if (GEAR_ON) {
     if (!home) return new Set();
     const n = voicesCount(v);
     const sins = jewelData.sockets
-      .filter(sk => sk.sinister)
-      .map(sk => ({ id: sk.id, d: (sk.x - home.x) ** 2 + (sk.y - home.y) ** 2 }))
+      .filter((sk) => sk.sinister)
+      .map((sk) => ({
+        id: sk.id,
+        d: (sk.x - home.x) ** 2 + (sk.y - home.y) ** 2,
+      }))
       .sort((a, b) => a.d - b.d)
       .slice(0, n);
-    return new Set(sins.map(x => x.id));
+    return new Set(sins.map((x) => x.id));
   }
 
   // ---------------------------------------------------------------
@@ -800,8 +1146,11 @@ if (GEAR_ON) {
       // ring's Radius field ("Passives in Radius can be Allocated…"),
       // not just the drawn annulus — the ring art is where its OTHER
       // effects apply. Identified by the unique's stat text (data).
-      const u = uniques.find(x => x.name === (it.uniqueName || it.name));
-      if (u && /can be Allocated without being connected/i.test(u.latest_stats || "")) {
+      const u = uniques.find((x) => x.name === (it.uniqueName || it.name));
+      if (
+        u &&
+        /can be Allocated without being connected/i.test(u.latest_stats || "")
+      ) {
         const sock = socketById.get(it.socket);
         // Allocation zone = the full disc bounded by the DRAWN circle
         // (the rolled ring's outer). What the player sees is what
@@ -817,7 +1166,10 @@ if (GEAR_ON) {
     }
     const before = JSON.stringify(window.BuildwrightJewelRules ?? null);
     window.BuildwrightJewelRules = {
-      starts, freeAlloc, freeAllocBySocket, voicesActive: voicesActive(),
+      starts,
+      freeAlloc,
+      freeAllocBySocket,
+      voicesActive: voicesActive(),
     };
     // Rules shrank (jewel unsocketed/moved/removed)? Ring points that
     // lost their justification fall, like in game. Only on CHANGE —
@@ -825,18 +1177,23 @@ if (GEAR_ON) {
     if (before !== JSON.stringify(window.BuildwrightJewelRules)) {
       const dropped = cascadeJewelOrphans();
       if (dropped > 0) {
-        flushPersistNow();   // the sweep ran outside a click flow — persist it
-        window.PoE2Plan?.flash(dropped + " disconnected ring point" + (dropped > 1 ? "s" : "") + " lost with the jewel");
-        window.dispatchEvent(new CustomEvent("poe2-capture-change", { detail: { reason: "jewel-orphans" } }));
+        flushPersistNow(); // the sweep ran outside a click flow — persist it
+        window.BuildwrightPlan?.flash(
+          dropped + " disconnected ring point" + (dropped > 1 ? "s" : "") +
+            " lost with the jewel",
+        );
+        emitStateChange("jewel-orphans");
       }
     }
   }
   function syncJewelState(): void {
-    if (GAME.id === "poe1") syncClusterJewelTrees(shownItems(), modFams);
+    if (PROFILE.definition.jewels.clusterExpansion) {
+      syncClusterJewelTrees(shownItems(), modFams);
+    }
     publishJewelRules();
   }
-  window.addEventListener("poe2-capture-change", syncJewelState);
-  window.addEventListener("poe2-replay-scrub", syncJewelState);
+  window.addEventListener(PLANNER_EVENTS.stateChange, syncJewelState);
+  window.addEventListener(PLANNER_EVENTS.replayScrub, syncJewelState);
   window.addEventListener("buildwright-passives-change", syncJewelState);
 
   // --- Persistent overlays: socketed-jewel art + always-on rings ---
@@ -844,9 +1201,11 @@ if (GEAR_ON) {
   // subtle circle whenever the jewel is slotted — so do we. One img
   // per socketed jewel (+ one ring), synced to the camera every frame
   // (the note-badge pattern; ≤ 19 elements, cheap).
-  const jewelOverlay = document.getElementById("jewel-overlay") as HTMLElement | null;
-  const artEls = new Map<number, HTMLImageElement>();   // socket id → jewel art
-  const ringEls = new Map<number, HTMLElement>();       // socket id → ring
+  const jewelOverlay = document.getElementById("jewel-overlay") as
+    | HTMLElement
+    | null;
+  const artEls = new Map<number, HTMLImageElement>(); // socket id → jewel art
+  const ringEls = new Map<number, HTMLElement>(); // socket id → ring
   // Socket node visual diameter in tree units (jewel frames render at
   // roughly keystone size). Tune here if GGG resizes frames.
   const SOCKET_ART_D = 110;
@@ -873,20 +1232,29 @@ if (GEAR_ON) {
     if (!jewelOverlay || !jewelData) return;
     syncSinisterGlow();
     syncConversions();
-    const items = shownItems().filter(it => (it.slot ?? "") === "jewel");
+    const items = shownItems().filter((it) => (it.slot ?? "") === "jewel");
     const wanted = new Map<number, Item>();
     for (const it of items) {
       const sock = it.socket != null ? socketById.get(it.socket) : undefined;
-      if (it.socket != null && sock && jewelFitsSocket(it, sock) && socketAllocated(it.socket)) {
+      if (
+        it.socket != null && sock && jewelFitsSocket(it, sock) &&
+        socketAllocated(it.socket)
+      ) {
         wanted.set(it.socket, it);
       }
     }
     for (const [sid, el] of artEls) {
-      if (!wanted.has(sid)) { el.remove(); artEls.delete(sid); }
+      if (!wanted.has(sid)) {
+        el.remove();
+        artEls.delete(sid);
+      }
     }
     for (const [sid, el] of ringEls) {
       const it = wanted.get(sid);
-      if (!it || !ringSpecFor(it)) { el.remove(); ringEls.delete(sid); }
+      if (!it || !ringSpecFor(it)) {
+        el.remove();
+        ringEls.delete(sid);
+      }
     }
     for (const [sid, it] of wanted) {
       let img = artEls.get(sid);
@@ -895,7 +1263,9 @@ if (GEAR_ON) {
         img = document.createElement("img");
         img.className = "jewel-in-socket";
         img.alt = "";
-        img.addEventListener("error", () => { img!.style.display = "none"; });
+        img.addEventListener("error", () => {
+          img!.style.display = "none";
+        });
         // Size + place before first paint — otherwise the sprite
         // flashes at natural size in the corner for one frame.
         const sk = socketById.get(sid)!;
@@ -903,7 +1273,8 @@ if (GEAR_ON) {
         const d0 = SOCKET_ART_D * state.scale;
         img.style.width = d0 + "px";
         img.style.height = d0 + "px";
-        img.style.transform = "translate3d(" + (p.x * state.scale + state.tx - d0 / 2) + "px, " +
+        img.style.transform = "translate3d(" +
+          (p.x * state.scale + state.tx - d0 / 2) + "px, " +
           (p.y * state.scale + state.ty - d0 / 2) + "px, 0)";
         jewelOverlay.appendChild(img);
         artEls.set(sid, img);
@@ -931,20 +1302,24 @@ if (GEAR_ON) {
         const d = SOCKET_ART_D * sc;
         el.style.width = d + "px";
         el.style.height = d + "px";
-        el.style.transform = "translate3d(" + (p.x * sc + state.tx - d / 2) + "px, " +
+        el.style.transform = "translate3d(" + (p.x * sc + state.tx - d / 2) +
+          "px, " +
           (p.y * sc + state.ty - d / 2) + "px, 0)";
       }
     }
     if (convEls.size && jewelData?.keystones) {
       const sc = state.scale;
-      const byId = new Map(Object.values(jewelData.keystones).map(k => [String(k.id), k]));
+      const byId = new Map(
+        Object.values(jewelData.keystones).map((k) => [String(k.id), k]),
+      );
       for (const [nid, el] of convEls) {
         const ks = byId.get(nid);
         if (!ks) continue;
-        const d = 68 * sc;   // keystone icon footprint, tree units
+        const d = 68 * sc; // keystone icon footprint, tree units
         el.style.width = d + "px";
         el.style.height = d + "px";
-        el.style.transform = "translate3d(" + (ks.x * sc + state.tx - d / 2) + "px, " +
+        el.style.transform = "translate3d(" + (ks.x * sc + state.tx - d / 2) +
+          "px, " +
           (ks.y * sc + state.ty - d / 2) + "px, 0)";
       }
     }
@@ -956,26 +1331,28 @@ if (GEAR_ON) {
         const d = SOCKET_ART_D * sc;
         el.style.width = d + "px";
         el.style.height = d + "px";
-        el.style.transform = "translate3d(" + (p.x * sc + state.tx - d / 2) + "px, " +
+        el.style.transform = "translate3d(" + (p.x * sc + state.tx - d / 2) +
+          "px, " +
           (p.y * sc + state.ty - d / 2) + "px, 0)";
       }
-      const items = shownItems().filter(it => (it.slot ?? "") === "jewel");
+      const items = shownItems().filter((it) => (it.slot ?? "") === "jewel");
       for (const [sid, el] of ringEls) {
-        const it = items.find(i => i.socket === sid);
+        const it = items.find((i) => i.socket === sid);
         const spec = it ? ringSpecFor(it) : null;
         if (!spec) continue;
         const d = 2 * spec.r * sc;
         el.style.width = d + "px";
         el.style.height = d + "px";
-        el.style.transform = "translate3d(" + (spec.x * sc + state.tx - d / 2) + "px, " +
+        el.style.transform = "translate3d(" + (spec.x * sc + state.tx - d / 2) +
+          "px, " +
           (spec.y * sc + state.ty - d / 2) + "px, 0)";
       }
     }
     requestAnimationFrame(tickJewelOverlays);
   }
   requestAnimationFrame(tickJewelOverlays);
-  window.addEventListener("poe2-capture-change", syncJewelOverlays);
-  window.addEventListener("poe2-replay-scrub", syncJewelOverlays);
+  window.addEventListener(PLANNER_EVENTS.stateChange, syncJewelOverlays);
+  window.addEventListener(PLANNER_EVENTS.replayScrub, syncJewelOverlays);
 
   // Hover ring preview for UNplaced context (row hover / picker) —
   // reuses the same GGG ring art, temporary element.
@@ -990,7 +1367,8 @@ if (GEAR_ON) {
     const sc = state.scale, d = 2 * previewAt.r * sc;
     previewRing.style.width = d + "px";
     previewRing.style.height = d + "px";
-    previewRing.style.transform = "translate3d(" + (previewAt.x * sc + state.tx - d / 2) + "px, " +
+    previewRing.style.transform = "translate3d(" +
+      (previewAt.x * sc + state.tx - d / 2) + "px, " +
       (previewAt.y * sc + state.ty - d / 2) + "px, 0)";
     requestAnimationFrame(tickPreview);
   }
@@ -1023,22 +1401,37 @@ if (GEAR_ON) {
     if (!sock) return;
     pickerSocket = socketId;
     const items = activeItems();
-    const jl = items.filter(it => (it.slot ?? "") === "jewel");
-    const current = jl.find(it => it.socket === socketId);
-    let html = '<div class="jp-head">' + esc(sock.name || "Jewel socket") + "</div>";
+    const jl = items.filter((it) => (it.slot ?? "") === "jewel");
+    const current = jl.find((it) => it.socket === socketId);
+    let html = '<div class="jp-head">' + esc(sock.name || "Jewel socket") +
+      "</div>";
     if (sock.sinister) {
-      html += '<div class="jp-note">Sinister socket — only active while the Voices jewel enables it</div>';
+      html +=
+        '<div class="jp-note">Sinister socket — only active while the Voices jewel enables it</div>';
     } else if (sock.special) {
-      html += '<div class="jp-note">Special socket — has its own rules in-game</div>';
+      html +=
+        '<div class="jp-note">Special socket — has its own rules in-game</div>';
     }
-    if (GAME.id === "poe1" && sock.cluster_size == null) {
-      html += '<div class="jp-note">This is an ordinary jewel socket; cluster jewels require an expansion socket.</div>';
-    } else if (GAME.id === "poe1" && sock.cluster_size != null) {
-      const maxSize = ["Small", "Medium", "Large"][sock.cluster_size] ?? "compatible";
-      html += '<div class="jp-note">Expansion socket — accepts up to a ' + maxSize + ' Cluster Jewel.</div>';
+    if (
+      PROFILE.definition.jewels.clusterExpansion && sock.cluster_size == null
+    ) {
+      html +=
+        '<div class="jp-note">This is an ordinary jewel socket; cluster jewels require an expansion socket.</div>';
+    } else if (
+      PROFILE.definition.jewels.clusterExpansion && sock.cluster_size != null
+    ) {
+      const maxSize = ["Small", "Medium", "Large"][sock.cluster_size] ??
+        "compatible";
+      html += '<div class="jp-note">Expansion socket — accepts up to a ' +
+        maxSize + " Cluster Jewel.</div>";
     }
     pickerEl.innerHTML = html;
-    const mkRow = (it: Item, attrs: Record<string, string>, hint: string, cls = "jp-row"): void => {
+    const mkRow = (
+      it: Item,
+      attrs: Record<string, string>,
+      hint: string,
+      cls = "jp-row",
+    ): void => {
       const b = document.createElement("button");
       b.className = cls;
       for (const k in attrs) b.dataset[k] = attrs[k]!;
@@ -1053,10 +1446,16 @@ if (GEAR_ON) {
       b.append(img, nameEl, hintEl);
       pickerEl.appendChild(b);
     };
-    if (current) mkRow(current, { unsocket: "1" }, "unsocket", "jp-row is-current");
+    if (current) {
+      mkRow(current, { unsocket: "1" }, "unsocket", "jp-row is-current");
+    }
     jl.forEach((it, ji) => {
-      if (it === current) return;
-      if (!jewelFitsSocket(it, sock)) return;
+      if (it === current) {
+        return;
+      }
+      if (!jewelFitsSocket(it, sock)) {
+        return;
+      }
       // Voices creates the sinister sockets — it can't occupy one.
       if (sock.sinister && (it.name || it.uniqueName) === "Voices") return;
       const where = it.socket != null && it.socket !== socketId
@@ -1074,29 +1473,44 @@ if (GEAR_ON) {
     const pad = 8;
     const place = () => {
       const r = pickerEl.getBoundingClientRect();
-      pickerEl.style.left = Math.max(pad, Math.min(cx + 14, window.innerWidth - r.width - pad)) + "px";
-      pickerEl.style.top = Math.max(pad, Math.min(cy - r.height / 2, window.innerHeight - r.height - pad)) + "px";
+      pickerEl.style.left =
+        Math.max(pad, Math.min(cx + 14, window.innerWidth - r.width - pad)) +
+        "px";
+      pickerEl.style.top = Math.max(
+        pad,
+        Math.min(cy - r.height / 2, window.innerHeight - r.height - pad),
+      ) + "px";
     };
     place();
     requestAnimationFrame(place);
   }
-  pickerEl.addEventListener("click", e => {
-    const b = (e.target as HTMLElement | null)?.closest("button") as HTMLElement | null;
+  pickerEl.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement | null)?.closest("button") as
+      | HTMLElement
+      | null;
     if (!b || pickerSocket === null) return;
     const items = activeItems();
-    const jl = items.filter(it => (it.slot ?? "") === "jewel");
+    const jl = items.filter((it) => (it.slot ?? "") === "jewel");
     if (b.dataset.unsocket) {
-      const cur = jl.find(it => it.socket === pickerSocket);
-      if (cur) { delete cur.socket; commitItems(items); }
+      const cur = jl.find((it) => it.socket === pickerSocket);
+      if (cur) {
+        delete cur.socket;
+        commitItems(items);
+      }
     } else if (b.dataset.pick != null) {
       const it = jl[Number(b.dataset.pick)];
       if (it) {
         const sock = socketById.get(pickerSocket);
         if (!jewelFitsSocket(it, sock)) {
-          window.PoE2Plan?.flash("That cluster jewel is too large for this expansion socket", true);
+          window.BuildwrightPlan?.flash(
+            "That cluster jewel is too large for this expansion socket",
+            true,
+          );
           return;
         }
-        for (const o of jl) if (o !== it && o.socket === pickerSocket) delete o.socket;
+        for (const o of jl) {
+          if (o !== it && o.socket === pickerSocket) delete o.socket;
+        }
         it.socket = pickerSocket!;
         commitItems(items);
       }
@@ -1111,19 +1525,28 @@ if (GEAR_ON) {
     closePicker();
     syncJewelOverlays();
   });
-  pickerEl.addEventListener("mouseover", e => {
-    const b = (e.target as HTMLElement | null)?.closest("[data-pick]") as HTMLElement | null;
-    const sock = pickerSocket !== null ? socketById.get(pickerSocket) : undefined;
+  pickerEl.addEventListener("mouseover", (e) => {
+    const b = (e.target as HTMLElement | null)?.closest("[data-pick]") as
+      | HTMLElement
+      | null;
+    const sock = pickerSocket !== null
+      ? socketById.get(pickerSocket)
+      : undefined;
     if (!b || !sock) return;
-    const it = activeItems().filter(x => (x.slot ?? "") === "jewel")[Number(b.dataset.pick)];
+    const it = activeItems().filter((x) =>
+      (x.slot ?? "") === "jewel"
+    )[Number(b.dataset.pick)];
     if (it) {
       const p = socketCoords(sock);
       showPreviewRing(p.x, p.y, radiusForJewel(it));
     }
   });
   pickerEl.addEventListener("mouseout", hidePreviewRing);
-  window.addEventListener("mousedown", e => {
-    if (!pickerEl.classList.contains("hidden") && !pickerEl.contains(e.target as Node)) closePicker();
+  window.addEventListener("mousedown", (e) => {
+    if (
+      !pickerEl.classList.contains("hidden") &&
+      !pickerEl.contains(e.target as Node)
+    ) closePicker();
   });
   // A jewel created from the picker's "+ add a jewel…" lands straight
   // in the socket the picker was opened on.
@@ -1139,20 +1562,27 @@ if (GEAR_ON) {
       return true;
     },
     // Tree tooltip: a converted keystone says what it becomes.
-    conversionForKeystone: (nodeId: string): { title: string; lines: string[] } | null => {
+    conversionForKeystone: (
+      nodeId: string,
+    ): { title: string; lines: string[] } | null => {
       const conv = convCache.get(nodeId) ?? convertedKeystones().get(nodeId);
       if (!conv) return null;
       return {
-        title: "Becomes " + conv.name + " (" + conv.jewel + " — " + conv.conqueror + ")",
+        title: "Becomes " + conv.name + " (" + conv.jewel + " — " +
+          conv.conqueror + ")",
         lines: conv.stats ? conv.stats.split(" · ") : ["(stat text pending)"],
       };
     },
     // Tree tooltip: what's in this socket / what state is it in.
-    infoForSocket: (nodeId: string): { title: string; lines: string[] } | null => {
+    infoForSocket: (
+      nodeId: string,
+    ): { title: string; lines: string[] } | null => {
       const id = Number(nodeId);
       const sk = socketById.get(id);
       if (!sk) return null;
-      const it = shownItems().find(x => (x.slot ?? "") === "jewel" && x.socket === id);
+      const it = shownItems().find((x) =>
+        (x.slot ?? "") === "jewel" && x.socket === id
+      );
       if (it) {
         if (!jewelFitsSocket(it, sk)) {
           return {
@@ -1162,7 +1592,7 @@ if (GEAR_ON) {
         }
         const lines = (it.mods ?? []).slice();
         if (!lines.length) {
-          const u = uniques.find(x => x.name === (it.uniqueName || it.name));
+          const u = uniques.find((x) => x.name === (it.uniqueName || it.name));
           if (u?.latest_stats) lines.push(...u.latest_stats.split(" · "));
         }
         const r = radiusForJewel(it);
@@ -1172,14 +1602,22 @@ if (GEAR_ON) {
       if (sk.sinister) {
         return {
           title: "Sinister socket",
-          lines: [activeSinisterIds().has(id)
-            ? "Active via Voices — click to socket a jewel"
-            : voicesActive()
-              ? "Not among the " + voicesCount(voicesItem()) + " sockets this Voices roll activates"
-              : "Only active while a Voices jewel is socketed"],
+          lines: [
+            activeSinisterIds().has(id)
+              ? "Active via Voices — click to socket a jewel"
+              : voicesActive()
+              ? "Not among the " + voicesCount(voicesItem()) +
+                " sockets this Voices roll activates"
+              : "Only active while a Voices jewel is socketed",
+          ],
         };
       }
-      if (socketAllocated(id)) return { title: "Empty jewel socket", lines: ["Click to socket a jewel"] };
+      if (socketAllocated(id)) {
+        return {
+          title: "Empty jewel socket",
+          lines: ["Click to socket a jewel"],
+        };
+      }
       return null;
     },
   };
@@ -1190,7 +1628,13 @@ if (GEAR_ON) {
   // faction + conqueror indices on the unique, replacement
   // name/stats/icon in timeless_keystones, geometry from keystone
   // and socket positions. ---
-  interface TimelessConv { name: string; stats: string; icon: string; jewel: string; conqueror: string }
+  interface TimelessConv {
+    name: string;
+    stats: string;
+    icon: string;
+    jewel: string;
+    conqueror: string;
+  }
   function timelessConversionFor(it: Item): TimelessConv | null {
     if (!jewelData) return null;
     const uname = it.uniqueName || it.name;
@@ -1198,12 +1642,21 @@ if (GEAR_ON) {
     if (!u?.faction || !u.conquerors) return null;
     // The rolled conqueror rides in the item's variant mods.
     const modText = (it.mods ?? []).join(" ");
-    const conq = Object.keys(u.conquerors).find(c => modText.includes(c));
+    const conq = Object.keys(u.conquerors).find((c) => modText.includes(c));
     if (!conq) return null;
     const idx = u.conquerors[conq]!;
     const tk = jewelData.timeless_keystones?.find(
-      t => t.faction === u.faction && t.conqueror_index === idx);
-    return tk ? { name: tk.name, stats: tk.stats, icon: tk.icon, jewel: uname!, conqueror: conq } : null;
+      (t) => t.faction === u.faction && t.conqueror_index === idx,
+    );
+    return tk
+      ? {
+        name: tk.name,
+        stats: tk.stats,
+        icon: tk.icon,
+        jewel: uname!,
+        conqueror: conq,
+      }
+      : null;
   }
   /** node id (string) → conversion, for every keystone inside a
    *  socketed+allocated timeless jewel's radius. */
@@ -1235,19 +1688,27 @@ if (GEAR_ON) {
     if (!jewelOverlay) return;
     convCache = convertedKeystones();
     for (const [nid, el] of convEls) {
-      if (!convCache.has(nid)) { el.remove(); convEls.delete(nid); }
+      if (!convCache.has(nid)) {
+        el.remove();
+        convEls.delete(nid);
+      }
     }
     for (const [nid, conv] of convCache) {
       let img = convEls.get(nid);
       if (!img) {
         img = document.createElement("img");
-        img.className = "jewel-in-socket";   // same camera-synced style
+        img.className = "jewel-in-socket"; // same camera-synced style
         img.alt = "";
-        img.addEventListener("error", () => { img!.style.display = "none"; });
+        img.addEventListener("error", () => {
+          img!.style.display = "none";
+        });
         jewelOverlay.appendChild(img);
         convEls.set(nid, img);
       }
-      if (!img.src.endsWith(conv.icon)) { img.src = conv.icon; img.style.display = ""; }
+      if (!img.src.endsWith(conv.icon)) {
+        img.src = conv.icon;
+        img.style.display = "";
+      }
       img.title = "Becomes " + conv.name;
     }
   }
@@ -1276,10 +1737,11 @@ if (GEAR_ON) {
       const sc = state.scale, d = SOCKET_ART_D * 1.8 * sc;
       glow.style.width = d + "px";
       glow.style.height = d + "px";
-      glow.style.transform = "translate3d(" + (p.x * sc + state.tx - d / 2) + "px, " +
+      glow.style.transform = "translate3d(" + (p.x * sc + state.tx - d / 2) +
+        "px, " +
         (p.y * sc + state.ty - d / 2) + "px, 0)";
     };
-    sync();                       // sized/placed BEFORE first paint
+    sync(); // sized/placed BEFORE first paint
     jewelOverlay.appendChild(glow);
     const tick = () => {
       if (!glow.isConnected) return;
@@ -1289,21 +1751,25 @@ if (GEAR_ON) {
     requestAnimationFrame(tick);
     setTimeout(() => glow.remove(), 2600);
   }
-  window.addEventListener("keydown", e => {
-    if (e.key === "Escape" && !pickerEl.classList.contains("hidden")) closePicker();
+  window.addEventListener("keydown", (e) => {
+    if (
+      e.key === "Escape" && !pickerEl.classList.contains("hidden")
+    ) closePicker();
   });
   // Row hover previews the socketed jewel's radius on the tree.
-  listEl.addEventListener("mouseover", e => {
-    const row = (e.target as HTMLElement | null)?.closest(".gs-row") as HTMLElement | null;
+  listEl.addEventListener("mouseover", (e) => {
+    const row = (e.target as HTMLElement | null)?.closest(".gs-row") as
+      | HTMLElement
+      | null;
     if (!row || row.dataset.jewelIdx == null) return;
-    const jl = shownItems().filter(it => (it.slot ?? "") === "jewel");
+    const jl = shownItems().filter((it) => (it.slot ?? "") === "jewel");
     const it = jl[Number(row.dataset.jewelIdx)];
     if (it && it.socket != null) {
       const spec = ringSpecFor(it);
       if (spec) showPreviewRing(spec.x, spec.y, spec.r);
     }
   });
-  listEl.addEventListener("mouseout", e => {
+  listEl.addEventListener("mouseout", (e) => {
     const row = (e.target as HTMLElement | null)?.closest(".gs-row");
     if (row) hidePreviewRing();
   });
@@ -1326,26 +1792,42 @@ if (GEAR_ON) {
     "Helmet": ["helmet", "armour"],
     "Gloves": ["gloves", "armour"],
     "Boots": ["boots", "armour"],
-    "Shield": ["shield", "armour"], "Buckler": ["shield", "armour"],
-    "Focus": ["focus"], "Quiver": ["quiver"],
-    "Amulet": ["amulet"], "Talisman": ["amulet"],
-    "Ring": ["ring"], "Belt": ["belt"],
+    "Shield": ["shield", "armour"],
+    "Buckler": ["shield", "armour"],
+    "Focus": ["focus"],
+    "Quiver": ["quiver"],
+    "Amulet": ["amulet"],
+    "Talisman": ["amulet"],
+    "Ring": ["ring"],
+    "Belt": ["belt"],
     "Claw": ["claw", "weapon"],
-    "Dagger": ["dagger", "weapon"], "Rune Dagger": ["rune_dagger", "dagger", "weapon"],
+    "Dagger": ["dagger", "weapon"],
+    "Rune Dagger": ["rune_dagger", "dagger", "weapon"],
     "One Hand Sword": ["sword", "one_hand_weapon", "weapon"],
-    "Thrusting One Hand Sword": ["sword", "thrusting_sword", "one_hand_weapon", "weapon"],
+    "Thrusting One Hand Sword": [
+      "sword",
+      "thrusting_sword",
+      "one_hand_weapon",
+      "weapon",
+    ],
     "Two Hand Sword": ["sword", "two_hand_weapon", "weapon"],
     "One Hand Axe": ["axe", "one_hand_weapon", "weapon"],
     "Two Hand Axe": ["axe", "two_hand_weapon", "weapon"],
-    "One Hand Mace": ["mace", "weapon"], "Two Hand Mace": ["mace", "weapon"],
+    "One Hand Mace": ["mace", "weapon"],
+    "Two Hand Mace": ["mace", "weapon"],
     "Sceptre": ["sceptre"],
-    "Spear": ["spear", "weapon"], "Bow": ["bow", "weapon"],
-    "Crossbow": ["crossbow", "weapon"], "Wand": ["wand", "weapon"],
-    "Staff": ["staff", "weapon"], "Warstaff": ["staff", "weapon"],
+    "Spear": ["spear", "weapon"],
+    "Bow": ["bow", "weapon"],
+    "Crossbow": ["crossbow", "weapon"],
+    "Wand": ["wand", "weapon"],
+    "Staff": ["staff", "weapon"],
+    "Warstaff": ["staff", "weapon"],
     "FishingRod": ["fishing_rod", "weapon"],
-    "LifeFlask": ["life_flask", "flask"], "ManaFlask": ["mana_flask", "flask"],
+    "LifeFlask": ["life_flask", "flask"],
+    "ManaFlask": ["mana_flask", "flask"],
     "HybridFlask": ["life_flask", "mana_flask", "flask"],
-    "UtilityFlask": ["utility_flask", "flask"], "Tincture": ["tincture"],
+    "UtilityFlask": ["utility_flask", "flask"],
+    "Tincture": ["tincture"],
     "Jewel": ["jewel"],
   };
   function baseTags(b: BaseEntry): Set<string> {
@@ -1353,10 +1835,91 @@ if (GEAR_ON) {
     for (const ct of CLASS_TAGS[b.class ?? ""] ?? []) t.add(ct);
     return t;
   }
-  let draftBase: BaseEntry | null = null;  // picked base, or null
+  let draftBase: BaseEntry | null = null; // picked base, or null
   let draftRarity = "rare";
   let draftCluster: NonNullable<Item["cluster"]> | null = null;
+  let draftSockets: ItemSocketV3[] = [];
   const RARITY_ORDER = ["normal", "magic", "rare"];
+
+  function renderDraftSockets(): void {
+    socketList.innerHTML = "";
+    if (!draftSockets.length) {
+      const empty = document.createElement("div");
+      empty.className = "gp-socket-empty";
+      empty.textContent = "No item sockets recorded.";
+      socketList.appendChild(empty);
+      return;
+    }
+    draftSockets.forEach((socket, index) => {
+      const row = document.createElement("div");
+      row.className = "gp-socket-row";
+
+      const group = document.createElement("input");
+      group.type = "number";
+      group.min = "0";
+      group.step = "1";
+      group.value = String(socket.group);
+      group.setAttribute("aria-label", `Socket ${index + 1} link group`);
+      group.title = "Link group";
+      group.addEventListener("input", () => {
+        socket.group = Math.max(0, Math.trunc(Number(group.value) || 0));
+      });
+
+      const color = document.createElement("select");
+      color.setAttribute("aria-label", `Socket ${index + 1} color`);
+      for (
+        const [value, label] of [
+          ["", "No color"],
+          ["R", "Red"],
+          ["G", "Green"],
+          ["B", "Blue"],
+          ["W", "White"],
+        ] as const
+      ) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        color.appendChild(option);
+      }
+      color.value = socket.color ?? "";
+      color.addEventListener("change", () => {
+        if (color.value) socket.color = color.value;
+        else delete socket.color;
+      });
+
+      const kind = document.createElement("input");
+      kind.type = "text";
+      kind.placeholder = "gem / abyss / rune";
+      kind.value = socket.kind ?? "";
+      kind.setAttribute("aria-label", `Socket ${index + 1} kind`);
+      kind.addEventListener("input", () => {
+        const value = kind.value.trim();
+        if (value) socket.kind = value;
+        else delete socket.kind;
+      });
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "gp-socket-remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => {
+        draftSockets.splice(index, 1);
+        renderDraftSockets();
+      });
+
+      row.append(group, color, kind, remove);
+      socketList.appendChild(row);
+    });
+  }
+
+  socketAdd.addEventListener("click", () => {
+    const nextGroup = draftSockets.reduce(
+      (max, socket) => Math.max(max, socket.group),
+      -1,
+    ) + 1;
+    draftSockets.push({ group: nextGroup });
+    renderDraftSockets();
+  });
 
   // Cluster-jewel tree properties are enchants/structure, not ordinary
   // prefixes and suffixes. Keep them in dedicated controls while the
@@ -1373,17 +1936,24 @@ if (GEAR_ON) {
     '<label>Passive count</label><span data-cluster-control="nodes"></span>' +
     '<label>Jewel sockets</label><span data-cluster-control="sockets"></span>' +
     '<div class="gp-cluster-note">“also grant” mods apply to every repeated small node; ' +
-    '“1 Added Passive Skill is…” mods become distinct notables.</div>';
-  clusterWrap.querySelector('[data-cluster-control="skill"]')?.appendChild(clusterSkillSel);
-  clusterWrap.querySelector('[data-cluster-control="nodes"]')?.appendChild(clusterNodesSel);
-  clusterWrap.querySelector('[data-cluster-control="sockets"]')?.appendChild(clusterSocketsValue);
+    "“1 Added Passive Skill is…” mods become distinct notables.</div>";
+  clusterWrap.querySelector('[data-cluster-control="skill"]')?.appendChild(
+    clusterSkillSel,
+  );
+  clusterWrap.querySelector('[data-cluster-control="nodes"]')?.appendChild(
+    clusterNodesSel,
+  );
+  clusterWrap.querySelector('[data-cluster-control="sockets"]')?.appendChild(
+    clusterSocketsValue,
+  );
   rarityTabs.insertAdjacentElement("afterend", clusterWrap);
 
   function syncClusterControls(): void {
     const size = draftBase
       ? clusterSizeForItem({ base: draftBase.name })
       : null;
-    const on = GAME.id === "poe1" && baseActive() && !!size;
+    const on = PROFILE.definition.jewels.clusterExpansion && baseActive() &&
+      !!size;
     clusterWrap.classList.toggle("hidden", !on);
     if (!on || !size) {
       draftCluster = null;
@@ -1403,7 +1973,8 @@ if (GEAR_ON) {
     for (const skill of skills) {
       const option = document.createElement("option");
       option.value = skill.id;
-      option.textContent = skill.name + (skill.stats ? " — " + skill.stats : "");
+      option.textContent = skill.name +
+        (skill.stats ? " — " + skill.stats : "");
       clusterSkillSel.appendChild(option);
     }
     clusterSkillSel.value = draftCluster.skill;
@@ -1420,7 +1991,8 @@ if (GEAR_ON) {
     }
     clusterNodesSel.value = String(draftCluster.nodeCount);
     const socketCount = size === "Large" ? 2 : size === "Medium" ? 1 : 0;
-    clusterSocketsValue.textContent = `${socketCount} (fixed by ${size} Cluster Jewel)`;
+    clusterSocketsValue.textContent =
+      `${socketCount} (fixed by ${size} Cluster Jewel)`;
     draftCluster.nodeCount = Number(clusterNodesSel.value);
     draftCluster.sockets = socketCount;
   }
@@ -1449,7 +2021,9 @@ if (GEAR_ON) {
   function enforceRarity(): void {
     const n = selectedMods.length;
     const floor = n > 2 ? "rare" : n > 0 ? "magic" : "normal";
-    const max = (isFlaskSlot(popSlot.value) || isCharmSlot(popSlot.value)) ? "magic" : "rare";
+    const max = (isFlaskSlot(popSlot.value) || isCharmSlot(popSlot.value))
+      ? "magic"
+      : "rare";
     const maxIdx = RARITY_ORDER.indexOf(max);
     // Imported/freetext flask data may contain more than two lines;
     // it remains editable without pretending flasks can become rare.
@@ -1465,14 +2039,17 @@ if (GEAR_ON) {
   // picked base EXACTLY — deriving visibility on every refresh means
   // no interaction path can leave them up for a unique or freetext.
   function baseActive(): boolean {
-    return !!draftBase
-      && popInput.value.trim().toLowerCase() === draftBase.name.toLowerCase();
+    return !!draftBase &&
+      popInput.value.trim().toLowerCase() === draftBase.name.toLowerCase();
   }
   function syncBaseOpts(): void {
     const on = baseActive();
     baseOpts.classList.toggle("hidden", !on);
     syncClusterControls();
-    if (on) { refreshChips(); enforceRarity(); }
+    if (on) {
+      refreshChips();
+      enforceRarity();
+    }
     syncVariantSel();
   }
 
@@ -1483,21 +2060,25 @@ if (GEAR_ON) {
   // in plans, shares, and to agents like any other mod line.
   const variantWrap = document.createElement("div");
   variantWrap.className = "gp-variant hidden";
-  variantWrap.innerHTML = '<label>Variant</label>';
+  variantWrap.innerHTML = "<label>Variant</label>";
   const variantSel = document.createElement("select");
   variantWrap.appendChild(variantSel);
   popInput.parentElement?.insertAdjacentElement("afterend", variantWrap);
   const FN_LINE = (k: string): string =>
-    "Passives in Radius of " + k + " can be Allocated without being connected to your tree";
+    "Passives in Radius of " + k +
+    " can be Allocated without being connected to your tree";
   function currentVariants(): { label: string; stats: string }[] {
     if (!draftUnique) return [];
-    const u = uniques.find(x => x.name === draftUnique);
+    const u = uniques.find((x) => x.name === draftUnique);
     if (u?.variants?.length) return u.variants;
     // From Nothing rolls WHICH keystone — the domain is every
     // keystone on the tree (our own data), so the picker exists even
     // while the unique's stats are pending upstream.
     if (draftUnique === "From Nothing" && jewelData?.keystones) {
-      return Object.keys(jewelData.keystones).sort().map(k => ({ label: k, stats: FN_LINE(k) }));
+      return Object.keys(jewelData.keystones).sort().map((k) => ({
+        label: k,
+        stats: FN_LINE(k),
+      }));
     }
     return [];
   }
@@ -1506,7 +2087,8 @@ if (GEAR_ON) {
   // the Notes field (this is a planner, not a PoB replacement).
   const pendingNote = document.createElement("div");
   pendingNote.className = "gp-pending hidden";
-  pendingNote.textContent = "Mod data for this unique is pending — describe your copy's roll in Notes below.";
+  pendingNote.textContent =
+    "Mod data for this unique is pending — describe your copy's roll in Notes below.";
   variantWrap.insertAdjacentElement("afterend", pendingNote);
   // Read-only stat lines (with roll ranges) for the drafted unique —
   // fixed rolls; the Variant select above covers the rollable part.
@@ -1517,14 +2099,20 @@ if (GEAR_ON) {
   function syncVariantSel(preselectMods?: string[]): void {
     void preselectMods;
     const vs = currentVariants();
-    const u = draftUnique ? uniques.find(x => x.name === draftUnique) : undefined;
-    const dataless = !!u && !baseActive() && !vs.length && !(u.latest_stats || "").trim();
+    const u = draftUnique
+      ? uniques.find((x) => x.name === draftUnique)
+      : undefined;
+    const dataless = !!u && !baseActive() && !vs.length &&
+      !(u.latest_stats || "").trim();
     pendingNote.classList.toggle("hidden", !dataless);
-    const lines = (u && !baseActive() ? (u.latest_stats || "") : "").split(" · ").filter(Boolean);
+    const lines = (u && !baseActive() ? (u.latest_stats || "") : "").split(
+      " · ",
+    ).filter(Boolean);
     uniqueStats.classList.toggle("hidden", !lines.length);
     if (lines.length) {
-      uniqueStats.innerHTML = '<div class="us-head">' + esc(u!.name) + " — rolls</div>" +
-        lines.map(l => '<div class="us-line">' + esc(l) + "</div>").join("");
+      uniqueStats.innerHTML = '<div class="us-head">' + esc(u!.name) +
+        " — rolls</div>" +
+        lines.map((l) => '<div class="us-line">' + esc(l) + "</div>").join("");
     }
     variantWrap.classList.toggle("hidden", vs.length === 0);
     if (!vs.length) return;
@@ -1534,18 +2122,22 @@ if (GEAR_ON) {
     // Marauder|Warrior, Duelist|Mercenary, Templar|Druid) — append
     // the PoE2 class so nobody has to know tree archaeology.
     const START_POS: Record<string, string> = {
-      Shadow: "Monk", Marauder: "Warrior", Duelist: "Mercenary", Templar: "Druid",
+      Shadow: "Monk",
+      Marauder: "Warrior",
+      Duelist: "Mercenary",
+      Templar: "Druid",
     };
     vs.forEach((v, i) => {
       const o = document.createElement("option");
       o.value = String(i);
       const poe2 = START_POS[v.label];
-      o.textContent = (poe2 ? v.label + " (" + poe2 + "'s start)" : v.label) + " — " + v.stats;
+      o.textContent = (poe2 ? v.label + " (" + poe2 + "'s start)" : v.label) +
+        " — " + v.stats;
       variantSel.appendChild(o);
     });
     if (preselectMods?.length) {
       const joined = preselectMods.join(" · ");
-      const i = vs.findIndex(v => v.stats === joined);
+      const i = vs.findIndex((v) => v.stats === joined);
       if (i >= 0) variantSel.value = String(i);
     }
   }
@@ -1555,20 +2147,28 @@ if (GEAR_ON) {
   function affixCap(): number {
     return (isFlaskSlot(popSlot.value) || isCharmSlot(popSlot.value))
       ? 1
-      : popSlot.value === "jewel" ? 2 : 3;
+      : popSlot.value === "jewel"
+      ? 2
+      : 3;
   }
   function kindOf(label: string): string {
-    return modFams.find(f => (f.text || f.type) === label)?.kind ?? "";
+    return modFams.find((f) => (f.text || f.type) === label)?.kind ?? "";
   }
   function toggleMod(label: string): void {
-    const i = selectedMods.findIndex(m => m.toLowerCase() === label.toLowerCase());
+    const i = selectedMods.findIndex((m) =>
+      m.toLowerCase() === label.toLowerCase()
+    );
     if (i >= 0) selectedMods.splice(i, 1);
     else {
       const kind = kindOf(label);
       if (kind === "prefix" || kind === "suffix") {
-        const n = selectedMods.filter(m => kindOf(m) === kind).length;
+        const n = selectedMods.filter((m) => kindOf(m) === kind).length;
         if (n >= affixCap()) {
-          window.PoE2Plan?.flash("An item takes at most " + affixCap() + " " + kind + (affixCap() > 1 ? "es" : "") + " — remove one first", true);
+          window.BuildwrightPlan?.flash(
+            "An item takes at most " + affixCap() + " " + kind +
+              (affixCap() > 1 ? "es" : "") + " — remove one first",
+            true,
+          );
           return;
         }
       }
@@ -1594,10 +2194,10 @@ if (GEAR_ON) {
     const tags = baseTags(base);
     if (draftCluster?.skill) tags.add(draftCluster.skill);
     const pool = modFams
-      .filter(f => canRollFamily(f, tags, itemDomain(base.class, tags)))
+      .filter((f) => canRollFamily(f, tags, itemDomain(base.class, tags)))
       .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "prefix" ? -1 : 1));
     const isSel = (label: string): boolean =>
-      selectedMods.some(m => m.toLowerCase() === label.toLowerCase());
+      selectedMods.some((m) => m.toLowerCase() === label.toLowerCase());
     // Two fixed zones: the item's chosen mods as pills up top (with
     // the affix budget), and a real SCROLLABLE list for the rollable
     // pool below — one mod per row, kind-tagged, searchable.
@@ -1605,16 +2205,19 @@ if (GEAR_ON) {
       const head = document.createElement("div");
       head.className = "gp-chip-head";
       const cap = affixCap();
-      const np = selectedMods.filter(m => kindOf(m) === "prefix").length;
-      const ns = selectedMods.filter(m => kindOf(m) === "suffix").length;
-      head.textContent = "On item — " + np + "/" + cap + " prefixes · " + ns + "/" + cap + " suffixes";
+      const np = selectedMods.filter((m) => kindOf(m) === "prefix").length;
+      const ns = selectedMods.filter((m) => kindOf(m) === "suffix").length;
+      head.textContent = "On item — " + np + "/" + cap + " prefixes · " + ns +
+        "/" + cap + " suffixes";
       statChips.appendChild(head);
       const onItem = document.createElement("div");
       onItem.className = "gp-on-item";
       for (const m of selectedMods) {
         const k = kindOf(m);
         const cls = "gp-chip on" + (k === "suffix" ? " gp-chip-suf" : "");
-        onItem.appendChild(chip(m, cls, (k || "custom") + " — click to remove"));
+        onItem.appendChild(
+          chip(m, cls, (k || "custom") + " — click to remove"),
+        );
       }
       statChips.appendChild(onItem);
     }
@@ -1625,21 +2228,32 @@ if (GEAR_ON) {
     poolEl.className = "gp-pool";
     let shownCount = 0;
     for (const kind of ["prefix", "suffix"]) {
-      const rows = pool.filter(f =>
+      const rows = pool.filter((f) =>
         f.kind === kind && !isSel(f.text || f.type) &&
-        (!q || (f.text || f.type).toLowerCase().includes(q) || f.type.toLowerCase().includes(q)));
+        (!q || (f.text || f.type).toLowerCase().includes(q) ||
+          f.type.toLowerCase().includes(q))
+      );
       if (!rows.length) continue;
       const cap = affixCap();
-      const used = selectedMods.filter(m => kindOf(m) === kind).length;
+      const used = selectedMods.filter((m) => kindOf(m) === kind).length;
       const full = used >= cap;
       const head = document.createElement("div");
       head.className = "gp-pool-head" + (full ? " is-full" : "");
       head.textContent = kind === "prefix" ? "Prefixes" : "Suffixes";
-      head.textContent += full ? " — full (" + used + "/" + cap + ")" : " (" + used + "/" + cap + " used)";
+      head.textContent += full
+        ? " — full (" + used + "/" + cap + ")"
+        : " (" + used + "/" + cap + " used)";
       poolEl.appendChild(head);
-      if (full) { shownCount++; continue; }
+      if (full) {
+        shownCount++;
+        continue;
+      }
       for (const f of rows) {
-        const row = chip(f.text || f.type, "gp-pool-row", f.type + " (" + kind + ")");
+        const row = chip(
+          f.text || f.type,
+          "gp-pool-row",
+          f.type + " (" + kind + ")",
+        );
         poolEl.appendChild(row);
         shownCount++;
       }
@@ -1647,7 +2261,8 @@ if (GEAR_ON) {
     if (!shownCount) {
       const none = document.createElement("span");
       none.className = "gp-chip-none";
-      none.textContent = "no rollable mod matches “" + statsInput.value.trim() + "”";
+      none.textContent = "no rollable mod matches “" + statsInput.value.trim() +
+        "”";
       poolEl.appendChild(none);
     }
     statChips.appendChild(poolEl);
@@ -1659,18 +2274,32 @@ if (GEAR_ON) {
     const q = (popInput.value || "").toLowerCase().trim();
     const cats = new Set(slot ? slot.cat : []);
     const wanted = baseSlotOf(popSlot.value);
-    let pool = uniques.filter(u => u.allowed_slots?.length
-      ? u.allowed_slots.includes(wanted)
-      : (!u.slot || cats.size === 0 || cats.has(u.slot)));
-    pool = pool.filter(u => {
+    let pool = uniques.filter((u) =>
+      u.allowed_slots?.length
+        ? u.allowed_slots.includes(wanted)
+        : (!u.slot || cats.size === 0 || cats.has(u.slot))
+    );
+    pool = pool.filter((u) => {
       const b = u.base ? baseByName.get(u.base.toLowerCase()) : undefined;
-      return baseAllowedForPlannerSlot(GAME.id, popSlot.value, b?.class, u.base ?? "");
+      return baseAllowedForPlannerSlot(
+        GAME.id,
+        popSlot.value,
+        b?.class,
+        u.base ?? "",
+      );
     });
     if (popSlot.value === "jewel" && pendingSocketForNew != null) {
       const sock = socketById.get(pendingSocketForNew);
-      pool = pool.filter(u => jewelAllowedInSocket(GAME.id, u.base ?? "", sock));
+      pool = pool.filter((u) =>
+        jewelAllowedInSocket(GAME.id, u.base ?? "", sock)
+      );
     }
-    if (q) pool = pool.filter(u => u.name.toLowerCase().includes(q) || (u.base || "").toLowerCase().includes(q));
+    if (q) {
+      pool = pool.filter((u) =>
+        u.name.toLowerCase().includes(q) ||
+        (u.base || "").toLowerCase().includes(q)
+      );
+    }
     const shown = pool.slice(0, q ? 8 : 12);
     popList.innerHTML = "";
     comboFocusIdx = -1;
@@ -1680,10 +2309,10 @@ if (GEAR_ON) {
       li.dataset.itemTip = "unique:" + u.name;
       const icon = uniqueIcon(u);
       const art = icon
-        ? '<img class="gp-item-ic" src="' + esc(icon) + '" alt="" loading="lazy">'
+        ? '<img class="gp-item-ic" src="' + esc(icon) +
+          '" alt="" loading="lazy">'
         : '<span class="gp-item-ic gs-ic-blank r-unique"></span>';
-      li.innerHTML =
-        art +
+      li.innerHTML = art +
         '<span class="sp-combo-name r-unique">' + esc(u.name) + "</span>" +
         (u.base ? '<span class="sp-combo-tag">' + esc(u.base) + "</span>" : "");
       popList.appendChild(li);
@@ -1691,15 +2320,19 @@ if (GEAR_ON) {
     // Base rows: endgame tiers first (highest drop level), filtered to
     // the slot; picking one opens the rarity + priority-stats controls.
     const bslot = baseSlotOf(popSlot.value);
-    let bpool = bases.filter(b => b.allowed_slots?.length
-      ? b.allowed_slots.includes(bslot)
-      : b.slot === bslot);
-    bpool = bpool.filter(b => baseAllowedForPlannerSlot(GAME.id, popSlot.value, b.class, b.name));
+    let bpool = bases.filter((b) =>
+      b.allowed_slots?.length
+        ? b.allowed_slots.includes(bslot)
+        : b.slot === bslot
+    );
+    bpool = bpool.filter((b) =>
+      baseAllowedForPlannerSlot(GAME.id, popSlot.value, b.class, b.name)
+    );
     if (popSlot.value === "jewel" && pendingSocketForNew != null) {
       const sock = socketById.get(pendingSocketForNew);
-      bpool = bpool.filter(b => jewelAllowedInSocket(GAME.id, b.name, sock));
+      bpool = bpool.filter((b) => jewelAllowedInSocket(GAME.id, b.name, sock));
     }
-    if (q) bpool = bpool.filter(b => b.name.toLowerCase().includes(q));
+    if (q) bpool = bpool.filter((b) => b.name.toLowerCase().includes(q));
     bpool = bpool.slice().sort((a, b2) => (b2.lvl ?? 0) - (a.lvl ?? 0));
     const bshown = bpool.slice(0, q ? 8 : 6);
     if (bshown.length) {
@@ -1712,16 +2345,18 @@ if (GEAR_ON) {
         li.dataset.base = b.name;
         li.dataset.itemTip = "base:" + b.name;
         const art = b.icon
-          ? '<img class="gp-item-ic" src="' + esc(b.icon) + '" alt="" loading="lazy">'
+          ? '<img class="gp-item-ic" src="' + esc(b.icon) +
+            '" alt="" loading="lazy">'
           : '<span class="gp-item-ic gs-ic-blank r-normal"></span>';
-        li.innerHTML =
-          art +
+        li.innerHTML = art +
           '<span class="sp-combo-name">' + esc(b.name) + "</span>" +
-          '<span class="sp-combo-tag">' + esc(b.class ?? "") + (b.lvl ? " · lvl " + b.lvl : "") + "</span>";
+          '<span class="sp-combo-tag">' + esc(b.class ?? "") +
+          (b.lvl ? " · lvl " + b.lvl : "") + "</span>";
         popList.appendChild(li);
       }
     }
-    const hidden = (pool.length - shown.length) + (bpool.length - bshown.length);
+    const hidden = (pool.length - shown.length) +
+      (bpool.length - bshown.length);
     if (hidden > 0) {
       const more = document.createElement("li");
       more.className = "sp-combo-more";
@@ -1742,12 +2377,29 @@ if (GEAR_ON) {
       const li = document.createElement("li");
       li.className = "gp-freetext";
       li.dataset.free = popInput.value.trim();
-      li.innerHTML = 'No match — use “<b>' + esc(popInput.value.trim()) + "</b>” as written";
+      li.innerHTML = "No match — use “<b>" + esc(popInput.value.trim()) +
+        "</b>” as written";
       popList.appendChild(li);
     }
   }
 
-  let draftUnique: string | null = null;   // picked unique name, or null for freetext
+  let popOwner: InventoryOwnerV3 = { kind: "player" };
+  function actorItemsForEdit(actorId: string): Item[] {
+    if (!window.BuildwrightPlan) return [];
+    const native = window.BuildwrightPlan.native.get();
+    const active = native.states.find((candidate) =>
+      candidate.id === native.activeStateId
+    );
+    const actor = active?.actors.find((candidate) => candidate.id === actorId);
+    return (actor?.inventory?.items ?? []).map(projectEquippedItemV3ToV2);
+  }
+  function editorItems(): Item[] {
+    return popOwner.kind === "player"
+      ? activeItems()
+      : actorItemsForEdit(popOwner.actorId);
+  }
+
+  let draftUnique: string | null = null; // picked unique name, or null for freetext
   // Which jewel instance the popover is editing (jewels share the
   // 'jewel' slot; identity is the index within the jewel sub-list).
   // null = editing a normal slot, or adding a NEW jewel.
@@ -1755,38 +2407,52 @@ if (GEAR_ON) {
   function syncPopoverKind(): void {
     popTitle.textContent = isFlaskSlot(popSlot.value)
       ? "Edit Flask Slot"
-      : isCharmSlot(popSlot.value) ? "Edit Charm Slot" : "Edit Gear Slot";
+      : isCharmSlot(popSlot.value)
+      ? "Edit Charm Slot"
+      : "Edit Gear Slot";
   }
   function openPopover(
     slotKey: string | null,
     jewelIdx: number | null = null,
     preferredSlots = GEAR_SLOTS,
+    owner: InventoryOwnerV3 = { kind: "player" },
   ): void {
-    if (!popSlot.options.length) {
-      for (const s of SLOTS) {
-        const o = document.createElement("option");
-        o.value = s.key; o.textContent = s.label;
-        popSlot.appendChild(o);
-      }
+    popOwner = owner;
+    popSlot.innerHTML = "";
+    for (const s of preferredSlots) {
+      const o = document.createElement("option");
+      o.value = s.key;
+      o.textContent = s.label;
+      popSlot.appendChild(o);
     }
     popJewelIdx = jewelIdx;
-    const items = activeItems();
+    const items = editorItems();
     // Default to the first EMPTY slot when adding fresh (jewels are
     // never "full" — the jewel option always means "add another").
-    const firstEmpty = preferredSlots.find(s => s.key !== "jewel" &&
-      !items.some(it => itemPlannerSlot(it) === s.key));
-    popSlot.value = plannerSlot(slotKey ?? (firstEmpty ? firstEmpty.key : preferredSlots[0]!.key));
+    const firstEmpty = preferredSlots.find((s) =>
+      s.key !== "jewel" &&
+      !items.some((it) => itemPlannerSlot(it) === s.key)
+    );
+    popSlot.value = plannerSlot(
+      slotKey ?? (firstEmpty ? firstEmpty.key : preferredSlots[0]!.key),
+    );
     syncPopoverKind();
     const existing = popSlot.value === "jewel"
-      ? (jewelIdx !== null ? items.filter(it => (it.slot ?? "") === "jewel")[jewelIdx] : undefined)
-      : items.find(it => itemPlannerSlot(it) === popSlot.value);
+      ? (jewelIdx !== null
+        ? items.filter((it) => (it.slot ?? "") === "jewel")[jewelIdx]
+        : undefined)
+      : items.find((it) => itemPlannerSlot(it) === popSlot.value);
     seedFromExisting(existing);
     popRemove.hidden = !existing;
     refreshItemList();
     popEl.classList.remove("hidden");
     popInput.focus();
   }
-  function closePopover(): void { popEl.classList.add("hidden"); pendingSocketForNew = null; }
+  function closePopover(): void {
+    popEl.classList.add("hidden");
+    pendingSocketForNew = null;
+    popOwner = { kind: "player" };
+  }
 
   // Seed the form from whatever occupies a slot (also used on slot
   // change). A composed base item re-opens with its rarity selected;
@@ -1794,16 +2460,30 @@ if (GEAR_ON) {
   function seedFromExisting(existing: Item | undefined): void {
     // Composed items re-seed with their BASE name — Apply recomposes
     // "<Rarity> <Base>" from the tabs, so the round-trip is lossless.
-    popInput.value = existing ? (existing.base || existing.name || existing.uniqueName || "") : "";
-    popNote.value  = existing ? (existing.note || "") : "";
-    draftUnique    = existing?.uniqueName || null;
-    draftCluster   = existing?.cluster ? { ...existing.cluster } : null;
+    popInput.value = existing
+      ? (existing.base || existing.name || existing.uniqueName || "")
+      : "";
+    popNote.value = existing ? (existing.note || "") : "";
+    draftUnique = existing?.uniqueName || null;
+    draftCluster = existing?.cluster ? { ...existing.cluster } : null;
+    itemLevelInput.value = existing?.itemLevel != null
+      ? String(existing.itemLevel)
+      : "";
+    qualityInput.value = existing?.quality != null
+      ? String(existing.quality)
+      : "";
+    corruptedInput.checked = existing?.corrupted === true;
+    draftSockets = (existing?.sockets ?? []).map((socket) => ({ ...socket }));
+    sourceTextInput.value = existing?.sourceText ?? "";
+    renderDraftSockets();
     statsInput.value = "";
     selectedMods = (existing?.mods ?? []).slice();
     syncVariantSel(existing?.mods);
     if (existing?.base) {
-      draftBase = bases.find(b => b.name.toLowerCase() === existing.base!.toLowerCase())
-        ?? { name: existing.base };
+      draftBase = bases.find((b) =>
+        b.name.toLowerCase() === existing.base!.toLowerCase()
+      ) ??
+        { name: existing.base };
       setRarity((existing.rarity || "rare").toLowerCase());
     } else {
       draftBase = null;
@@ -1813,33 +2493,76 @@ if (GEAR_ON) {
   }
 
   function commitItems(next: Item[]): void {
-    if (!window.PoE2Plan) return;
-    window.PoE2Plan.data.commit(next, "items");
-    window.dispatchEvent(new CustomEvent("poe2-capture-change", { detail: { reason: "items-commit" } }));
+    if (!window.BuildwrightPlan) {
+      return;
+    }
+    window.BuildwrightPlan.data.commit(next, "items");
+    emitStateChange("items-commit");
+  }
+
+  function newItemInstanceId(): string {
+    if (typeof crypto.randomUUID === "function") {
+      return "item:" + crypto.randomUUID();
+    }
+    return "item:" + Date.now().toString(36) + ":" +
+      Math.random().toString(36).slice(2);
   }
 
   popApply.addEventListener("click", () => {
     const name = popInput.value.trim();
-    if (!name) { window.PoE2Plan?.flash("Pick a unique, a base, or type an item name first", true); return; }
+    if (!name) {
+      window.BuildwrightPlan?.flash(
+        "Pick a unique, a base, or type an item name first",
+        true,
+      );
+      return;
+    }
+    const itemLevel = itemLevelInput.value === ""
+      ? undefined
+      : Number(itemLevelInput.value);
+    const quality = qualityInput.value === ""
+      ? undefined
+      : Number(qualityInput.value);
+    if (
+      itemLevel != null &&
+      (!Number.isInteger(itemLevel) || itemLevel < 0)
+    ) {
+      window.BuildwrightPlan?.flash(
+        "Item level must be a whole number of 0 or higher",
+        true,
+      );
+      return;
+    }
+    if (quality != null && !Number.isFinite(quality)) {
+      window.BuildwrightPlan?.flash("Quality must be a number", true);
+      return;
+    }
     const isJewel = popSlot.value === "jewel";
     let keptSocket: number | undefined;
+    let previousItem: Item | undefined;
     let items: Item[];
     if (isJewel) {
       // Replace exactly the edited instance (keeping its socket);
       // popJewelIdx === null appends a new jewel.
-      items = activeItems();
+      items = editorItems();
       if (popJewelIdx !== null) {
-        const jl = items.filter(it => (it.slot ?? "") === "jewel");
+        const jl = items.filter((it) =>
+          (it.slot ?? "") === "jewel"
+        );
         const prev = jl[popJewelIdx];
         if (prev) {
+          previousItem = prev;
           keptSocket = prev.socket;
-          items = items.filter(it => it !== prev);
+          items = items.filter((it) => it !== prev);
         }
       }
     } else {
-      items = activeItems().filter(it => itemPlannerSlot(it) !== popSlot.value);
+      const active = editorItems();
+      previousItem = active.find((it) => itemPlannerSlot(it) === popSlot.value);
+      items = active.filter((it) => itemPlannerSlot(it) !== popSlot.value);
     }
-    let entry: Item = { slot: popSlot.value, name };
+    const instanceId = previousItem?.id || newItemInstanceId();
+    let entry: Item = { id: instanceId, slot: popSlot.value, name };
     if (keptSocket != null) entry.socket = keptSocket;
     let note = popNote.value.trim();
     if (draftUnique && draftUnique === name) {
@@ -1849,6 +2572,9 @@ if (GEAR_ON) {
       // even if a later session temporarily cannot load the catalogue.
       const grounded = uniqueByName.get(draftUnique.toLowerCase());
       if (grounded?.base) entry.base = grounded.base;
+      if (grounded?.official_name) {
+        entry.officialUniqueName = grounded.official_name;
+      }
       // Rolled variant → its stat lines are the item's mods; for
       // data-pending uniques the free-typed rolled lines are.
       const vs = currentVariants();
@@ -1862,6 +2588,7 @@ if (GEAR_ON) {
       const rar = draftRarity;
       const b = draftBase!;
       entry = {
+        id: instanceId,
         slot: popSlot.value,
         name: rar === "normal"
           ? b.name
@@ -1873,21 +2600,42 @@ if (GEAR_ON) {
       if (selectedMods.length) entry.mods = selectedMods.slice();
       if (draftCluster) entry.cluster = { ...draftCluster };
     }
+    if (itemLevel != null) entry.itemLevel = itemLevel;
+    if (quality != null) entry.quality = quality;
+    if (corruptedInput.checked) entry.corrupted = true;
+    if (draftSockets.length) {
+      entry.sockets = draftSockets.map((socket) => ({ ...socket }));
+    }
+    if (sourceTextInput.value) entry.sourceText = sourceTextInput.value;
     if (note) entry.note = note;
     // A jewel added via the socket picker's "+ add a jewel…" goes
     // straight into the socket the picker was opened on.
-    if (popSlot.value === "jewel" && popJewelIdx === null && pendingSocketForNew != null) {
-      if ((entry.uniqueName || entry.name) === "Voices" && socketById.get(pendingSocketForNew)?.sinister) {
-        window.PoE2Plan?.flash("Voices creates the sinister sockets — it can't occupy one", true);
+    if (
+      popSlot.value === "jewel" && popJewelIdx === null &&
+      pendingSocketForNew != null
+    ) {
+      if (
+        (entry.uniqueName || entry.name) === "Voices" &&
+        socketById.get(pendingSocketForNew)?.sinister
+      ) {
+        window.BuildwrightPlan?.flash(
+          "Voices creates the sinister sockets — it can't occupy one",
+          true,
+        );
       } else {
         for (const it of items) {
-          if ((it.slot ?? "") === "jewel" && it.socket === pendingSocketForNew) delete it.socket;
+          if (
+            (it.slot ?? "") === "jewel" && it.socket === pendingSocketForNew
+          ) delete it.socket;
         }
         entry.socket = pendingSocketForNew;
       }
     }
-    if (entry.socket != null && !jewelFitsSocket(entry, socketById.get(entry.socket))) {
-      window.PoE2Plan?.flash(
+    if (
+      entry.socket != null &&
+      !jewelFitsSocket(entry, socketById.get(entry.socket))
+    ) {
+      window.BuildwrightPlan?.flash(
         "That cluster jewel is too large for this expansion socket",
         true,
       );
@@ -1895,22 +2643,59 @@ if (GEAR_ON) {
     }
     pendingSocketForNew = null;
     items.push(entry);
-    commitItems(items);
+    if (popOwner.kind === "actor") {
+      const stateId = activeNativeStateId();
+      if (
+        !stateId || !window.BuildwrightPlan?.native.upsertInventoryItem(
+          stateId,
+          popOwner,
+          migrateItemV2ToV3(entry),
+        )
+      ) {
+        window.BuildwrightPlan?.flash("Could not update actor equipment", true);
+        return;
+      }
+      renderStrip();
+    } else {
+      commitItems(items);
+    }
     closePopover();
     syncJewelOverlays();
   });
   popRemove.addEventListener("click", () => {
+    if (popOwner.kind === "actor") {
+      const stateId = activeNativeStateId();
+      const existing = editorItems().find((item) =>
+        itemPlannerSlot(item) === popSlot.value
+      );
+      if (
+        !stateId || !existing?.id ||
+        !window.BuildwrightPlan?.native.removeInventoryItem(
+          stateId,
+          popOwner,
+          existing.id,
+        )
+      ) {
+        window.BuildwrightPlan?.flash("Could not remove actor equipment", true);
+        return;
+      }
+      closePopover();
+      renderStrip();
+      return;
+    }
     if (popSlot.value === "jewel" && popJewelIdx !== null) {
       const items = activeItems();
-      const jl = items.filter(it => (it.slot ?? "") === "jewel");
+      const jl = items.filter((it) => (it.slot ?? "") === "jewel");
       const prev = jl[popJewelIdx];
-      commitItems(items.filter(it => it !== prev));
+      commitItems(items.filter((it) => it !== prev));
     } else {
-      commitItems(activeItems().filter(it => itemPlannerSlot(it) !== popSlot.value));
+      commitItems(
+        activeItems().filter((it) => itemPlannerSlot(it) !== popSlot.value),
+      );
     }
     closePopover();
   });
-  popEl.addEventListener("wheel", e => e.stopPropagation());
+  popEl.addEventListener("wheel", (e) => e.stopPropagation());
   popClose.addEventListener("click", closePopover);
   popCancel.addEventListener("click", closePopover);
   popSlot.addEventListener("change", () => {
@@ -1921,7 +2706,7 @@ if (GEAR_ON) {
     syncPopoverKind();
     const existing = popSlot.value === "jewel"
       ? undefined
-      : activeItems().find(it => itemPlannerSlot(it) === popSlot.value);
+      : editorItems().find((it) => itemPlannerSlot(it) === popSlot.value);
     seedFromExisting(existing);
     popRemove.hidden = !existing;
     refreshItemList();
@@ -1929,35 +2714,203 @@ if (GEAR_ON) {
   popInput.addEventListener("input", () => {
     draftUnique = null;
     refreshItemList();
-    syncBaseOpts();   // typing past a picked base hides the controls
+    syncBaseOpts(); // typing past a picked base hides the controls
   });
-  rarityTabs.addEventListener("click", e => {
+  rarityTabs.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement | null)?.closest("button");
     if (b?.dataset.rarity && !b.disabled) setRarity(b.dataset.rarity);
   });
   statsInput.addEventListener("input", refreshChips);
-  popList.addEventListener("click", e => {
+  popList.addEventListener("click", (e) => {
     const li = (e.target as HTMLElement | null)?.closest("li");
     if (!li) return;
     if (li.dataset.unique) {
-      popInput.value = li.dataset.unique; draftUnique = li.dataset.unique;
+      popInput.value = li.dataset.unique;
+      draftUnique = li.dataset.unique;
       draftBase = null;
     } else if (li.dataset.base) {
-      const b = bases.find(x => x.name === li.dataset.base) ?? { name: li.dataset.base };
-      popInput.value = b.name; draftBase = b; draftUnique = null;
+      const b = bases.find((x) => x.name === li.dataset.base) ??
+        { name: li.dataset.base };
+      popInput.value = b.name;
+      draftBase = b;
+      draftUnique = null;
     } else if (li.dataset.free) {
-      popInput.value = li.dataset.free; draftUnique = null;
+      popInput.value = li.dataset.free;
+      draftUnique = null;
       draftBase = null;
     }
     refreshItemList();
     syncBaseOpts();
   });
-  function exitReplayForEdit(): void {
-    if (state.replayActive && typeof window.PoE2SliderExitRestore === "function") {
-      window.PoE2SliderExitRestore();
+
+  let editedActorId: string | null = null;
+  function newActorId(kind: ActorLoadoutV3["kind"]): string {
+    if (typeof crypto.randomUUID === "function") {
+      return "actor:" + kind + ":" + crypto.randomUUID();
+    }
+    return "actor:" + kind + ":" + Date.now().toString(36) + ":" +
+      Math.random().toString(36).slice(2);
+  }
+  function activeActor(actorId: string): ActorLoadoutV3 | undefined {
+    if (!window.BuildwrightPlan) return undefined;
+    const native = window.BuildwrightPlan.native.get();
+    return native.states.find((candidate) =>
+      candidate.id === native.activeStateId
+    )?.actors.find((candidate) => candidate.id === actorId);
+  }
+  function closeActorPopover(): void {
+    actorPopEl.classList.add("hidden");
+    editedActorId = null;
+  }
+  function renderActorInventory(): void {
+    actorInventoryEl.innerHTML = "";
+    const kind = actorKindInput.value as ActorLoadoutV3["kind"];
+    const slots = PROFILE.rules.actorInventorySlots(kind);
+    const actor = editedActorId ? activeActor(editedActorId) : undefined;
+    if (!editedActorId) {
+      actorInventoryHelp.textContent =
+        "Save this actor first, then reopen it to set equipment.";
+      return;
+    }
+    if (!slots.length) {
+      actorInventoryHelp.textContent =
+        "This actor kind has no game-supported equipment positions. Skills and notes remain available in the native plan.";
+      const empty = document.createElement("div");
+      empty.className = "ap-inventory-empty";
+      empty.textContent = "No equipment slots";
+      actorInventoryEl.appendChild(empty);
+      return;
+    }
+    const bySlot = new Map(
+      (actor?.inventory?.items ?? []).map((item) => [item.slot.id, item]),
+    );
+    const visibleKeys = new Set(slots.map((slot) => slot.key));
+    const preserved = (actor?.inventory?.items ?? []).filter((item) =>
+      !visibleKeys.has(item.slot.id)
+    ).length;
+    actorInventoryHelp.textContent =
+      "Uses the same item selector and rich item editor as player gear." +
+      (preserved
+        ? ` ${preserved} imported out-of-profile item${
+          preserved === 1 ? " is" : "s are"
+        } preserved but not editable here.`
+        : "");
+    for (const slot of slots) {
+      const item = bySlot.get(slot.key);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ap-slot";
+      button.dataset.actorSlot = slot.key;
+      button.innerHTML = '<span class="ap-slot-label">' + esc(slot.label) +
+        "</span>" +
+        '<span class="ap-slot-item">' +
+        esc(
+          item?.item.name || item?.item.unique?.name || item?.item.base?.name ||
+            item?.item.base?.key || "Empty",
+        ) +
+        "</span>";
+      actorInventoryEl.appendChild(button);
     }
   }
-  addBtn.addEventListener("click", () => { exitReplayForEdit(); openPopover(null); });
+  function openActorPopover(actorId: string | null): void {
+    editedActorId = actorId;
+    const actor = actorId ? activeActor(actorId) : undefined;
+    actorKindInput.innerHTML = "";
+    for (const definition of PROFILE.definition.actorKinds) {
+      const option = document.createElement("option");
+      option.value = definition.kind;
+      option.textContent = definition.label;
+      actorKindInput.appendChild(option);
+    }
+    const defaultKind = PROFILE.definition.actorKinds[0]?.kind ?? "custom";
+    actorKindInput.value = actor?.kind ?? defaultKind;
+    actorNameInput.value = actor?.name ?? actorKindLabel(defaultKind);
+    actorNotesInput.value = actor?.notes ?? "";
+    actorPopTitle.textContent = actor ? "Edit Actor" : "Add Actor";
+    actorRemove.hidden = !actor;
+    renderActorInventory();
+    actorPopEl.classList.remove("hidden");
+    actorNameInput.focus();
+    actorNameInput.select();
+  }
+
+  actorKindInput.addEventListener("change", () => {
+    if (!editedActorId) {
+      actorNameInput.value = actorKindLabel(
+        actorKindInput.value as ActorLoadoutV3["kind"],
+      );
+    }
+    renderActorInventory();
+  });
+  function saveActorDraft(): string | null {
+    const stateId = activeNativeStateId();
+    const kind = actorKindInput.value as ActorLoadoutV3["kind"];
+    const name = actorNameInput.value.trim();
+    if (!stateId || !name || !window.BuildwrightPlan) {
+      window.BuildwrightPlan?.flash("Actor name is required", true);
+      return null;
+    }
+    const existing = editedActorId ? activeActor(editedActorId) : undefined;
+    const actor: ActorLoadoutV3 = {
+      ...(existing ? structuredClone(existing) : {
+        id: newActorId(kind),
+        inventory: { items: [] },
+      }),
+      kind,
+      name,
+      ...(actorNotesInput.value.trim()
+        ? { notes: actorNotesInput.value.trim() }
+        : {}),
+    };
+    if (!actorNotesInput.value.trim()) delete actor.notes;
+    if (!window.BuildwrightPlan.native.upsertActor(stateId, actor)) return null;
+    editedActorId = actor.id;
+    return actor.id;
+  }
+  actorApply.addEventListener("click", () => {
+    if (!saveActorDraft()) return;
+    closeActorPopover();
+    renderStrip();
+  });
+  actorRemove.addEventListener("click", () => {
+    const stateId = activeNativeStateId();
+    if (
+      !stateId || !editedActorId || !window.BuildwrightPlan ||
+      !confirm("Remove this actor and its equipment from the current state?")
+    ) return;
+    if (!window.BuildwrightPlan.native.removeActor(stateId, editedActorId)) {
+      return;
+    }
+    closeActorPopover();
+    renderStrip();
+  });
+  actorInventoryEl.addEventListener("click", (e) => {
+    const slotKey = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+      "[data-actor-slot]",
+    )?.dataset.actorSlot;
+    if (!slotKey || !editedActorId) return;
+    const kind = actorKindInput.value as ActorLoadoutV3["kind"];
+    const slots = PROFILE.rules.actorInventorySlots(kind);
+    const actorId = saveActorDraft();
+    if (!actorId) return;
+    closeActorPopover();
+    openPopover(slotKey, null, slots, { kind: "actor", actorId });
+  });
+  actorPopClose.addEventListener("click", closeActorPopover);
+  actorCancel.addEventListener("click", closeActorPopover);
+
+  function exitReplayForEdit(): void {
+    if (
+      state.replayActive &&
+      typeof window.BuildwrightReplayExitRestore === "function"
+    ) {
+      window.BuildwrightReplayExitRestore();
+    }
+  }
+  addBtn.addEventListener("click", () => {
+    exitReplayForEdit();
+    openPopover(null);
+  });
   flaskAddBtn.addEventListener("click", () => {
     exitReplayForEdit();
     openPopover(null, null, FLASK_SLOTS);
@@ -1966,42 +2919,78 @@ if (GEAR_ON) {
     exitReplayForEdit();
     openPopover(null, null, CHARM_SLOTS);
   });
-  listEl.addEventListener("click", e => {
-    const loc = (e.target as HTMLElement | null)?.closest("[data-jewel-locate]") as HTMLElement | null;
+  actorAddBtn.addEventListener("click", () => {
+    exitReplayForEdit();
+    openActorPopover(null);
+  });
+  actorListEl.addEventListener("click", (e) => {
+    const actorId = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+      "[data-actor-id]",
+    )?.dataset.actorId;
+    if (!actorId) return;
+    exitReplayForEdit();
+    if (!activeActor(actorId)) {
+      window.BuildwrightPlan?.flash(
+        "That replayed actor is not present in the active state.",
+        true,
+      );
+      renderStrip();
+      return;
+    }
+    openActorPopover(actorId);
+  });
+  listEl.addEventListener("click", (e) => {
+    const loc = (e.target as HTMLElement | null)?.closest(
+      "[data-jewel-locate]",
+    ) as HTMLElement | null;
     if (loc) {
       e.stopPropagation();
-      const jl = shownItems().filter(it => (it.slot ?? "") === "jewel");
+      const jl = shownItems().filter((it) => (it.slot ?? "") === "jewel");
       const it = jl[Number(loc.dataset.jewelLocate)];
       if (it && it.socket != null) pingSocket(it.socket);
       return;
     }
-    const row = (e.target as HTMLElement | null)?.closest(".gs-row") as HTMLElement | null;
+    const row = (e.target as HTMLElement | null)?.closest(".gs-row") as
+      | HTMLElement
+      | null;
     if (row && row.dataset.slot) {
       exitReplayForEdit();
-      openPopover(row.dataset.slot, row.dataset.jewelIdx != null ? Number(row.dataset.jewelIdx) : null);
+      openPopover(
+        row.dataset.slot,
+        row.dataset.jewelIdx != null ? Number(row.dataset.jewelIdx) : null,
+      );
     }
   });
-  flaskListEl.addEventListener("click", e => {
-    const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>(".fs-slot")?.dataset.slot;
+  flaskListEl.addEventListener("click", (e) => {
+    const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+      ".fs-slot",
+    )?.dataset.slot;
     if (!slot) return;
     exitReplayForEdit();
     openPopover(slot, null, FLASK_SLOTS);
   });
-  charmListEl.addEventListener("click", e => {
-    const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>(".fs-slot")?.dataset.slot;
+  charmListEl.addEventListener("click", (e) => {
+    const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+      ".fs-slot",
+    )?.dataset.slot;
     if (!slot) return;
     exitReplayForEdit();
     openPopover(slot, null, CHARM_SLOTS);
   });
   // Esc closes (popover is modal-lite; backdrop-less like the skill one).
-  window.addEventListener("keydown", e => {
-    if (e.key === "Escape" && !popEl.classList.contains("hidden")) closePopover();
+  window.addEventListener("keydown", (e) => {
+    if (
+      e.key === "Escape" && !popEl.classList.contains("hidden")
+    ) closePopover();
+    if (
+      e.key === "Escape" && !actorPopEl.classList.contains("hidden")
+    ) closeActorPopover();
   });
 
-  window.addEventListener("poe2-capture-change", renderStrip);
-  window.addEventListener("poe2-replay-scrub", renderStrip);
+  window.addEventListener(PLANNER_EVENTS.stateChange, renderStrip);
+  window.addEventListener(PLANNER_EVENTS.replayScrub, renderStrip);
   function init(): void {
-    if (window.PoE2Plan) {
+    if (window.BuildwrightPlan) {
       // Asset fetches often beat the wizard's initial local-plan
       // hydration on localhost. Reconcile once the plan API exists so
       // saved cluster jewels rebuild their generated subgraphs on a

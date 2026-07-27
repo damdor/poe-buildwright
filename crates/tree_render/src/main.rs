@@ -29,7 +29,8 @@ mod text;
 
 use emit::{CANVAS_CSS, build_meta_json, render_canvas_html, validate_frame_coverage};
 use io::{
-    read_active_skills, read_buffs, read_edges, read_masteries, read_meta, read_nodes, read_sprites,
+    read_active_skills, read_buffs, read_edges, read_masteries, read_meta, read_nodes,
+    read_passive_interop, read_sprites,
 };
 use model::Args;
 
@@ -215,7 +216,8 @@ fn run() -> Result<(), String> {
         }
     }
     let edges = read_edges(&args.tree_dir.join("edges.tsv"))?;
-    let (canvas, classes) = read_meta(&args.tree_dir.join("meta.tsv"))?;
+    let (mut canvas, classes) = read_meta(&args.tree_dir.join("meta.tsv"))?;
+    canvas.passive_build_ids = read_passive_interop(&args.tree_dir.join("passive_interop.tsv"));
     let sprites = read_sprites(&args.tree_dir.join("sprites.tsv")).unwrap_or_default();
     validate_frame_coverage(&nodes, &sprites, &args.game)?;
     let asc_overrides = io::read_asc_overrides(&args.tree_dir.join("asc_overrides.tsv"));
@@ -306,7 +308,7 @@ fn run() -> Result<(), String> {
 
     // CSS is still bundled here via include_str! — small, simple, no
     // build pipeline needed. The planner JS bundle (viewer/assets/planner.js)
-    // is now produced by scripts/build_js.sh using vendored esbuild —
+    // is now produced by `./bw js` using vendored esbuild —
     // run that script before / alongside this binary. Rust no longer
     // owns the JS concat (we lose the include_str! compile-time guarantee
     // that the 20 planner files exist, but gain a real bundler with type
@@ -1076,13 +1078,13 @@ fn run() -> Result<(), String> {
     }
 
     // Friendly warning if the JS bundle is missing entirely — common
-    // failure mode for a fresh checkout that hasn't run setup.sh +
-    // build_js.sh yet. Don't error: someone running tree_render just
-    // to regenerate the TREE blob shouldn't be forced to install Node.
+    // failure mode for a fresh checkout that hasn't run the Rust-owned
+    // JS command yet. Don't error: someone invoking tree_render directly
+    // just to regenerate TREE shouldn't be forced to install the tools.
     let js_path = assets_dir.join("planner.js");
     if !js_path.exists() {
         eprintln!("WARNING: {} is missing.", js_path.display());
-        eprintln!("         Run `tools/setup.sh && scripts/build_js.sh` to build it.");
+        eprintln!("         Run `tools/setup.sh && ./bw js` to build it.");
     }
 
     // Small build_meta.json the wizard pages consume (class + ascendancy
@@ -1094,9 +1096,8 @@ fn run() -> Result<(), String> {
     // writes it (see scripts/build_manifests.py). If the file is
     // missing/malformed both fields fall back to "" — the wizard
     // treats empty as unknown and hides the badge instead of erroring.
-    let manifest_text = args
-        .tree_dir
-        .parent()
+    let patch_dir = args.tree_dir.parent();
+    let manifest_text = patch_dir
         .and_then(|p| fs::read_to_string(p.join("manifest.json")).ok())
         .unwrap_or_default();
     fn field(s: &str, name: &str) -> String {
@@ -1107,14 +1108,38 @@ fn run() -> Result<(), String> {
             .and_then(|qs| s[qs..].find('"').map(|qe| s[qs..qs + qe].to_string()))
             .unwrap_or_default()
     }
-    let patch = field(&manifest_text, "patch");
-    let source = field(&manifest_text, "source");
+    let mut patch = field(&manifest_text, "patch");
+    let mut source = field(&manifest_text, "source");
+    // A new patch is rendered before its final runtime-inclusive manifest
+    // exists. Derive the same normalized label from the source directory
+    // and read its tiny `.source` marker so first-run build_meta never
+    // claims an unknown patch. Existing manifests remain authoritative.
+    if patch.is_empty()
+        && let Some(dir) = patch_dir
+    {
+        let resolved = fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        if let Some(name) = resolved.file_name().and_then(|name| name.to_str())
+            && (name.starts_with("poe1_") || name.ends_with("_native"))
+        {
+            patch = name.replace('_', ".");
+        }
+    }
+    if source.is_empty()
+        && let Some(dir) = patch_dir
+    {
+        source = fs::read_to_string(dir.join(".source"))
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+    }
     let meta_path = if args.agent_subdir == "agent" {
         assets_dir.join("build_meta.json")
     } else {
         assets_dir.join(&args.agent_subdir).join("build_meta.json")
     };
-    let meta = build_meta_json(&classes, &canvas, &patch, &source, &sprites, &args.game);
+    let meta = build_meta_json(
+        &classes, &canvas, &nodes, &patch, &source, &sprites, &args.game,
+    );
     fs::write(&meta_path, meta).map_err(|e| format!("writing {}: {e}", meta_path.display()))?;
     eprintln!(
         "Build wizard metadata → {} (patch={}, source={})",

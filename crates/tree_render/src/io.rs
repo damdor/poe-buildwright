@@ -89,6 +89,28 @@ pub(crate) fn read_nodes(path: &Path) -> Result<Vec<Node>, String> {
     Ok(out)
 }
 
+/// Read the optional `.build` passive-id sidecar produced from
+/// `PassiveSkills.{PassiveSkillGraphId,Id}`. Renderer and pathfinding
+/// code never consume these ids; they live only at the external adapter
+/// boundary.
+pub(crate) fn read_passive_interop(path: &Path) -> HashMap<u32, String> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    let mut out = HashMap::new();
+    for line in text.lines().skip(1) {
+        let mut cols = line.split('\t');
+        let Some(graph_id) = cols.next().and_then(|v| v.parse::<u32>().ok()) else {
+            continue;
+        };
+        let build_id = cols.next().unwrap_or("").trim();
+        if !build_id.is_empty() {
+            out.insert(graph_id, build_id.to_string());
+        }
+    }
+    out
+}
+
 /// Read the optional `tree/masteries.tsv` sidecar (trigger_id →
 /// mastery_id, one row per link) into trigger → [mastery ids]. Produced
 /// by `buildwright masteries`. Empty map if absent, so rendering
@@ -298,6 +320,7 @@ pub(crate) fn read_meta(path: &Path) -> Result<(Canvas, Vec<ClassInfo>), String>
             groups,
             portraits,
             asc_internal,
+            passive_build_ids: HashMap::new(),
             multi_choice,
         },
         classes,
@@ -362,5 +385,21 @@ mod tests {
             panic!("short row was accepted")
         };
         assert!(err.contains("expected 17 columns"), "{err}");
+    }
+
+    #[test]
+    fn passive_interop_sidecar_is_optional_and_exact() {
+        let p = write_tmp(
+            "passive_interop",
+            "graph_id\tbuild_id\n35426\tstrength89\n13715\tAscendancyWarrior1Small3\n",
+        );
+        let ids = read_passive_interop(&p);
+        fs::remove_file(&p).ok();
+        assert_eq!(ids.get(&35426).map(String::as_str), Some("strength89"));
+        assert_eq!(
+            ids.get(&13715).map(String::as_str),
+            Some("AscendancyWarrior1Small3"),
+        );
+        assert!(read_passive_interop(std::path::Path::new("/missing")).is_empty());
     }
 }

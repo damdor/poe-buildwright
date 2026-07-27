@@ -7,7 +7,18 @@
 // clicks, and re-renders when another tab mutates localStorage.
 // Loaded as a classic <script src=> tag from index.html.
 
-import type { PlanIndexEntry } from "../../types/shared.d.ts";
+import type {
+  AnyPersistedPlan, Plan, PlanIndexEntry, PlanV3,
+} from "../../types/shared.d.ts";
+import {
+  GAME_DEFINITIONS, gameDefinitionForPlan,
+} from "../../crates/tree_render/assets/planner/game_profile.ts";
+import {
+  migratePlanV2ToV3, projectPlanV3ToV2, validatePlanV3,
+} from "./plan_v3.ts";
+import {
+  legacyPlanBackupKey, pendingPlanKey, saveNativePlan,
+} from "./plan_storage.ts";
 
 // One row per game the site ships. Adding a game = adding a row; the
 // storage prefix and planner URL are the only per-game facts here.
@@ -19,11 +30,15 @@ interface GameStore {
   metaUrl: string;         // build_meta.json with the portraits map
 }
 const GAMES: GameStore[] = [
-  { id: "poe2", label: "",     base: "poe2-planner", planner: "/planner.html",
-    metaUrl: "/assets/build_meta.json" },
-  { id: "poe1", label: "PoE1", base: "poe1-planner", planner: "/planner-poe1.html",
-    metaUrl: "/assets/poe1-agent/build_meta.json" },
-];
+  GAME_DEFINITIONS.poe2,
+  GAME_DEFINITIONS.poe1,
+].map(game => ({
+  id: game.id,
+  label: game.shortLabel,
+  base: game.storageNamespace,
+  planner: game.plannerPath,
+  metaUrl: game.assets.buildMeta,
+}));
 const keyIndex  = (g: GameStore): string => `${g.base}:index`;
 const keyPrefix = (g: GameStore): string => `${g.base}:plan:`;
 
@@ -96,7 +111,7 @@ function render(): void {
   if (idx.length === 0) {
     const g = GAMES.find(x => x.id === gameFilter);
     ul.innerHTML = g
-      ? `<li class="empty">No ${escHtml(g.id === "poe2" ? "PoE2" : g.label)} builds yet — <a href="${g.planner}?new=1">start one</a>.</li>`
+      ? `<li class="empty">No ${escHtml(g.label)} builds yet — <a href="${g.planner}?new=1">start one</a>.</li>`
       : '<li class="empty">No saved builds yet. Start one above.</li>';
     return;
   }
@@ -107,7 +122,7 @@ function render(): void {
         <a class="name" href="${b.game.planner}?build=${encodeURIComponent(b.id)}">${escHtml(b.name || "(untitled)")}</a>
         <span class="meta">${escHtml(b.class || "—")}${b.ascendancy ? " · " + escHtml(b.ascendancy) : ""} · <b>${b.nodeCount || 0}</b> nodes · ${escHtml(fmtDate(b.savedAt))}</span>
       </div>
-      <span class="game-badge ${escHtml(b.game.id)}">${escHtml(b.game.id === "poe2" ? "PoE2" : b.game.label)}</span>
+      <span class="game-badge ${escHtml(b.game.id)}">${escHtml(b.game.label)}</span>
       <button class="dl" data-id="${escHtml(b.id)}" data-game="${escHtml(b.game.id)}" title="Download this build as a JSON backup">⬇</button>
       <button class="rm" data-id="${escHtml(b.id)}" data-game="${escHtml(b.game.id)}" title="Delete this build">✕</button>
     </li>
@@ -122,14 +137,18 @@ function render(): void {
 // game-namespaced patch ("poe1.*" → poe1), matching wizard_chrome's
 // patch rules.
 function gameOfPlan(plan: { game?: string; patch?: string | null }): GameStore {
-  const poe1 = plan.game === "poe1" || (!plan.game && typeof plan.patch === "string" && plan.patch.startsWith("poe1."));
-  return GAMES.find(g => g.id === (poe1 ? "poe1" : "poe2"))!;
+  const definition = gameDefinitionForPlan(plan);
+  return GAMES.find(g => g.id === definition.id)!;
 }
 function downloadBuild(g: GameStore, id: string): void {
   const raw = localStorage.getItem(keyPrefix(g) + id);
   if (!raw) { alert("Build data not found in this browser."); return; }
   let name = "build";
-  try { name = (JSON.parse(raw).name || "build").replace(/[^\w.-]+/g, "_"); } catch (e) { /* keep default */ }
+  try {
+    const plan = JSON.parse(raw) as AnyPersistedPlan;
+    const title = plan.version === 3 ? plan.identity.name : plan.name;
+    name = (title || "build").replace(/[^\w.-]+/g, "_");
+  } catch (e) { /* keep default */ }
   const blob = new Blob([raw], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -146,28 +165,46 @@ if (importBtn && importFile) {
     importFile.value = "";
     if (!f) return;
     void f.text().then(text => {
-      let plan: { format?: string; version?: number; game?: string; id?: string; name?: string;
-                  class?: string | null; patch?: string | null;
-                  captures?: Array<{ passives?: unknown[]; ascendancy?: string | null }> };
-      try { plan = JSON.parse(text); } catch (e) { alert("Not a JSON file."); return; }
-      if (!(["buildwright-planner-plan", "poe2-planner-plan"].includes(plan.format || "")) || plan.version !== 2) {
+      let decoded: AnyPersistedPlan;
+      try { decoded = JSON.parse(text) as AnyPersistedPlan; } catch (e) { alert("Not a JSON file."); return; }
+      if (!(["buildwright-planner-plan", "poe2-planner-plan"].includes(decoded.format || "")) ||
+          (decoded.version !== 2 && decoded.version !== 3)) {
         alert("Not a Buildwright planner backup. GGG .build files import inside the PoE2 planner instead.");
         return;
       }
-      const g = gameOfPlan(plan);
+      const g = gameOfPlan(decoded);
+      let nativePlan: PlanV3;
+      if (decoded.version === 2) {
+        nativePlan = migratePlanV2ToV3(decoded as Plan);
+      } else {
+        nativePlan = structuredClone(decoded as PlanV3);
+        const errors = validatePlanV3(nativePlan);
+        if (errors.length) {
+          alert("Invalid Buildwright state graph: " + errors.join("; "));
+          return;
+        }
+      }
       // Keep the original id unless it already exists here — never
       // silently overwrite a stored build on import.
-      let id = typeof plan.id === "string" && plan.id ? plan.id : Math.random().toString(36).slice(2, 10);
+      let id = typeof nativePlan.id === "string" && nativePlan.id
+        ? nativePlan.id
+        : Math.random().toString(36).slice(2, 10);
       if (localStorage.getItem(keyPrefix(g) + id)) {
         id = Math.random().toString(36).slice(2, 10);
-        plan.id = id;
       }
-      localStorage.setItem(keyPrefix(g) + id, JSON.stringify(plan));
-      const last = plan.captures?.[plan.captures.length - 1];
+      nativePlan.id = id;
+      const saved = saveNativePlan(
+        localStorage,
+        keyPrefix(g) + id,
+        nativePlan,
+        g.id as "poe1" | "poe2",
+      ).plan;
+      const plan = projectPlanV3ToV2(saved);
+      const last = plan.captures[plan.captures.length - 1];
       const entry: PlanIndexEntry = {
-        id, name: plan.name || "(untitled)", savedAt: new Date().toISOString(),
+        id, name: plan.name || "(untitled)", savedAt: saved.savedAt!,
         class: plan.class ?? null, ascendancy: last?.ascendancy ?? null,
-        nodeCount: last?.passives?.length ?? 0, captureCount: plan.captures?.length ?? 1,
+        nodeCount: last?.passives?.length ?? 0, captureCount: saved.states.length,
       };
       try {
         const idx: PlanIndexEntry[] = JSON.parse(localStorage.getItem(keyIndex(g)) || "[]");
@@ -195,7 +232,10 @@ if (buildList) {
     const g = GAMES.find(x => x.id === btn.dataset.game);
     if (!id || !g) return;
     if (!confirm("Delete this build? This cannot be undone.")) return;
-    localStorage.removeItem(keyPrefix(g) + id);
+    const primary = keyPrefix(g) + id;
+    localStorage.removeItem(primary);
+    localStorage.removeItem(pendingPlanKey(primary));
+    localStorage.removeItem(legacyPlanBackupKey(primary));
     try {
       const idx: PlanIndexEntry[] = JSON.parse(localStorage.getItem(keyIndex(g)) || "[]");
       localStorage.setItem(keyIndex(g), JSON.stringify(idx.filter(b => b.id !== id)));

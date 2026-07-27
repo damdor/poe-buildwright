@@ -20,7 +20,9 @@ import { requestRender } from "./render.ts";
 import { ascOffsetX, ascOffsetY } from "./asc_present.ts";
 import { updatePreview } from "./pathfind.ts";
 import { doShareLink, syncModeBadge } from "./sidebar.ts";
-import { GGG_BUILD_SCHEMA, PLAN_VERSION, doExportBuild, doExportPlan, doImportBuild, doImportPlan } from "./build_io.ts";
+import {
+  doExportBuild, doExportPlan, doImportBuild, doImportPlan,
+} from "./build_io.ts";
 import { copyAgentLink } from "./agent_import.ts";
 import type { Allocation, TreeData, TreeNode } from "../../../../types/shared.d.ts";
 
@@ -176,7 +178,7 @@ export function refreshCmdkResults(q: string): void {
       match: "help shortcuts controls keys how what",
       run: () => { closeCmdk(); document.getElementById("help-badge")?.click(); } },
     { type: "action", key: "export-build", feature: "share", label: "Export .build (for in-game Build Planner)",
-      sub: "GGG schema v" + GGG_BUILD_SCHEMA + " — passive tree slice (passives + ascendancy + weapon_set)",
+      sub: "Official Version 1 — validated passives, skills and inventory hints",
       tag: "export",
       match: "export build file ggg in-game planner share download",
       run: () => { closeCmdk(); doExportBuild(); } },
@@ -191,7 +193,7 @@ export function refreshCmdkResults(q: string): void {
       match: "agent link ai llm assistant copy url export claude gpt",
       run: () => { closeCmdk(); void copyAgentLink(); } },
     { type: "action", key: "export-plan", label: "Export plan (internal JSON, lossless)",
-      sub: "poe2-planner-plan v" + PLAN_VERSION + " — round-trips everything our planner tracks",
+      sub: "Buildwright native v3 — preserves every state, branch and source record",
       tag: "export",
       match: "export plan save internal backup",
       run: () => { closeCmdk(); doExportPlan(); } },
@@ -201,7 +203,7 @@ export function refreshCmdkResults(q: string): void {
       match: "import build load file open",
       run: () => { closeCmdk(); doImportBuild(); } },
     { type: "action", key: "import-plan", label: "Import plan (internal JSON)…",
-      sub: "Load a poe2-planner-plan file",
+      sub: "Restore a native v3 backup or migrate a legacy v2 plan",
       tag: "import",
       match: "import plan load file",
       run: () => { closeCmdk(); doImportPlan(); } },

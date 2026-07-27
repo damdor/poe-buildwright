@@ -7,6 +7,7 @@
 /// <reference lib="deno.ns" />
 
 import { GGG_BUILD_SCHEMAS, GGG_BUILD_SCHEMA_CURRENT, checkGGGBuild } from "./build_schema.ts";
+import officialV1Fixture from "./fixtures/official-poe2-build-v1.json" with { type: "json" };
 
 function expectOk(got: string | null): void {
   if (got !== null) throw new Error(`expected null, got: ${got}`);
@@ -26,6 +27,27 @@ Deno.test("import: modern full file", () => {
     passives: ["123", 456, { id: "789", weapon_set: 1, level_interval: 30, additional_text: "<b>hi</b>" }],
     skills: [{ id: "LightningBolt", level_interval: [12], support_skills: ["SupportA", { id: "SupportB" }] }],
     inventory_slots: [{ inventory_id: "Weapon1", slot_x: 0, slot_y: 1, level_interval: [1, 40] }],
+  }, GGG_BUILD_SCHEMA_CURRENT, "import"));
+});
+
+Deno.test("hand-authored official Version 1 fixture stays schema-clean", () => {
+  expectOk(checkGGGBuild(
+    officialV1Fixture,
+    GGG_BUILD_SCHEMA_CURRENT,
+    "import",
+  ));
+  expectOk(checkGGGBuild(
+    officialV1Fixture,
+    GGG_BUILD_SCHEMA_CURRENT,
+    "export",
+  ));
+});
+
+Deno.test("import: official root skill strings and weapon set zero", () => {
+  expectOk(checkGGGBuild({
+    name: "Official",
+    passives: [{ id: "strength89", weapon_set: 0, level_interval: [0, 100] }],
+    skills: ["Metadata/Items/Gems/SkillGemEarthquake"],
   }, GGG_BUILD_SCHEMA_CURRENT, "import"));
 });
 
@@ -111,6 +133,34 @@ Deno.test("export: numeric object id is drift", () => {
   expectErr(checkGGGBuild({ name: "n", passives: [{ id: 42 }] }, 1, "export"), "id string");
 });
 
+Deno.test("strict current export contains only official fields", () => {
+  expectOk(checkGGGBuild({
+    name: "Strict",
+    author: "Buildwright",
+    link: "https://example.com/build",
+    passives: [
+      "strength89",
+      { id: "melee17", weapon_set: 0, level_interval: [0, 100] },
+    ],
+    skills: [{
+      id: "Metadata/Items/Gems/SkillGemEarthquake",
+      support_skills: ["Metadata/Items/Gems/SupportGemFastForward"],
+    }],
+    inventory_slots: [{ inventory_id: "Helm1", slot_x: 0, slot_y: 0 }],
+  }, GGG_BUILD_SCHEMA_CURRENT, "export"));
+});
+
+Deno.test("strict current export rejects Buildwright legacy extensions", () => {
+  expectErr(checkGGGBuild({
+    name: "No private fields",
+    patch: "4.5.4.4",
+  }, GGG_BUILD_SCHEMA_CURRENT, "export"), "import-only");
+  expectErr(checkGGGBuild({
+    name: "No private skill fields",
+    skills: [{ id: "Metadata/Items/Gems/SkillGemEarthquake", level: 20 }],
+  }, GGG_BUILD_SCHEMA_CURRENT, "export"), "import-only");
+});
+
 // ---- the freeze -------------------------------------------------------------
 
 Deno.test("schema revisions are frozen", () => {
@@ -123,6 +173,9 @@ Deno.test("schema revisions are frozen", () => {
   }
   const intact = v1.root.fields["name"]?.required === "export";
   if (!threw || !intact) throw new Error("schema rev 1 is mutable — the freeze is broken");
+  if (!Object.isFrozen(GGG_BUILD_SCHEMAS[2])) {
+    throw new Error("schema rev 2 is mutable — the freeze is broken");
+  }
 });
 
 Deno.test("unknown revision is rejected", () => {

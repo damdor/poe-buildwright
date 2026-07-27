@@ -2,7 +2,7 @@
 // === Captures bar (chip rail + snapshot button) ===========================
 // ============================================================================
 // Top-of-sidebar UI for creating / switching / deleting captures. The
-// data model lives in wizard_chrome.ts (window.PoE2Plan.captures);
+// data model lives in wizard_chrome.ts (window.BuildwrightPlan.captures);
 // this module is the planner-page surface that exposes it.
 //
 // Authoring flow:
@@ -17,11 +17,12 @@
 //   * Click ✕ on a chip → that capture is removed; its level range
 //     merges into the previous capture (or the next, if it was first).
 //
-// Tree state and chip rail both re-render on 'poe2-capture-change'.
+// Tree state and chip rail both re-render on the shared state-change event.
 
 
 import { countSelected, state } from "./state.ts";
 import { flushPersistNow, syncFromWizardStore } from "./wizard_sync.ts";
+import { PLANNER_EVENTS } from "./runtime_contract.ts";
 
 const capListEl      = document.getElementById('cap-list')      as HTMLElement | null;
 const capCountEl     = document.getElementById('cap-count')     as HTMLElement | null;
@@ -42,14 +43,21 @@ const capLevelEl     = document.getElementById('cap-level')     as HTMLElement |
 // excludes asc nodes, mainPointGrant sums the grants), so we just
 // consume the totals.
 export function currentCharacterLevel(): number {
+  const native = window.BuildwrightPlan?.native.get();
+  const authored = native?.states.find(candidate =>
+    candidate.id === native.activeStateId
+  )?.characterLevel;
+  if (authored != null) {
+    return Math.max(1, Math.min(100, Math.trunc(authored)));
+  }
   const c = countSelected();
-  return Math.max(1, c.main - c.mainPointGrant + 1);
+  return Math.max(1, Math.min(100, c.main - c.mainPointGrant + 1));
 }
 
 export function renderCaptureBar(): void {
-  if (!capListEl || !window.PoE2Plan) return;
-  const list = window.PoE2Plan.captures.list();
-  const activeIdx = window.PoE2Plan.captures.activeIndex();
+  if (!capListEl || !window.BuildwrightPlan) return;
+  const list = window.BuildwrightPlan.captures.list();
+  const activeIdx = window.BuildwrightPlan.captures.activeIndex();
   const snapshotCount = Math.max(0, list.length - 1);
   if (capCountEl) capCountEl.textContent = String(snapshotCount);
   const pluralEl = document.getElementById('cap-count-plural');
@@ -62,38 +70,9 @@ export function renderCaptureBar(): void {
   if (capLevelEl) capLevelEl.textContent = String(lvl);
 
   if (capSnapshotBtn) {
-    const active = window.PoE2Plan.captures.active();
-    const onWorkingCap = window.PoE2Plan.captures.isWorking();
-    let snapLvl = lvl;
-    if (state.replayActive) {
-      const lsInput = document.getElementById('ls-input') as HTMLInputElement | null;
-      if (lsInput) snapLvl = Math.max(1, +lsInput.value | 0);
-    }
-    // Three gates (in order — first failure wins the tooltip):
-    //   1. Must be editing the WORKING cap. Snapping from a frozen
-    //      chip historically caused the [21-100]/[21-100] duplicate
-    //      bug because snapshotAt always pushes the new cap at the
-    //      END of the captures array. With the API now refusing,
-    //      this disables the button too so the user sees WHY.
-    //   2. Snap level must be above the active cap's lo (something
-    //      new to capture).
-    //   3. Snap level must be < 100 (need room for the next cap).
-    let canSnapshot = false;
-    let title = '';
-    if (!active) {
-      title = 'No active capture.';
-    } else if (!onWorkingCap) {
-      title = 'Switch to the current (working) snapshot to take a new one — click the "current" chip on the slider.';
-    } else if (snapLvl >= 100) {
-      title = 'Snap level must be 99 or lower.';
-    } else if (snapLvl <= active.levelRange[0]) {
-      title = 'Allocate at least one passive first before snapshotting.';
-    } else {
-      canSnapshot = true;
-      title = 'Freeze the current tree as a snapshot at level ' + snapLvl + '.';
-    }
-    capSnapshotBtn.disabled = !canSnapshot;
-    capSnapshotBtn.title = title;
+    capSnapshotBtn.disabled = false;
+    capSnapshotBtn.title =
+      "Create a complete child state from the state you are editing.";
   }
 
   capListEl.innerHTML = '';
@@ -136,8 +115,8 @@ export function renderCaptureBar(): void {
 }
 
 export function snapshotHere(): void {
-  if (!window.PoE2Plan) return;
-  const active = window.PoE2Plan.captures.active();
+  if (!window.BuildwrightPlan) return;
+  const active = window.BuildwrightPlan.captures.active();
   if (!active) return;
   // TRANSACTIONAL: snapshot exit-replay + flush BOTH mutate
   // active.passives. If the level check then refuses, roll back so a
@@ -177,8 +156,8 @@ export function snapshotHere(): void {
 
   // Exit replay (restore the user's pre-replay editing state so any
   // unflushed edits land in the new working cap's inheritance).
-  if (state.replayActive && typeof window.PoE2SliderExitRestore === 'function') {
-    window.PoE2SliderExitRestore();
+  if (state.replayActive && typeof window.BuildwrightReplayExitRestore === 'function') {
+    window.BuildwrightReplayExitRestore();
   }
   if (typeof persistToWizardStore === 'function') persistToWizardStore();
   if (typeof flushPersistNow === 'function')      flushPersistNow();
@@ -189,7 +168,7 @@ export function snapshotHere(): void {
 
   if (snapLvl <= active.levelRange[0]) {
     rollback();
-    window.PoE2Plan.flash('Nothing new to snapshot — allocate at least one passive first', true);
+    window.BuildwrightPlan.flash('Nothing new to snapshot — allocate at least one passive first', true);
     return;
   }
   // Max snap level is 99: snapshotAt sets new cap range to [snapLvl+1,
@@ -198,16 +177,16 @@ export function snapshotHere(): void {
   // leaves room for a single "lvl 100" entry in the next cap.
   if (snapLvl >= 100) {
     rollback();
-    window.PoE2Plan.flash('Snap level must be 99 or lower (lvl 100 leaves no room for the next capture).', true);
+    window.BuildwrightPlan.flash('Snap level must be 99 or lower (lvl 100 leaves no room for the next capture).', true);
     return;
   }
-  window.PoE2Plan.captures.snapshotAt(snapLvl);
-  window.PoE2Plan.flash('Snapshotted at level ' + snapLvl);
+  window.BuildwrightPlan.captures.snapshotAt(snapLvl);
+  window.BuildwrightPlan.flash('Snapshotted at level ' + snapLvl);
 }
 
 export function deleteCapture(idx: number): void {
-  if (!window.PoE2Plan) return;
-  const list = window.PoE2Plan.captures.list();
+  if (!window.BuildwrightPlan) return;
+  const list = window.BuildwrightPlan.captures.list();
   if (list.length <= 1) {
     alert('Can\'t delete the only capture — every plan needs at least one.');
     return;
@@ -217,15 +196,13 @@ export function deleteCapture(idx: number): void {
   const range = c.levelRange[0] + '–' + c.levelRange[1];
   if (!confirm('Delete capture ' + (idx + 1) + ' (levels ' + range + ')?\n\n' +
                'Its level range will merge into the previous capture.')) return;
-  window.PoE2Plan.captures.remove(idx);
+  window.BuildwrightPlan.captures.remove(idx);
 }
 
 // Declare persistToWizardStore for the snapshotHere typeof check. The
 // function lives in wizard_sync.ts which doesn't export it on the
 // global; this local ambient covers the typeof probe.
 declare function persistToWizardStore(): void;
-
-if (capSnapshotBtn) capSnapshotBtn.addEventListener('click', snapshotHere);
 
 if (capListEl) {
   capListEl.addEventListener('click', e => {
@@ -238,23 +215,23 @@ if (capListEl) {
       return;
     }
     const chip = target.closest<HTMLElement>('.cap-chip');
-    if (!chip || !window.PoE2Plan) return;
+    if (!chip || !window.BuildwrightPlan) return;
     const idx = parseInt(chip.dataset.idx || '', 10);
-    const cur = window.PoE2Plan.captures.activeIndex();
+    const cur = window.BuildwrightPlan.captures.activeIndex();
     if (idx === cur) return;
     // If we're in replay mode, exit it FIRST so the in-memory state
     // restored from the saved snapshot doesn't trample the capture
     // we're about to switch into. Also signals "user wants to edit a
     // different capture" — replay was just a viewing mode.
-    if (state.replayActive && typeof window.PoE2SliderExit === 'function') {
-      window.PoE2SliderExit();
+    if (state.replayActive && typeof window.BuildwrightReplayExit === 'function') {
+      window.BuildwrightReplayExit();
     }
     // Persist any in-flight edits so they land in the OLD active
     // capture before we switch. flushPersistNow now guards itself
     // against running during replay, so this is a no-op if we were
     // just in replay mode (state was already restored above).
     if (typeof flushPersistNow === 'function') flushPersistNow();
-    window.PoE2Plan.captures.setActive(idx);
+    window.BuildwrightPlan.captures.setActive(idx);
   });
 }
 
@@ -262,12 +239,12 @@ if (capListEl) {
 // wizard chrome dispatches this event; we re-render the chip rail
 // and ask the planner to re-hydrate the visible tree from whatever
 // is now the active capture.
-window.addEventListener('poe2-capture-change', () => {
+window.addEventListener(PLANNER_EVENTS.stateChange, () => {
   renderCaptureBar();
   if (typeof syncFromWizardStore === 'function') syncFromWizardStore();
 });
 
-// Initial render — boot path populates window.PoE2Plan via
+// Initial render — boot path populates window.BuildwrightPlan via
 // wizard_chrome.ts before the planner script tag runs, but the chip
 // rail wants to read it AFTER the planner has hydrated state.
 // requestAnimationFrame defers one frame past initial render.

@@ -266,7 +266,7 @@ function addNode(id: string, node: TreeNode, nextIds: Set<string>, sprites: Set<
  * disappeared or changed shape. */
 export function syncClusterJewelTrees(items: Item[], families: ClusterModFamily[]): number {
   if (!clusterData || !baseEdgesForSel || !baseEdgesMeta) return 0;
-  const effective = window.PoE2Plan?.data.effective("passives");
+  const effective = window.BuildwrightPlan?.data.effective("passives");
   const effectiveAlloc = effective instanceof Map ? effective : state.selected;
   const allocatedSockets = [...effectiveAlloc.keys()]
     .filter(id => clusterData!.slots[String(id)])

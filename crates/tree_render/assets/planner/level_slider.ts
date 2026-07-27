@@ -27,7 +27,9 @@ import { esc } from "./hover.ts";
 import { adj, updatePreview } from "./pathfind.ts";
 import { applyAsc, updateSelectionUI } from "./sidebar.ts";
 import { flushPersistNow, syncFromWizardStore } from "./wizard_sync.ts";
-import { currentCharacterLevel } from "./captures_bar.ts";
+import {
+  emitNotesUpdated, emitReplayScrub, PLANNER_EVENTS,
+} from "./runtime_contract.ts";
 import type { Capture, Skill } from "../../../../types/shared.d.ts";
 
 const lsEl       = document.getElementById('level-slider') as HTMLElement | null;
@@ -36,7 +38,6 @@ const lsLevelEl  = document.getElementById('ls-level')     as HTMLElement | null
 const lsMaxEl    = document.getElementById('ls-max')       as HTMLElement | null;
 const lsCapEl    = document.getElementById('ls-cap-name')  as HTMLElement | null;
 const lsTicksEl  = document.getElementById('ls-ticks')     as HTMLElement | null;
-const capChipListEl = document.getElementById('cap-chip-list') as HTMLElement | null;
 const lsTooltipEl = document.getElementById('ls-tooltip') as HTMLElement | null;
 const lsModeEditBtn   = document.getElementById('ls-mode-edit')   as HTMLElement | null;
 const lsModeReplayBtn = document.getElementById('ls-mode-replay') as HTMLElement | null;
@@ -75,8 +76,8 @@ export interface CapCacheEntry {
 let _capCache: CapCacheEntry[] | null = null;
 
 export function rebuildCapCache(): CapCacheEntry[] | null {
-  if (!window.PoE2Plan) { _capCache = null; return null; }
-  const captures = window.PoE2Plan.captures.list();
+  if (!window.BuildwrightPlan) { _capCache = null; return null; }
+  const captures = window.BuildwrightPlan.captures.list();
   _capCache = captures.map((c): CapCacheEntry => {
     const mains: SliderAlloc[] = [];
     const ascs:  SliderAlloc[] = [];
@@ -245,11 +246,36 @@ export function stateAtLevel(L: number): SliderState | null {
   };
 }
 
+export function stateAtRouteIndex(position: number): SliderState | null {
+  if (!_capCache?.length) return null;
+  const idx = Math.max(0, Math.min(_capCache.length - 1, Math.trunc(position)));
+  const entry = _capCache[idx]!;
+  const selected = new Map<string, string>();
+  const pickedAttrs = new Map<string, string>();
+  const allocMeta = new Map<string, { notes?: string; level?: number }>();
+  for (const allocation of entry.capture.passives) {
+    const id = String(allocation.id);
+    selected.set(id, allocation.set || "main");
+    if (allocation.attrVariantId) {
+      const option = TREE.nodes[id]?.o?.find(candidate =>
+        String(candidate.id) === String(allocation.attrVariantId));
+      if (option) pickedAttrs.set(id, option.n);
+    }
+    if (allocation.note || allocation.level != null) {
+      allocMeta.set(id, {
+        ...(allocation.note ? { notes: allocation.note } : {}),
+        ...(allocation.level != null ? { level: allocation.level } : {}),
+      });
+    }
+  }
+  return { selected, pickedAttrs, allocMeta, capture: entry.capture, capIdx: idx };
+}
+
 // Apply a slider-derived state to the live render. Doesn't touch the
 // persisted plan — replay is read-only by design; exiting restores
 // the pre-replay snapshot.
-export function applyReplayState(L: number): void {
-  const s = stateAtLevel(L);
+export function applyReplayState(position: number): void {
+  const s = stateAtRouteIndex(position);
   if (!s) return;
   state.selected       = s.selected;
   state.pickedAttrs    = s.pickedAttrs;
@@ -259,19 +285,20 @@ export function applyReplayState(L: number): void {
   // loadout (snapshots carry skills + items, not just the tree).
   if (state.replayCapIdx !== s.capIdx) {
     state.replayCapIdx = s.capIdx;
-    window.dispatchEvent(new CustomEvent('poe2-replay-scrub', { detail: { capIdx: s.capIdx } }));
+    emitReplayScrub(s.capIdx);
   }
   state.popoutId       = null;
   state.pathSwapTarget = null;
   state.pathSwapIndex  = 0;
   state.selDirty       = true;
-  if (lsLevelEl) lsLevelEl.textContent = String(L);
+  const routeState = window.BuildwrightPlan?.native.route()[s.capIdx];
+  if (lsLevelEl) {
+    lsLevelEl.textContent = routeState?.characterLevel != null
+      ? String(routeState.characterLevel)
+      : String(s.capIdx + 1);
+  }
   if (lsCapEl) {
-    const c = s.capture;
-    const rng = c.levelRange[0] === c.levelRange[1]
-      ? String(c.levelRange[0])
-      : c.levelRange[0] + '–' + c.levelRange[1];
-    lsCapEl.textContent = 'capture ' + (s.capIdx + 1) + ' · ' + rng;
+    lsCapEl.textContent = routeState?.name ?? "State " + (s.capIdx + 1);
   }
   // Sync the asc panel to whichever asc the active capture has.
   if (s.capture.ascendancy && s.capture.ascendancy !== state.asc) {
@@ -291,7 +318,7 @@ export function applyReplayState(L: number): void {
   // Slider fill — for the gradient ::-webkit-slider-runnable-track.
   if (!lsInput) return;
   const min = +lsInput.min, max = +lsInput.max;
-  const pct = max > min ? ((L - min) / (max - min)) * 100 : 0;
+  const pct = max > min ? ((position - min) / (max - min)) * 100 : 0;
   lsInput.style.setProperty('--ls-fill', pct + '%');
   // Level bubble riding the thumb (inset-corrected like the ticks so
   // it stays dead-centre over the thumb at both extremes).
@@ -301,8 +328,8 @@ export function applyReplayState(L: number): void {
     const w = lsInput.offsetWidth || 1;
     const inset = (THUMB_HALF / w) * 100;
     const usable = Math.max(0, 1 - 2 * (THUMB_HALF / w));
-    bubble.style.left = (inset + (max > min ? (L - min) / (max - min) : 0) * 100 * usable) + '%';
-    bubble.textContent = String(L);
+    bubble.style.left = (inset + (max > min ? (position - min) / (max - min) : 0) * 100 * usable) + '%';
+    bubble.textContent = (s.capIdx + 1) + " · " + (routeState?.name ?? "State");
     bubble.classList.remove('hidden');
   }
   updatePreview();
@@ -329,266 +356,26 @@ export function renderTicks(): void {
   const pctOf = (L: number): number =>
     insetPct + ((L - min) / (max - min)) * 100 * usableFrac;
 
-  // Snapshot transitions: one mark per snapshot, anchored at the
-  // FROZEN capture's hi level — the same level the note ticks land
-  // on when a note is attached to an end-of-capture node.
-  for (let i = 0; i < _capCache.length - 1; i++) {
-    const L = _capCache[i]!.capture.levelRange[1];
-    if (L === min || L === max) continue;
-    const t = document.createElement('div');
-    t.className = 'ls-tick cap';
-    t.style.left = pctOf(L) + '%';
-    t.dataset.kind = 'cap';
-    t.dataset.level = String(L);
-    lsTicksEl.appendChild(t);
+  const route = window.BuildwrightPlan?.native.route() ?? [];
+  for (let index = 0; index < route.length; index++) {
+    const routeState = route[index]!;
+    const tick = document.createElement("div");
+    tick.className = "ls-tick cap";
+    tick.style.left = pctOf(index) + "%";
+    tick.dataset.kind = "state";
+    tick.dataset.level = String(index);
+    tick.dataset.stateName = routeState.name;
+    tick.dataset.statePhase = routeState.phase;
+    tick.dataset.characterLevel = routeState.characterLevel != null
+      ? String(routeState.characterLevel)
+      : "";
+    tick.title = routeState.name;
+    lsTicksEl.appendChild(tick);
   }
-
-  // Capture chip rail — one chip per FROZEN snapshot. The working
-  // (last) capture is the user's current draft and intentionally
-  // gets no chip: it's always implicitly active the moment they
-  // change anything, and labelling it "current" was visual clutter
-  // that read as a fifth snapshot. Click switches the active
-  // capture; the active chip gets the gold border accent.
-  if (capChipListEl) {
-    capChipListEl.innerHTML = '';
-    const activeIdx = window.PoE2Plan ? window.PoE2Plan.captures.activeIndex() : -1;
-    const lastIdx   = _capCache.length - 1;
-    for (let i = 0; i < lastIdx; i++) {
-      const cap = _capCache[i]!.capture;
-      const lo = cap.levelRange[0];
-      const hi = cap.levelRange[1];
-      const chip = document.createElement('li');
-      chip.className = 'cap-chip' + (i === activeIdx ? ' active' : '');
-      chip.dataset.capIdx = String(i);
-      const label = document.createElement('span');
-      label.className = 'cap-chip-label';
-      label.textContent = (lo === hi ? String(lo) : (lo + '–' + hi));
-      chip.appendChild(label);
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'cap-chip-del';
-      del.textContent = '×';
-      del.dataset.capIdx = String(i);
-      del.title = 'Delete this snapshot — its level range merges into the previous snapshot';
-      del.setAttribute('aria-label', 'Delete snapshot ' + (lo + '–' + hi));
-      chip.appendChild(del);
-      chip.title = 'Snapshot · click to switch to this capture for editing';
-      capChipListEl.appendChild(chip);
-    }
-    // "Current" chip for the WORKING capture (always last). Without
-    // it the user has no UI to navigate BACK to the working cap
-    // after clicking a frozen chip — they were stuck silently
-    // editing a frozen snapshot. The chip stays visible alongside
-    // the frozen ones so the navigation is symmetric.
-    if (lastIdx >= 0) {
-      const workingChip = document.createElement('li');
-      workingChip.className = 'cap-chip cap-chip-current' +
-        (lastIdx === activeIdx ? ' active' : '');
-      workingChip.dataset.capIdx = String(lastIdx);
-      const label = document.createElement('span');
-      label.className = 'cap-chip-label';
-      label.textContent = 'current';
-      workingChip.appendChild(label);
-      workingChip.title = 'Current (working) snapshot · live editing lands here';
-      capChipListEl.appendChild(workingChip);
-    }
-  }
-
-  // Note ticks (numbered gold pills). Each annotated allocation
-  // becomes a milestone. We collect them across all captures first
-  // so we can number them sequentially by level — author-meaningful
-  // order ("Note 3 fires at lvl 48 — take Unseen Path here").
-  //
-  // De-duplication: snapshot creation copies the active capture's
-  // passives (notes included) into the new capture, so a note added
-  // once will appear in EVERY capture that inherits the node. We
-  // collapse those instances to a single tick at the EARLIEST level
-  // the note applies — otherwise authoring one note materialises 2-5
-  // ticks on the slider, each numbered sequentially, which reads as
-  // "you wrote 5 notes" instead of "you wrote 1." Dedup key is
-  // (id, note text) so genuinely different notes on the same node
-  // (rare but possible across respec) still each get a tick.
-  // Anchor each note at the LEVEL THE NODE IS REVEALED AT — the
-  // same level the slider's stateAtLevel exposes it. For main
-  // passives, this is the node's BFS index in its capture's mains
-  // list (j-th main is revealed at lvl j + 2 - grants — matches
-  // the slider's `targetMainCount = L - 1 + grants` formula). For
-  // asc + weapon-set entries, the explicit `level` stamp from
-  // allocation time is the authoritative reveal level.
-  //
-  // Earlier this anchored to the capture's END level so every note
-  // in a capture clumped at the snapshot boundary. That hid the
-  // ordering author meant when scrubbing — "this hint applies at
-  // lvl 14" became "this hint applies at the lvl-30 snapshot
-  // boundary." The per-node reveal level matches author intent and
-  // mirrors what the slider itself shows when the player scrubs to
-  // that level.
-  interface NoteEntry {
-    L: number;
-    a: { id: string | number; note?: string; level?: number };
-    capIdx: number;
-    noteType: 'passive' | 'skill';
-  }
-  const noteByKey = new Map<string, NoteEntry>();
-  for (let i = 0; i < _capCache.length; i++) {
-    const entry = _capCache[i];
-    if (!entry) continue;
-    const c = entry.capture;
-    for (let j = 0; j < entry.mains.length; j++) {
-      const a = entry.mains[j];
-      if (!a || !a.note) continue;
-      // BFS index j → reveal level. Clamp to the capture's range
-      // so the note never anchors below the capture's lo (matters
-      // for captures that inherit prefix passives) or above max.
-      let L = j + 2 - entry.grants;
-      L = Math.max(c.levelRange[0], L);
-      L = Math.min(max, L);
-      const key = 'p|' + String(a.id) + '|' + a.note;
-      const prev = noteByKey.get(key);
-      if (!prev || L < prev.L) noteByKey.set(key, { L, a, capIdx: i, noteType: 'passive' });
-    }
-    for (const a of [...entry.ascs, ...entry.sets]) {
-      if (!a.note) continue;
-      const L = typeof a.level === 'number' ? a.level : c.levelRange[0];
-      if (L > max) continue;
-      const key = 'p|' + String(a.id) + '|' + a.note;
-      const prev = noteByKey.get(key);
-      if (!prev || L < prev.L) noteByKey.set(key, { L, a, capIdx: i, noteType: 'passive' });
-    }
-    // Skill + support notes: anchor at the cap's lo (when this
-    // skill first becomes "active" in this snapshot's timeline).
-    // Iterates the original capture.skills (skills don't get a BFS
-    // pre-processing pass like passives — they're just a list).
-    // Dedup key prefixed with 's|' so a passive and a skill that
-    // happen to share an id don't collide.
-    for (const sk of (c.skills || [])) {
-      if (!sk || !sk.id) continue;
-      const L = Math.max(c.levelRange[0], 1);
-      if (L > max) continue;
-      if (sk.note) {
-        const key = 's|' + String(sk.id) + '|' + sk.note;
-        const prev = noteByKey.get(key);
-        if (!prev || L < prev.L) noteByKey.set(key, { L, a: sk, capIdx: i, noteType: 'skill' });
-      }
-      for (const sup of (sk.supports || [])) {
-        if (sup && sup.note) {
-          const key = 's|sup|' + String(sup.id) + '|' + sup.note;
-          const prev = noteByKey.get(key);
-          if (!prev || L < prev.L) noteByKey.set(key, { L, a: sup, capIdx: i, noteType: 'skill' });
-        }
-      }
-    }
-  }
-  const notes = [...noteByKey.values()];
-  // Stable sort: primary by level, secondary by capture index so
-  // notes at the same level emit in author order.
-  notes.sort((x, y) => x.L - y.L || x.capIdx - y.capIdx);
-  // Publish a public map keyed by node id so the tree-side overlay
-  // (numbered badges, pulse highlight on tick hover, tooltip note
-  // section) can look up "does node X have a note? what number?"
-  // without re-walking captures. Same dedup + level + numbering as
-  // the slider so the badge number always matches the tick number.
-  const notesByNode = new Map<string, { num: number; level: number; text: string }>();
-  for (let n = 0; n < notes.length; n++) {
-    const entry = notes[n];
-    if (!entry) continue;
-    const { L, a } = entry;
-    const sid = String(a.id);
-    const prev = notesByNode.get(sid);
-    if (!prev || L < prev.level) {
-      notesByNode.set(sid, { num: n + 1, level: L, text: a.note ?? '' });
-    }
-  }
-  window.PoE2Notes = notesByNode;
-  window.dispatchEvent(new CustomEvent('poe2-notes-updated'));
-
-  // Capture-span shading: alternate faint gold zones on the track
-  // backdrop, one per capture, so the snapshot structure reads at a
-  // glance (the blue boundary lines mark the exact transition levels).
-  const segEl = document.getElementById('ls-segments');
-  if (segEl) {
-    segEl.innerHTML = '';
-    for (let i = 0; i < _capCache.length; i++) {
-      const c = _capCache[i]!.capture;
-      const lo = Math.max(min, c.levelRange[0]);
-      const hi = Math.min(max, c.levelRange[1]);
-      if (hi <= lo) continue;
-      const d = document.createElement('div');
-      d.className = 'ls-seg' + (i % 2 ? ' odd' : '');
-      const a = pctOf(lo), b = pctOf(hi);
-      d.style.left = a + '%';
-      d.style.width = Math.max(0, b - a) + '%';
-      segEl.appendChild(d);
-    }
-  }
-
-  // Name resolver for a note's anchor (passive node vs gem).
-  const nameOf = (e: NoteEntry): string => {
-    if (e.noteType === 'skill') {
-      const cat = window.POE2_GEMS_BY_ID as Map<string, { name?: string }> | undefined;
-      const g = cat && cat.get ? cat.get(String(e.a.id)) : null;
-      return (g && g.name) || String(e.a.id);
-    }
-    const node = TREE.nodes[String(e.a.id)];
-    return (node && node.n) || String(e.a.id);
-  };
-
-  // Agent-authored builds carry MANY notes; vertical stacking towers
-  // read as clutter. Instead, notes near each other collapse into a
-  // single CLUSTER pill showing the count — hover lists every note
-  // inside (number, level, anchor, text) ordered by reveal level,
-  // click scrubs to the cluster's first level. Solo notes keep their
-  // sequence-number pill. Gold = passive, purple = skill, split =
-  // mixed cluster.
-  //
-  // Clustering is GAP-chained: a note joins the cluster when it is
-  // within CLUSTER_PX of the cluster's LAST member. The previous
-  // first-member anchor let a train of pills — each ~26 px from its
-  // neighbor, visually touching — render as separate overlapping
-  // solos (the exact clutter a dense 5-snapshot agent build showed).
-  const trackWpx = lsInput.getBoundingClientRect().width || lsInput.offsetWidth || 600;
-  const pxOf = (L: number): number => (pctOf(L) / 100) * trackWpx;
-  const CLUSTER_PX = 28; // pill is 18 px wide; neighbors closer than this read as one blob
-  interface ClusterItem { num: number; e: NoteEntry }
-  const clusters: ClusterItem[][] = [];
-  for (let n = 0; n < notes.length; n++) {
-    const e = notes[n];
-    if (!e) continue;
-    const cur = clusters[clusters.length - 1];
-    if (cur && pxOf(e.L) - pxOf(cur[cur.length - 1]!.e.L) < CLUSTER_PX) cur.push({ num: n + 1, e });
-    else clusters.push([{ num: n + 1, e }]);
-  }
-  for (const cl of clusters) {
-    const first = cl[0]!;
-    const last = cl[cl.length - 1]!;
-    const multi = cl.length > 1;
-    const types = new Set(cl.map(x => x.e.noteType || 'passive'));
-    const t = document.createElement('div');
-    t.className = 'ls-tick note' + (multi ? ' cluster' : '');
-    // A cluster pill sits at the visual midpoint of its span; the
-    // click-scrub level stays at the FIRST member so scrubbing lands
-    // where the earliest note reveals.
-    t.style.left = ((pctOf(first.e.L) + pctOf(last.e.L)) / 2) + '%';
-    t.dataset.kind = 'note';
-    t.dataset.noteType = types.size > 1 ? 'mixed' : (first.e.noteType || 'passive');
-    t.dataset.level = String(first.e.L);
-    if (multi) {
-      t.dataset.cluster = JSON.stringify(cl.map(x => ({
-        num: x.num,
-        level: x.e.L,
-        name: nameOf(x.e),
-        text: x.e.a.note ?? '',
-        type: x.e.noteType || 'passive',
-      })));
-      t.textContent = String(cl.length);
-    } else {
-      t.dataset.note = first.e.a.note;
-      t.dataset.noteNum = String(first.num);
-      t.dataset.nodeId = String(first.e.a.id);
-      t.dataset.nodeName = nameOf(first.e);
-      t.textContent = String(first.num);
-    }
-    lsTicksEl.appendChild(t);
+  if (window.BuildwrightNotes?.size) {
+    window.BuildwrightNotes = new Map();
+    window.PoE2Notes = window.BuildwrightNotes;
+    emitNotesUpdated();
   }
 }
 
@@ -597,7 +384,14 @@ export function showTickTooltip(tickEl: HTMLElement | null): void {
   const level = tickEl.dataset.level;
   const kind = tickEl.dataset.kind;
   let html;
-  if (kind === 'note' && tickEl.dataset.cluster) {
+  if (kind === "state") {
+    const characterLevel = tickEl.dataset.characterLevel
+      ? " · Lv " + esc(tickEl.dataset.characterLevel)
+      : "";
+    html = '<div class="ls-tt-head">' + esc(tickEl.dataset.stateName) +
+      characterLevel + '</div>' +
+      '<div class="ls-tt-note">' + esc(tickEl.dataset.statePhase) + '</div>';
+  } else if (kind === 'note' && tickEl.dataset.cluster) {
     // Cluster pill → a notes index: every note inside, with its
     // sequence number (color-coded passive/skill), reveal level,
     // anchor name, and the note text. Rows are ordered by reveal
@@ -661,7 +455,7 @@ export function exitReplay(opts?: { skipRestore?: boolean }): void {
   if (!state.replayActive) return;
   state.replayActive = false;
   state.replayCapIdx = -1;
-  window.dispatchEvent(new CustomEvent('poe2-replay-scrub', { detail: { capIdx: -1 } }));
+  emitReplayScrub(-1);
   document.getElementById('ls-thumb-label')?.classList.add('hidden');
   if (opts && opts.skipRestore) {
     // Caller is about to swap the active capture (e.g. chip click).
@@ -694,7 +488,7 @@ export function exitReplay(opts?: { skipRestore?: boolean }): void {
 // a capture-context switch happens during replay. skipRestore is
 // important because the saved snapshot is from a different capture
 // and re-applying it would corrupt the new active one.
-window.PoE2SliderExit = () => exitReplay({ skipRestore: true });
+window.BuildwrightReplayExit = () => exitReplay({ skipRestore: true });
 // Use this variant when the caller stays on the SAME active capture
 // and wants the user's pre-replay editing state recovered (e.g.
 // snapshot — author meant to freeze what they were editing, not the
@@ -702,11 +496,11 @@ window.PoE2SliderExit = () => exitReplay({ skipRestore: true });
 // the only source of truth for unflushed edits (the autosave RAF
 // tick hasn't necessarily run between the last node click and the
 // slider scrub). Without restore, those edits are silently lost.
-window.PoE2SliderExitRestore = () => exitReplay();
+window.BuildwrightReplayExitRestore = () => exitReplay();
 // Read-only inspection for tests / external tooling. Returns the
 // BFS-ordered mains list per capture and the slider's level-to-state
 // resolution. Does not mutate live state.
-window.PoE2SliderDebug = {
+window.BuildwrightReplayDebug = {
   capCache: () => (_capCache || []).map(e => ({
     levelRange: e.capture.levelRange,
     grants: e.grants,
@@ -715,7 +509,7 @@ window.PoE2SliderDebug = {
     sets:  e.sets.map(a => String(a.id)),
   })),
   stateAt: (L: number) => {
-    const s = stateAtLevel(L);
+    const s = stateAtRouteIndex(L);
     return s ? { selected: [...s.selected.keys()], capIdx: s.capIdx } : null;
   },
   rebuild: () => rebuildCapCache(),
@@ -731,14 +525,16 @@ window.PoE2SliderDebug = {
   }),
   flushNow: () => { if (typeof flushPersistNow === 'function') flushPersistNow(); },
 };
+window.PoE2SliderExit = window.BuildwrightReplayExit;
+window.PoE2SliderExitRestore = window.BuildwrightReplayExitRestore;
+window.PoE2SliderDebug = window.BuildwrightReplayDebug;
 
 export function refreshSlider(): void {
-  if (!lsEl || !window.PoE2Plan) return;
+  if (!lsEl || !window.BuildwrightPlan) return;
   rebuildCapCache();
   const captures = (_capCache || []).map(e => e.capture);
-  // Hide the slider entirely until the author has taken at least one
-  // explicit snapshot (per the captures-bar convention, captures.length
-  // <= 1 means "no snapshots yet" and replay would be pointless).
+  // One keyframe has nothing to replay. Two or more states use a discrete
+  // root-to-leaf route axis; character level is metadata, not ordering.
   if (captures.length <= 1) {
     lsEl.classList.add('hidden');
     if (state.replayActive) exitReplay();
@@ -746,24 +542,22 @@ export function refreshSlider(): void {
     // any stale badges. Without this, "Clear all" (which empties
     // captures) would leave the badge layer holding references to the
     // previous build's noted nodes and the badges would linger.
-    if (window.PoE2Notes && window.PoE2Notes.size) {
-      window.PoE2Notes = new Map();
-      window.dispatchEvent(new CustomEvent('poe2-notes-updated'));
+    if (window.BuildwrightNotes && window.BuildwrightNotes.size) {
+      window.BuildwrightNotes = new Map();
+      window.PoE2Notes = window.BuildwrightNotes;
+      emitNotesUpdated();
     }
     return;
   }
   lsEl.classList.remove('hidden');
-  // Slider extent is always 1–100 — the unallocated portion of the
-  // bar is meaningful ("you haven't planned this far yet"). Earlier
-  // I tried clipping to the furthest authored level on the theory
-  // it was more "truthful," but it hid the planning room and made
-  // a single snapshot at lvl 16 fill the whole bar (misleading in
-  // the other direction). 1–100 wins both visually + semantically.
-  const max = 100;
+  const max = captures.length - 1;
   if (lsInput) {
-    lsInput.min = '1';
+    lsInput.min = '0';
     lsInput.max = String(max);
-    const cur = Math.min(Math.max(+lsInput.value || 1, 1), max);
+    const active = window.BuildwrightPlan.captures.activeIndex();
+    const cur = state.replayActive
+      ? Math.min(Math.max(+lsInput.value || 0, 0), max)
+      : Math.min(Math.max(active, 0), max);
     lsInput.value = String(cur);
   }
   if (lsMaxEl) lsMaxEl.textContent = String(max);
@@ -794,18 +588,7 @@ if (lsEl) {
 // would just be a no-op that confuses the user. Uses _capCache so
 // it's stable across replay mode (replay doesn't mutate captures).
 export function computeAuthoredMax(): number {
-  if (!_capCache || _capCache.length === 0) return 1;
-  let m = 1;
-  for (let i = 0; i < _capCache.length; i++) {
-    const e = _capCache[i];
-    if (!e) continue;
-    const isLast = (i === _capCache.length - 1);
-    const L = isLast
-      ? Math.max(1, e.mains.length - e.grants + 1)
-      : e.capture.levelRange[1];
-    if (L > m) m = L;
-  }
-  return m;
+  return Math.max(0, (_capCache?.length ?? 1) - 1);
 }
 
 // Wire interactions.
@@ -832,7 +615,7 @@ if (lsEl && lsInput) {
     e.preventDefault();
     const step = delta > 0 ? 1 : -1;
     const cap = computeAuthoredMax();
-    const cur = +lsInput.value || 1;
+    const cur = +lsInput.value || 0;
     const lo = +lsInput.min, hi = Math.min(+lsInput.max, cap);
     const next = Math.min(Math.max(cur + step, lo), hi);
     if (next === cur) return;
@@ -859,7 +642,7 @@ if (lsTicksEl) {
     if (!t || !lsInput) return;
     if (!state.replayActive) enterReplay();
     const cap = computeAuthoredMax();
-    const L = Math.min(+(t.dataset.level ?? '1'), cap);
+    const L = Math.min(+(t.dataset.level ?? '0'), cap);
     lsInput.value = String(L);
     applyReplayState(L);
   });
@@ -877,22 +660,13 @@ if (lsTicksEl) {
 // AND snap the slider position to the new active capture's upper
 // bound (so the slider reflects "you're now editing this capture's
 // final state" rather than dangling at a stale level from before).
-window.addEventListener('poe2-capture-change', () => {
+window.addEventListener(PLANNER_EVENTS.stateChange, () => {
   refreshSlider();
-  if (!lsInput || !window.PoE2Plan) return;
+  if (!lsInput || !window.BuildwrightPlan) return;
   if (state.replayActive) return;  // only snap when NOT in replay
-  const active = window.PoE2Plan.captures.active();
+  const active = window.BuildwrightPlan.captures.active();
   if (!active) return;
-  // Snap target: for the WORKING (last) capture, use the live derived
-  // character level — its range[1] defaults to 100, which would dump
-  // the slider thumb at the right edge even when the player is at
-  // Lv 13. For earlier snapshots, range[1] IS the authored snapshot
-  // level so we trust it.
-  const list = window.PoE2Plan.captures.list();
-  const isLast = window.PoE2Plan.captures.activeIndex() === list.length - 1;
-  const target = (isLast && typeof currentCharacterLevel === 'function')
-    ? currentCharacterLevel()
-    : active.levelRange[1];
+  const target = window.BuildwrightPlan.captures.activeIndex();
   lsInput.value = String(target);
   if (lsLevelEl) lsLevelEl.textContent = String(target);
   const min = +lsInput.min, max = +lsInput.max;
@@ -907,10 +681,17 @@ window.addEventListener('poe2-capture-change', () => {
 // show up live as the author types.
 let _lastCapSig = '';
 function captureSig() {
-  if (!window.PoE2Plan) return '';
-  return window.PoE2Plan.captures.list().map(c => {
+  if (!window.BuildwrightPlan) return '';
+  return window.BuildwrightPlan.captures.list().map(c => {
     const noteSig = c.passives.filter(a => a.note).map(a => a.id + ':' + a.note).join(',');
-    return c.id + ':' + c.levelRange.join('-') + ':' + c.passives.length + '#' + noteSig;
+    return [
+      c.id,
+      c.name ?? '',
+      c.statePhase ?? '',
+      c.characterLevel ?? '',
+      c.levelRange.join('-'),
+      c.passives.length,
+    ].join(':') + '#' + noteSig;
   }).join('|');
 }
 (function tickSlider() {
@@ -933,64 +714,3 @@ window.addEventListener('resize', () => {
     if (lsEl && !lsEl.classList.contains('hidden')) renderTicks();
   });
 });
-
-// Click a capture chip → switch the active capture. Mirrors the
-// captures-bar chip handler (captures_bar.js): exit replay first,
-// flush pending edits into the OLD active, then setActive.
-// Delete (×) button intercepts before the chip's click → confirm →
-// captures.remove(idx). normalizeCapturesRanges in the chrome
-// absorbs the removed range into the previous cap automatically.
-if (capChipListEl) {
-  // Stop mousedown/mouseup from reaching #viewport's pan handler.
-  // The chip rail sits inside .hud-row (not inside #level-slider),
-  // so the slider's stopPropagation doesn't cover it — without this
-  // the viewport panning detector would set panning=true on chip
-  // mousedown, then window.mouseup → handleClick fires on the chip
-  // click coords. Then handleClick's auto-switch-to-working would
-  // overwrite the chip's setActive(idx) call. handleClick itself
-  // also bails on no-node-hovered clicks, but blocking propagation
-  // here is the cleaner contract: "chip rail interactions don't
-  // bleed to the canvas." Defense in depth.
-  const stop = (e: Event) => e.stopPropagation();
-  for (const evt of ['mousedown', 'mouseup', 'click']) {
-    capChipListEl.addEventListener(evt, stop);
-  }
-  capChipListEl.addEventListener('click', (e) => {
-    // Delete button — handled before the parent chip click so the
-    // chip's setActive doesn't also fire.
-    const target = e.target as HTMLElement | null;
-    const delBtn = target?.closest<HTMLElement>('.cap-chip-del');
-    if (delBtn && window.PoE2Plan) {
-      e.stopPropagation();
-      const idx = parseInt(delBtn.dataset.capIdx ?? '', 10);
-      if (!Number.isFinite(idx)) return;
-      const cap = window.PoE2Plan.captures.list()[idx];
-      if (!cap) return;
-      const rng = cap.levelRange[0] + '–' + cap.levelRange[1];
-      const prev = idx > 0 ? window.PoE2Plan.captures.list()[idx - 1] : null;
-      const mergeMsg = prev
-        ? '\n\nIts level range (' + rng + ') will merge into the previous snapshot ' +
-          '(' + prev.levelRange[0] + '–' + prev.levelRange[1] + ' → ' +
-          prev.levelRange[0] + '–' + cap.levelRange[1] + '). ' +
-          'The previous snapshot keeps its own passives/skills/items.'
-        : '\n\nThe next snapshot will absorb the lvl 1 start.';
-      if (!confirm('Delete snapshot ' + rng + '?' + mergeMsg)) return;
-      if (state.replayActive && typeof window.PoE2SliderExit === 'function') {
-        window.PoE2SliderExit();
-      }
-      window.PoE2Plan.captures.remove(idx);
-      return;
-    }
-    const chip = target?.closest<HTMLElement>('.cap-chip');
-    if (!chip || !window.PoE2Plan) return;
-    const idx = parseInt(chip.dataset.capIdx ?? '', 10);
-    if (!Number.isFinite(idx)) return;
-    const cur = window.PoE2Plan.captures.activeIndex();
-    if (idx === cur) return;
-    if (state.replayActive && typeof window.PoE2SliderExit === 'function') {
-      window.PoE2SliderExit();
-    }
-    if (typeof flushPersistNow === 'function') flushPersistNow();
-    window.PoE2Plan.captures.setActive(idx);
-  });
-}

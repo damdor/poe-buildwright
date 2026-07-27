@@ -34,13 +34,18 @@ Official sources only:
 
 ## Pre-launch data reality
 
-GGG publishes **no machine-readable PoE1 data before launch** — no
-tree JSON (the website still serves the 3.28 Mirage tree), no gem
-export (PoE1 has no equivalent of the poe2-skilltree-export repo).
-Pre-launch artefacts are patch-notes text and announcement images.
-Building a "plan for 3.29 now" tree from those would mean hand-forging
-unofficial data — explicitly out of scope for this project's
-"official sources only" stance.
+Patch notes and announcement images are not sufficient to manufacture a
+trustworthy tree. The website may also continue serving the previous
+league briefly. The authoritative machine-readable launch boundary is
+GGG's live PoE1 patch CDN: `PassiveSkillGraph.psg`, the dat schema, and
+the passive/ascendancy/stat tables. The preload torrent is a standalone
+client `Content.ggpk`; this pipeline does not require a separate GGPK
+reader once the live CDN itself flips.
+
+`poe1-tree --source auto` therefore uses the exact website export while
+it matches the CDN release, then switches to first-party CDN shaping if
+the website lags. Patch-note text remains a human watchlist, never a data
+source.
 
 **Labeling correction — DONE:** the dataset previously labeled
 `poe1_3.26` was the live 3.28.0k Mirage tree (poe.ninja Mirage
@@ -50,25 +55,43 @@ from the page's own `version:` marker and errors on a mismatching
 
 ## Launch-day play (the actual opportunity)
 
-The pipeline is ready TODAY; the whole 3.29 ingest is:
+The full 3.29 ingest is deliberately ordered so no generator can mix a
+3.29 local target with a still-live 3.28 CDN. Every CDN-backed PoE1
+command checks the shared `major.minor.patch` release line before it
+writes output.
 
 ```
-./bw poe1-tree                    # self-labels from the page (3.29.x)
-./bw poe1-sprites --label <ver>   # new atlases (Luminary art etc.)
-./bw manifest --patch poe1_<ver> && ./bw verify --patch poe1_<ver>
-./bw render --tree-dir data/parsed/poe1_<ver>/tree ... --game poe1
-scripts/deploy.sh
+./bw poe1-tree --source auto                # website or live CDN
+./bw sprites --patch poe1_<ver>             # version-scoped live art
+./bw mine --patch poe1_<ver>
+for set in gems active_skills support_skills skill_levels \
+           bases mods unique_art jewels passive_interop; do
+  ./bw shape "$set" --patch poe1_<ver>
+done
+./bw skill-stats --patch poe1_<ver>
+./bw uniques --patch poe1_<ver>
+./bw catalogues --patch poe1_<ver>
+./bw poe1-gem-icons  --patch poe1_<ver>
+./bw poe1-item-icons --patch poe1_<ver>
+./bw poe1-portraits  --patch poe1_<ver>
+./bw render --tree-dir data/parsed/poe1_<ver>/tree \
+  --output viewer/planner-poe1.html --title "PoE1 Passive Tree" \
+  --agent-subdir poe1-agent --game poe1
+./bw manifest --patch poe1_<ver>
+./bw verify --patch poe1_<ver>
+./bw diff poe1_3.28.0k poe1_<ver>
 ```
 
 Because the socket rework doesn't touch the tree, OUR planner is
 unaffected by the part that makes PoB's update hard — we can have the
-full 3.29 tree (Luminary + rotated Reliquarian + new clusters) live
-within minutes of the website updating. Presentation machinery already
-copes: ascendancy count per class is data-driven (Scion gaining a
-third ascendancy needs no code), "pick one" notables are flag-derived,
-and Reliquarian's rotation is just new node data. Watchlist for the
-ingest diff: a third Scion entry, the two new clusters, mastery text
-changes.
+full 3.29 tree (Luminary + rotated Reliquarian + new clusters) ready
+locally as soon as the official patch CDN updates, without waiting for
+the website JSON. Presentation machinery is data-driven: ascendancy
+count and ownership come from the tables; Descendancy covers event and
+bloodline choices; "pick one" notables are flag-derived; Reliquarian's
+rotation is node data. The artifact manifest hashes every deployed
+slice. Watchlist for the ingest diff: a third Scion entry, the two new
+clusters, mastery text changes, and all changed runtime art.
 
 ## Step 2 plan: PoE1 gems/supports (post-launch)
 

@@ -130,6 +130,7 @@ pub(crate) fn validate_frame_coverage(
 pub(crate) fn build_meta_json(
     classes: &[ClassInfo],
     canvas: &Canvas,
+    nodes: &[Node],
     patch: &str,
     source: &str,
     sprites: &HashMap<String, Sprite>,
@@ -180,6 +181,70 @@ pub(crate) fn build_meta_json(
         out.push_str("]}");
     }
     out.push(']');
+    // Compact, generated external-id boundary shared by the browser and
+    // Rust-owned interop CLI. Keeping it in build_meta avoids scraping the
+    // multi-megabyte inline TREE blob and guarantees the mapping belongs to
+    // the same rendered patch.
+    out.push_str(r#","passive_ids":{"graphToBuild":{"#);
+    let mut passive_ids: Vec<_> = canvas.passive_build_ids.iter().collect();
+    passive_ids.sort_by_key(|(graph_id, _)| **graph_id);
+    let mut first_passive = true;
+    for (graph_id, build_id) in &passive_ids {
+        if !first_passive {
+            out.push(',');
+        }
+        first_passive = false;
+        let _ = write!(
+            out,
+            "{}:{}",
+            json_str(&graph_id.to_string()),
+            json_str(build_id),
+        );
+    }
+    out.push_str(r#"},"buildToGraph":{"#);
+    let mut reverse_ids: Vec<_> = passive_ids
+        .iter()
+        .map(|(graph_id, build_id)| (build_id.as_str(), **graph_id))
+        .collect();
+    reverse_ids.sort_by(|a, b| a.0.cmp(b.0));
+    let mut first_reverse = true;
+    for (build_id, graph_id) in reverse_ids {
+        if !first_reverse {
+            out.push(',');
+        }
+        first_reverse = false;
+        let _ = write!(
+            out,
+            "{}:{}",
+            json_str(build_id),
+            json_str(&graph_id.to_string()),
+        );
+    }
+    out.push_str(r#"},"attributeToParent":{"#);
+    let mut variants = Vec::new();
+    for node in nodes {
+        for (_, _, variant_id) in parse_node_options(&node.node_options) {
+            if !variant_id.is_empty() {
+                variants.push((variant_id, node.id));
+            }
+        }
+    }
+    variants.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    variants.dedup();
+    let mut first_variant = true;
+    for (variant_id, parent_id) in variants {
+        if !first_variant {
+            out.push(',');
+        }
+        first_variant = false;
+        let _ = write!(
+            out,
+            "{}:{}",
+            json_str(&variant_id),
+            json_str(&parent_id.to_string()),
+        );
+    }
+    out.push_str("}}");
     // Portrait art for the index page's saved-build cards: the round
     // FACE portraits the game uses socially (Face<Name>, extracted by
     // the sprites command from uiimages/common) for both classes and
@@ -839,6 +904,46 @@ pub(crate) fn build_tree_data(
     }
     out.push('}');
 
+    // External-id boundary for the official PoE2 Build Planner. Native
+    // allocations keep graph ids everywhere else; only the `.build`
+    // adapter reads this bidirectional map.
+    out.push_str(r#","passive_ids":{"graphToBuild":{"#);
+    let mut passive_ids: Vec<_> = canvas.passive_build_ids.iter().collect();
+    passive_ids.sort_by_key(|(graph_id, _)| **graph_id);
+    let mut first_pid = true;
+    for (graph_id, build_id) in &passive_ids {
+        if !first_pid {
+            out.push(',');
+        }
+        first_pid = false;
+        let _ = write!(
+            out,
+            "{}:{}",
+            json_str(&graph_id.to_string()),
+            json_str(build_id),
+        );
+    }
+    out.push_str(r#"},"buildToGraph":{"#);
+    let mut reverse_ids: Vec<_> = passive_ids
+        .iter()
+        .map(|(graph_id, build_id)| (build_id.as_str(), **graph_id))
+        .collect();
+    reverse_ids.sort_by(|a, b| a.0.cmp(b.0));
+    let mut first_reverse = true;
+    for (build_id, graph_id) in reverse_ids {
+        if !first_reverse {
+            out.push(',');
+        }
+        first_reverse = false;
+        let _ = write!(
+            out,
+            "{}:{}",
+            json_str(build_id),
+            json_str(&graph_id.to_string()),
+        );
+    }
+    out.push_str("}}");
+
     // Classes (for sidebar).
     out.push_str(r#","classes":["#);
     let mut first_c = true;
@@ -910,7 +1015,8 @@ pub(crate) fn build_tree_data(
 }
 
 // Page-level chrome that isn't tree data: the <title> and the game
-// descriptor JSON embedded as window.PoE2Game.
+// descriptor JSON embedded as window.BuildwrightGame (with a temporary
+// window.PoE2Game compatibility alias for older JS bundles).
 pub(crate) struct PageChrome<'a> {
     pub(crate) title: &'a str,
     pub(crate) game_json: &'a str,
@@ -993,6 +1099,26 @@ pub(crate) fn render_canvas_html(
         <select id="asc"><option value="">— pick a class first —</option></select>
       </label>
     </div>
+    <details class="identity-extras">
+      <summary>Credits &amp; source</summary>
+      <div class="identity-extras-fields">
+        <label>Author
+          <input id="build-author" type="text" maxlength="80" placeholder="Optional" autocomplete="off">
+        </label>
+        <label>Source or guide URL
+          <input id="build-link" type="url" maxlength="500" placeholder="Forum post, video, pobb.in…" autocomplete="url">
+        </label>
+        <small>Optional provenance. PoE2 also uses the first URL as the official <code>.build</code> link.</small>
+      </div>
+    </details>
+  </section>
+  <section id="pob-import-entry" class="pob-import-entry" hidden>
+    <div class="pob-import-entry-head">
+      <span class="pob-import-entry-title">Path of Building import</span>
+      <span id="pob-import-entry-game" class="pob-import-entry-game"></span>
+    </div>
+    <p>Turn PoB tree, skill and item-set profiles into reviewable character states.</p>
+    <button id="pob-import-open" type="button" title="Import a reviewed Path of Building build" hidden>Import a PoB build…</button>
   </section>
   <!-- Captures bar removed: Lv, snapshot count, chip rail, and the
        snapshot button all moved to the slider (cap markers + range
@@ -1087,12 +1213,64 @@ pub(crate) fn render_canvas_html(
     <span class="mode-dot"></span>
     <span class="mode-label">Main</span>
   </div>
-  <button id="cap-snapshot" class="snapshot-action" type="button" title="Freeze the current tree as a snapshot at this level (hotkey: S)">
+  <button id="cap-snapshot" class="snapshot-action" type="button" title="Create the next complete character state (hotkey: S)">
     <span class="snapshot-action-plus" aria-hidden="true">+</span>
-    <span class="snapshot-action-label">Snapshot</span>
+    <span class="snapshot-action-label">State</span>
   </button>
-  <ol id="cap-chip-list" class="cap-chip-list" aria-label="Capture snapshots"></ol>
+  <ol id="cap-chip-list" class="cap-chip-list state-timeline" aria-label="Character state timeline"></ol>
   </div><!-- /.hud-row -->
+  <div id="state-editor" class="state-editor hidden" role="dialog" aria-modal="true" aria-labelledby="state-editor-title">
+    <div class="state-editor-card">
+      <header>
+        <div>
+          <span class="state-editor-kicker">CHARACTER STATE</span>
+          <h2 id="state-editor-title">Add the next state</h2>
+        </div>
+        <button id="state-editor-close" type="button" aria-label="Close state editor">×</button>
+      </header>
+      <p class="state-editor-intro">A state is one complete stage of the character: tree, skills, equipment, flasks, charms, actors and notes. Timeline order describes the journey; level is suggested from the current tree but remains editable metadata, so several endgame states may all be level 100.</p>
+      <label>Name
+        <input id="state-editor-name" type="text" maxlength="80" placeholder="Early maps, Pinnacle setup, Mirror tier…">
+      </label>
+      <div class="state-editor-row">
+        <label>Phase
+          <select id="state-editor-phase">
+            <option value="leveling">Leveling</option>
+            <option value="early-endgame">Early endgame</option>
+            <option value="endgame">Late endgame</option>
+            <option value="aspirational">Aspirational / mirror tier</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <label>Character level at this state <span>(optional)</span>
+          <input id="state-editor-level" type="number" min="1" max="100" inputmode="numeric" placeholder="e.g. 92">
+        </label>
+      </div>
+      <div class="state-editor-range">
+        <span class="state-editor-range-title">Recommended level range <em>(optional)</em></span>
+        <label>From
+          <input id="state-editor-range-from" type="number" min="1" max="100" inputmode="numeric" placeholder="68">
+        </label>
+        <span class="state-editor-range-dash" aria-hidden="true">–</span>
+        <label>To
+          <input id="state-editor-range-to" type="number" min="1" max="100" inputmode="numeric" placeholder="75">
+        </label>
+        <small>Use a range such as 1–40 for guidance. Replay follows complete states and branches, not a level-indexed array.</small>
+      </div>
+      <label>State notes
+        <textarea id="state-editor-description" rows="3" maxlength="1000" placeholder="What changes here, what this setup is for, upgrade priorities…"></textarea>
+      </label>
+      <label id="state-editor-default-wrap" class="state-editor-check">
+        <input id="state-editor-default" type="checkbox">
+        Use this as the default route when the build is shared
+      </label>
+      <footer>
+        <button id="state-editor-cancel" type="button">Cancel</button>
+        <button id="state-editor-alternative" type="button">Add alternative</button>
+        <button id="state-editor-save" class="primary" type="button">Add next state</button>
+      </footer>
+    </div>
+  </div>
   <div id="note-overlay" class="note-overlay" aria-hidden="true"></div>
   <div id="jewel-overlay" class="note-overlay" aria-hidden="true"></div>
   <div id="note-popover" class="note-popover hidden" role="dialog" aria-label="Edit note">
@@ -1142,6 +1320,14 @@ pub(crate) fn render_canvas_html(
     </header>
     <ol class="fs-list" id="cs-list" aria-label="Charm slots"></ol>
     <button class="ss-add" id="cs-add" type="button">+ Set charms…</button>
+  </aside>
+  <aside id="actors-strip" class="skills-strip actors-strip" hidden>
+    <header class="ss-header">
+      <span class="ss-title">ACTORS</span>
+      <span class="ss-cap-label" id="as-cap-label"></span>
+    </header>
+    <ol class="ss-list" id="as-list"></ol>
+    <button class="ss-add" id="as-add" type="button">+ Add actor…</button>
   </aside>
   <button class="gv-open" id="guide-open" type="button" title="Read this build as a typeset leveling guide">&#128214; Build guide</button>
   </div>
@@ -1227,6 +1413,29 @@ pub(crate) fn render_canvas_html(
         <input id="gp-stats" class="sp-combo-input" type="search" autocomplete="off" placeholder="Search this base&rsquo;s rollable mods&hellip;">
         <div class="gp-stat-chips" id="gp-stat-chips"></div>
       </section>
+      <details class="sp-section gp-advanced">
+        <summary>Advanced item details</summary>
+        <div class="gp-detail-grid">
+          <label class="sp-label" for="gp-item-level">Item level</label>
+          <input id="gp-item-level" class="sp-level" type="number" min="0" step="1" placeholder="—">
+          <label class="sp-label" for="gp-quality">Quality %</label>
+          <input id="gp-quality" class="sp-level" type="number" step="1" placeholder="—">
+        </div>
+        <label class="gp-check">
+          <input id="gp-corrupted" type="checkbox">
+          <span>Corrupted</span>
+        </label>
+        <div class="gp-sockets">
+          <div class="gp-sockets-head">
+            <span>Sockets</span>
+            <button id="gp-socket-add" type="button">+ Add socket</button>
+          </div>
+          <p class="sp-muted">Sockets with the same group number are linked. Color and kind are optional, so this same editor works for PoE1 gear and PoE2 rune sockets.</p>
+          <div id="gp-socket-list"></div>
+        </div>
+        <label class="sp-label" for="gp-source-text">Original imported item text <span class="sp-muted">(preserved verbatim)</span></label>
+        <textarea id="gp-source-text" class="sp-note" rows="4" placeholder="Optional raw item text from PoB or another source"></textarea>
+      </details>
       <section class="sp-section">
         <label class="sp-label" for="gp-note">Notes <span class="sp-muted">(mods to look for, crafting steps, swap level)</span></label>
         <textarea id="gp-note" class="sp-note" rows="2" placeholder="e.g., 'any rare with +life and lightning res until you can afford this'"></textarea>
@@ -1237,6 +1446,36 @@ pub(crate) fn render_canvas_html(
       <span class="sp-spacer"></span>
       <button class="sp-cancel" id="gp-cancel" type="button">Cancel</button>
       <button class="sp-apply"  id="gp-apply"  type="button">Apply</button>
+    </footer>
+  </div>
+
+  <div id="actor-popover" class="skill-popover actor-popover hidden" role="dialog" aria-modal="true" aria-label="Edit actor loadout">
+    <header class="sp-header">
+      <span class="sp-title" id="ap-title">Edit Actor</span>
+      <button class="sp-close" id="ap-close" type="button" aria-label="Close">×</button>
+    </header>
+    <div class="sp-body">
+      <section class="sp-section gp-detail-grid">
+        <label class="sp-label" for="ap-kind">Kind</label>
+        <select id="ap-kind" class="sp-level"></select>
+        <label class="sp-label" for="ap-name">Name</label>
+        <input id="ap-name" class="sp-combo-input" type="text" maxlength="100" placeholder="Actor name">
+      </section>
+      <section class="sp-section">
+        <label class="sp-label">Equipment</label>
+        <p class="sp-muted" id="ap-inventory-help"></p>
+        <div class="ap-inventory" id="ap-inventory"></div>
+      </section>
+      <section class="sp-section">
+        <label class="sp-label" for="ap-notes">Notes</label>
+        <textarea id="ap-notes" class="sp-note" rows="3" placeholder="Role, setup details, replacement priorities…"></textarea>
+      </section>
+    </div>
+    <footer class="sp-footer">
+      <button class="sp-remove" id="ap-remove" type="button">Remove actor</button>
+      <span class="sp-spacer"></span>
+      <button class="sp-cancel" id="ap-cancel" type="button">Cancel</button>
+      <button class="sp-apply" id="ap-apply" type="button">Save actor</button>
     </footer>
   </div>
 
@@ -1254,7 +1493,7 @@ pub(crate) fn render_canvas_html(
         <div class="help-row"><span class="help-keys"><kbd>Ctrl</kbd>+<kbd>Click</kbd></span><span>Weapon set 1</span></div>
         <div class="help-row"><span class="help-keys"><kbd>Shift</kbd>+<kbd>Click</kbd></span><span>Weapon set 2</span></div>
         <div class="help-row"><span class="help-keys"><kbd>N</kbd></span><span>Add / edit a note on the hovered node or skill row</span></div>
-        <div class="help-row"><span class="help-keys"><kbd>S</kbd></span><span>Take a snapshot at the current level</span></div>
+        <div class="help-row"><span class="help-keys"><kbd>S</kbd></span><span>Capture a named character state</span></div>
       </section>
       <section>
         <h4>Gear &amp; Skills</h4>
@@ -1272,6 +1511,88 @@ pub(crate) fn render_canvas_html(
   <div id="tooltip" role="tooltip"></div>
   <div id="loading" class="overlay">Loading sprites…</div>
 </main>
+
+  <!-- Kept outside #viewport because the canvas uses `contain: strict`;
+       a fixed dialog inside it would be clipped to the canvas containing
+       block and could sit behind the overlay sidebar. -->
+  <div id="build-compatibility" class="build-compatibility hidden" role="dialog" aria-modal="true" aria-labelledby="build-compatibility-title">
+    <div class="build-compatibility-card">
+      <header>
+        <div>
+          <span id="build-compatibility-kicker" class="build-compatibility-kicker">OFFICIAL POE2 BUILD</span>
+          <h2 id="build-compatibility-title">Export compatibility</h2>
+        </div>
+        <button id="build-compatibility-close" type="button" aria-label="Close compatibility report">×</button>
+      </header>
+      <div class="build-compatibility-summary">
+        <span id="build-compatibility-status" class="build-compatibility-status"></span>
+        <p id="build-compatibility-projection"></p>
+      </div>
+      <div id="build-compatibility-groups" class="build-compatibility-groups"></div>
+      <footer>
+        <span id="build-compatibility-footnote" class="build-compatibility-footnote">Your full Buildwright plan remains unchanged.</span>
+        <button id="build-compatibility-cancel" type="button">Cancel</button>
+        <button id="build-compatibility-export" class="primary" type="button">Export .build</button>
+      </footer>
+    </div>
+  </div>
+
+  <div id="pob-import" class="pob-import hidden" role="dialog" aria-modal="true" aria-labelledby="pob-import-title">
+    <div class="pob-import-card">
+      <header>
+        <div>
+          <span id="pob-import-kicker" class="pob-import-kicker">PATH OF BUILDING</span>
+          <h2 id="pob-import-title">Import character states</h2>
+        </div>
+        <button id="pob-import-close" type="button" aria-label="Close Path of Building import">×</button>
+      </header>
+
+      <section class="pob-import-source">
+        <label id="pob-import-source-label" for="pob-import-input">PoB code, XML, or pobb.in link</label>
+        <textarea id="pob-import-input" rows="5" spellcheck="false" placeholder="Paste a PoB code, PathOfBuilding XML, or https://pobb.in/…"></textarea>
+        <p id="pob-import-source-help" class="pob-import-source-help"></p>
+        <div class="pob-import-source-actions">
+          <button id="pob-import-file" type="button">Choose local file…</button>
+          <button id="pob-import-inspect" class="primary" type="button">Inspect source</button>
+        </div>
+        <p id="pob-import-status" class="pob-import-status" role="status"></p>
+      </section>
+
+      <section id="pob-import-review" class="pob-import-review hidden">
+        <div id="pob-import-source-summary" class="pob-import-source-summary"></div>
+        <div class="pob-import-options">
+          <label>Build name
+            <input id="pob-import-plan-name" type="text" maxlength="120" />
+          </label>
+          <label>State relationship
+            <select id="pob-import-arrangement">
+              <option value="siblings">Alternatives — sibling branches</option>
+              <option value="linear">Progression — explicit sequence</option>
+            </select>
+          </label>
+          <label>Default state
+            <select id="pob-import-default"></select>
+          </label>
+          <label class="pob-import-check">
+            <input id="pob-import-actors" type="checkbox" checked />
+            Include supported actor equipment
+          </label>
+        </div>
+        <p class="pob-import-arrangement-note">PoB profile order is not automatically treated as chronology. Alternatives are the safe default; choose progression only when the reviewed order is genuinely a character timeline.</p>
+        <div class="pob-import-state-head" aria-hidden="true">
+          <span>Use</span><span>PoB profile → state name</span><span>Phase</span><span>Level</span><span>Guidance</span>
+        </div>
+        <div id="pob-import-states" class="pob-import-states"></div>
+        <div id="pob-import-report" class="pob-import-report"></div>
+      </section>
+
+      <footer>
+        <span class="pob-import-footnote">Nothing is saved until the final import confirmation. Importing replaces this local build; the transactional store retains its recovery backup.</span>
+        <button id="pob-import-cancel" type="button">Cancel</button>
+        <button id="pob-import-confirm" class="primary" type="button" hidden>Review compatibility</button>
+      </footer>
+    </div>
+  </div>
 
   <!-- Build-guide reading view: a FLOATING window over the live tree —
        drag it by the title bar, hover tagged nodes/gems/items to
@@ -1309,7 +1630,7 @@ pub(crate) fn render_canvas_html(
 </div>
 </div>
 <script src="/assets/wizard_chrome.js" defer></script>
-<script>const TREE = {tree_data};window.PoE2Game = {game_json};</script>
+<script>const TREE = {tree_data};window.BuildwrightGame = {game_json};window.PoE2Game = window.BuildwrightGame;</script>
 <script src="/assets/planner.js" defer></script>
 </body>
 </html>
@@ -1383,5 +1704,5 @@ pub(crate) const CANVAS_CSS: &str = include_str!("../assets/planner.css");
 // Note: the planner JS bundle (CANVAS_JS) used to live here as a
 // compile-time concat of every planner/*.js file via include_str!.
 // As of the TS migration it's built by esbuild — see
-// scripts/build_js.sh + tools/setup.sh. Rust no longer touches the
+// `./bw js` + tools/setup.sh. Rust no longer touches the
 // .js sources; the only artefact it still owns is planner.css above.

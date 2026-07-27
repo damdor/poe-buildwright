@@ -19,9 +19,10 @@ import { requestRender } from "./render.ts";
 import { adj } from "./pathfind.ts";
 import { loadPlanData } from "./build_io.ts";
 import {
-  GAME, ITEM_SLOTS, featureOn, nextRepeatedItemSlotFor, normalizeItemSlotFor,
+  GAME, ITEM_SLOTS, PROFILE, featureOn, nextRepeatedItemSlotFor, normalizeItemSlotFor,
 } from "./game.ts";
 import { loadGameAsset } from "./asset_loader.ts";
+import { emitStateChange } from "./runtime_contract.ts";
 import type { Allocation, Capture, Item, Plan, Skill, TreeNode } from "../../../../types/shared.d.ts";
 
 interface AgentSkill { gem?: string; level?: number; supports?: string[]; note?: string; set?: "set1" | "set2" }
@@ -225,7 +226,7 @@ async function runImport(payload: string): Promise<void> {
   let plan: AgentPlan | null = null;
   try { plan = raw ? JSON.parse(raw) as AgentPlan : null; } catch { /* reported below */ }
   if (!plan || !agentPlanMatchesPage(plan)) {
-    window.PoE2Plan?.flash(
+    window.BuildwrightPlan?.flash(
       plan?.game && plan.game !== GAME.id
         ? `Agent link belongs to ${plan.game}, not ${GAME.id}`
         : "Agent link was malformed — started a blank build instead",
@@ -241,7 +242,7 @@ async function runImport(payload: string): Promise<void> {
  *  Returns a short human summary, or null if the plan was unusable. */
 export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
   if (!agentPlanMatchesPage(plan)) {
-    window.PoE2Plan?.flash(`Agent plan does not belong to ${GAME.id}`, true);
+    window.BuildwrightPlan?.flash(`Agent plan does not belong to ${GAME.id}`, true);
     return null;
   }
   const problems: string[] = [];
@@ -250,7 +251,7 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
   const klassIn = (plan.class || "").trim();
   const klass = TREE.classes.find(c => c.name.toLowerCase() === klassIn.toLowerCase())?.name;
   if (!klass) {
-    window.PoE2Plan?.flash(
+    window.BuildwrightPlan?.flash(
       "Agent link: unknown class '" + klassIn + "' — started a blank build", true);
     return null;
   }
@@ -278,7 +279,7 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
     return n?.k === "class_start" && (n.kl || "").split("|").includes(klass);
   });
   if (!hub) {
-    window.PoE2Plan?.flash("Agent link: no start hub for class " + klass, true);
+    window.BuildwrightPlan?.flash("Agent link: no start hub for class " + klass, true);
     return null;
   }
 
@@ -541,7 +542,7 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
   // PoE2Plan.set (inside loadPlanData) persists but does NOT emit the
   // capture-change event — the skills/gear strips would render stale
   // without this.
-  window.dispatchEvent(new CustomEvent("poe2-capture-change", { detail: { reason: "agent-import" } }));
+  emitStateChange("agent-import");
   fitToView();
   requestRender();
 
@@ -551,7 +552,7 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
     (captures.length > 1 ? " across " + captures.length + " snapshots" : "") +
     ", " + last.skills.length + " skills, " + last.items.length + " gear slots" +
     (problems.length ? " — " + problems.length + " unresolved: " + problems.slice(0, 3).join("; ") : "");
-  window.PoE2Plan?.flash(summary, problems.length > 0);
+  window.BuildwrightPlan?.flash(summary, problems.length > 0);
   // Machine-readable import result: browser agents shouldn't have to
   // scrape the flash toast or the sidebar DOM to learn what happened.
   // Stable contract: <script id="poe2-agent-import-result"
@@ -582,7 +583,7 @@ export async function importAgentPlan(plan: AgentPlan): Promise<string | null> {
 }
 
 // Boot: pick the payload out of the fragment once the chrome is up
-// (loadPlanData needs window.PoE2Plan). Clear the hash after import so
+// (loadPlanData needs window.BuildwrightPlan). Clear the hash after import so
 // reloads don't re-import over the user's edits.
 const m = /[#&]agent=([A-Za-z0-9_-]+)/.exec(location.hash);
 // Plain-JSON variant: #plan=<url-encoded agent-plan JSON>. Chat
@@ -591,14 +592,14 @@ const m = /[#&]agent=([A-Za-z0-9_-]+)/.exec(location.hash);
 const mj = /[#&]plan=([^&]+)/.exec(location.hash);
 if (m || mj) {
   const tryRun = (): void => {
-    if (window.PoE2Plan && state.geomReady) {
+    if (window.BuildwrightPlan && state.geomReady) {
       if (m) {
         void runImport(m[1]!);
       } else {
         let plan: AgentPlan | null = null;
         try { plan = JSON.parse(decodeURIComponent(mj![1]!)) as AgentPlan; } catch { /* flash below */ }
         if (plan && agentPlanMatchesPage(plan)) void importAgentPlan(plan);
-        else window.PoE2Plan?.flash("#plan= link was malformed — started a blank build instead", true);
+        else window.BuildwrightPlan?.flash("#plan= link was malformed — started a blank build instead", true);
       }
       history.replaceState(null, "", location.pathname + location.search);
     } else {
@@ -629,7 +630,7 @@ export async function copyAgentLink(): Promise<void> {
     if (!n || !["notable", "keystone", "asc_notable"].includes(n.k)) continue;
     targets.push(n.n && nameCount.get(n.n) === 1 ? n.n : Number(id));
   }
-  const cap = window.PoE2Plan?.captures.active();
+  const cap = window.BuildwrightPlan?.captures.active();
   const gemName = (id: string): string => (cat ? resolveGem(cat, id)?.name ?? id : id);
   const skills = (cap?.skills ?? []).map(s => {
     const entry: AgentSkill = { gem: gemName(s.id) };
@@ -657,11 +658,11 @@ export async function copyAgentLink(): Promise<void> {
     gear,
     notes: (document.getElementById("build-description") as HTMLTextAreaElement | null)?.value || undefined,
   };
-  const plannerPath = GAME.id === "poe1" ? "/planner-poe1.html" : "/planner.html";
+  const plannerPath = PROFILE.definition.plannerPath;
   const url = location.origin + plannerPath + "#agent=" + b64urlEncode(JSON.stringify(plan));
   try {
     await navigator.clipboard.writeText(url);
-    window.PoE2Plan?.flash("Agent link copied (" + targets.length + " targets, " + url.length + " chars)");
+    window.BuildwrightPlan?.flash("Agent link copied (" + targets.length + " targets, " + url.length + " chars)");
   } catch {
     prompt("Copy the agent link:", url);
   }

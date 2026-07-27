@@ -99,7 +99,7 @@ classSel.addEventListener('change', () => {
   if (_classSilent) { _classSilent = false; refreshAscOptions(); applyAsc(); return; }
   const previousKlass = state.klass;
   const buildHasContent = state.selected.size > 0
-    || (window.PoE2Plan && window.PoE2Plan.captures.list().some(c => c.passives && c.passives.length > 0));
+    || (window.BuildwrightPlan && window.BuildwrightPlan.captures.list().some(c => c.passives && c.passives.length > 0));
   if (buildHasContent && previousKlass && previousKlass !== classSel.value) {
     const ok = confirm(
       'Switching base class will clear every snapshot, every allocation, every note.\n\n' +
@@ -115,9 +115,9 @@ classSel.addEventListener('change', () => {
     // wizard_chrome's normalizePlan mints id/name/description for
     // any capture that doesn't have them, so the cast is honest
     // — the API boundary normalizes before persisting.
-    if (window.PoE2Plan) {
-      const plan = window.PoE2Plan.get();
-      window.PoE2Plan.set({
+    if (window.BuildwrightPlan) {
+      const plan = window.BuildwrightPlan.get();
+      window.BuildwrightPlan.set({
         format: plan.format, version: plan.version, patch: plan.patch,
         name: plan.name || '', description: plan.description || '',
         class: classSel.value, activeSet: 'main',
@@ -636,14 +636,14 @@ selList.addEventListener('input', e => {
     // not the working cap. Without this auto-switch, with the old
     // Edit/View toggle removed the user has no obvious way to leave
     // replay mode.
-    if (window.PoE2SliderDebug && window.PoE2SliderExit) {
+    if (window.BuildwrightReplayDebug && window.BuildwrightReplayExit) {
       const lsInput = document.getElementById('ls-input') as HTMLInputElement | null;
       const L = lsInput ? +lsInput.value : null;
-      const s = L != null ? window.PoE2SliderDebug.stateAt(L) : null;
+      const s = L != null ? window.BuildwrightReplayDebug.stateAt(L) : null;
       const typed = t.value || '';
-      window.PoE2SliderExit();
-      if (s && window.PoE2Plan && window.PoE2Plan.captures) {
-        window.PoE2Plan.captures.setActive(s.capIdx);
+      window.BuildwrightReplayExit();
+      if (s && window.BuildwrightPlan && window.BuildwrightPlan.captures) {
+        window.BuildwrightPlan.captures.setActive(s.capIdx);
       }
       // capture-change re-hydrates state.selected and re-renders
       // #sel-list, replacing this textarea. After the re-render,
@@ -734,9 +734,9 @@ resetBtn.addEventListener('click', () => {
     'Clears: every snapshot + all allocated passives, skills, items'
   )) return;
   let keptAsc = null;
-  if (window.PoE2Plan) {
+  if (window.BuildwrightPlan) {
     // Pull identity-only fields off the plan so we can rebuild it.
-    const plan = window.PoE2Plan.get();
+    const plan = window.BuildwrightPlan.get();
     const keptName = plan.name || '';
     const keptDesc = plan.description || '';
     const keptClass = plan.class || null;
@@ -746,7 +746,7 @@ resetBtn.addEventListener('click', () => {
     keptAsc = (activeCap && activeCap.ascendancy) || null;
     // Replace the plan via PoE2Plan.set — wizard chrome normalizes it,
     // installs a single empty capture, and persists immediately.
-    window.PoE2Plan.set({
+    window.BuildwrightPlan.set({
       format: plan.format, version: plan.version, patch: plan.patch,
       name: keptName, description: keptDesc,
       class: keptClass, activeSet: 'main',
@@ -770,8 +770,8 @@ resetBtn.addEventListener('click', () => {
   updatePreview();
   requestRender();
   updateSelectionUI();
-  if (window.PoE2Plan && window.PoE2Plan.flash) {
-    window.PoE2Plan.flash('Cleared — kept name, class' + (keptAsc ? ', ascendancy' : ''));
+  if (window.BuildwrightPlan && window.BuildwrightPlan.flash) {
+    window.BuildwrightPlan.flash('Cleared — kept name, class' + (keptAsc ? ', ascendancy' : ''));
   }
 });
 // Footer "Export" button now emits the GGG .build format the new
@@ -786,7 +786,7 @@ const shareBtn = document.getElementById('share');
 if (shareBtn) shareBtn.addEventListener('click', doShareLink);
 
 export async function doShareLink(): Promise<void> {
-  if (!window.PoE2Share || !window.PoE2Plan) {
+  if (!window.BuildwrightShare || !window.BuildwrightPlan) {
     alert('Share codec did not load.');
     return;
   }
@@ -795,13 +795,14 @@ export async function doShareLink(): Promise<void> {
   // user just typed (persistToWizardStore is debounced 300ms —
   // it would race with the read below).
   flushPersistNow();
-  const plan = window.PoE2Plan.get();
+  window.BuildwrightPlan.native.sync();
+  const plan = window.BuildwrightPlan.native.get();
   // (Pre-share connectivity check was tied to the old delta-captures
   // shape and is currently dead. Step 3 re-introduces a captures-aware
   // validator before share-link encoding.)
   let url;
   try {
-    url = await window.PoE2Share.buildUrl(plan);
+    url = await window.BuildwrightShare.buildUrl(plan);
   } catch (e) {
     alert('Could not encode the share link: ' + ((e as Error).message || e));
     return;
@@ -817,7 +818,7 @@ export async function doShareLink(): Promise<void> {
   }
   try {
     await navigator.clipboard.writeText(url);
-    window.PoE2Plan.flash('Share link copied (' + url.length + ' chars)');
+    window.BuildwrightPlan.flash('Share link copied (' + url.length + ' chars)');
     if (warn) alert('Share link copied.' + warn);
   } catch (e) {
     // Clipboard write can fail (no permission, http context, …).
@@ -825,4 +826,3 @@ export async function doShareLink(): Promise<void> {
     prompt('Copy this share link:', url);
   }
 }
-

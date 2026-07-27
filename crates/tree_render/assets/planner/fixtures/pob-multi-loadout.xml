@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PathOfBuilding>
+  <Build targetVersion="3_0" className="Witch" ascendClassName="Necromancer" level="92">
+    <PlayerStat stat="CombinedDPS" value="999999"/>
+    <PlayerStat stat="TotalEHP" value="123456"/>
+  </Build>
+  <Config>
+    <ConfigSet id="1" title="Shared configuration">
+      <Input name="usePowerCharges" boolean="true"/>
+    </ConfigSet>
+  </Config>
+  <Tree activeSpec="2">
+    <Spec title="Campaign {levelling}" treeVersion="3_28" classId="3" ascendClassId="0"
+      nodes="100,101" masteryEffects="{101,9001}">
+      <Sockets/>
+      <Overrides/>
+    </Spec>
+    <Spec title="Mapping" treeVersion="3_28" classId="3" ascendClassId="1"
+      nodes="100,101,102" masteryEffects="">
+      <Sockets>
+        <Socket nodeId="500" itemId="2"/>
+      </Sockets>
+      <Overrides>
+        <Override nodeId="102" dn="Fixture tattoo">Fixture override</Override>
+      </Overrides>
+    </Spec>
+    <Spec title="Bossing" treeVersion="3_28" classId="3" ascendClassId="1"
+      nodes="100,103" masteryEffects="">
+      <Sockets/>
+      <Overrides/>
+    </Spec>
+  </Tree>
+  <Skills>
+    <SkillSet id="10" title="Starter gems {levelling}">
+      <Skill slot="Body Armour" enabled="true">
+        <Gem gemId="Metadata/Items/Gems/SkillGemFixtureAttack"
+          nameSpec="Fixture Attack" level="12" quality="0" enabled="true"/>
+        <Gem gemId="Metadata/Items/Gems/SupportGemFixtureDamage"
+          nameSpec="Fixture Damage" level="1" quality="0" enabled="true"/>
+      </Skill>
+    </SkillSet>
+    <SkillSet id="11" title="Mapping">
+      <Skill slot="Helmet" label="Minion setup" enabled="true">
+        <Gem gemId="Metadata/Items/Gems/SkillGemAnimateArmour"
+          nameSpec="Animate Guardian" skillMinionItemSet="90"
+          level="20" quality="20" enabled="true"/>
+      </Skill>
+    </SkillSet>
+    <SkillSet id="12" title="Unmatched skill set"/>
+  </Skills>
+  <Items activeItemSet="11">
+    <Item id="1">
+Rarity: RARE
+Fixture Shelter
+Vaal Regalia
+Item Level: 86
+Quality: 30
+Sockets: B-B-B-B-B-B
+Implicits: 0
++100 to maximum Life
++40% to Fire Resistance
+Corrupted
+    </Item>
+    <Item id="2">
+Rarity: UNIQUE
+Fixture Jewel
+Large Cluster Jewel
+Implicits: 0
+Adds 8 Passive Skills
+Added Small Passive Skills grant: 12% increased Fixture Effect
+2 Added Passive Skills are Jewel Sockets
+    </Item>
+    <Item id="3">
+Rarity: UNIQUE
+Fixture Guardian Axe
+Despot Axe
+Quality: 20
+Sockets: R-R-R
+Implicits: 0
+Nearby Allies have Fixture Strike
+    </Item>
+    <Item id="4">
+Rarity: RARE
+Fixture Swap Wand
+Imbued Wand
+Item Level: 82
+Sockets: B-B-B
+Implicits: 0
++1 to Level of all Spell Skill Gems
+    </Item>
+    <Item id="5">
+Rarity: UNIQUE
+Fixture Flask
+Granite Flask
+Quality: 20
+Implicits: 0
++1500 to Armour during Effect
+    </Item>
+    <Item id="6">
+Rarity: MAGIC
+Perpetual Granite Flask of the Armadillo
+Crafted: true
+Prefix: Perpetual
+Suffix: of the Armadillo
+Quality: 20
+Implicits: 0
+20% increased Armour during Effect
+    </Item>
+    <Item id="7">
+Rarity: RARE
+.
+Leather Belt
+Crafted: true
+Implicits: 1
++40 to maximum Life
+    </Item>
+    <ItemSet id="10" title="Campaign items {levelling}" useSecondWeaponSet="false">
+      <Slot name="Body Armour" itemId="1"/>
+    </ItemSet>
+    <ItemSet id="11" title="Mapping" useSecondWeaponSet="false">
+      <Slot name="Body Armour" itemId="1"/>
+      <Slot name="Weapon 1 Swap" itemId="4"/>
+      <Slot name="Flask 1" itemId="5"/>
+      <SocketIdURL name="Jewel 500" nodeId="500" itemId="2"/>
+    </ItemSet>
+    <ItemSet id="90" title="Animate Guardian equipment" useSecondWeaponSet="false">
+      <Slot name="Weapon 1" itemId="3"/>
+    </ItemSet>
+    <ItemSet id="91" title="Unmatched item set" useSecondWeaponSet="false"/>
+  </Items>
+  <TreeView zoomLevel="5"/>
+  <Calcs/>
+  <Party/>
+  <Notes>Fixture notes &amp; safe text.</Notes>
+</PathOfBuilding>
